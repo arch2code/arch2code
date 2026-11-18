@@ -270,6 +270,22 @@ package uvmReuseLeaf_w8_uvm_pkg;
                 end
             end
         endfunction
+
+        // A front-door write of rg and a read-back, each an A2C_REG error on a
+        // bad status, the read-back also on a value other than the one
+        // written. The read-back returns once the write has reached the DUT.
+        task write_reg(uvm_reg rg, uvm_reg_data_t value);
+            uvm_status_e   status;
+            uvm_reg_data_t readback;
+            rg.write(status, value);
+            if (status != UVM_IS_OK) begin
+                `uvm_error("A2C_REG", $sformatf("%s write of 'h%0h returned %s", rg.get_full_name(), value, status.name()))
+            end
+            rg.read(status, readback);
+            if (status != UVM_IS_OK || readback != value) begin
+                `uvm_error("A2C_REG", $sformatf("%s read back 'h%0h (%s), wrote 'h%0h", rg.get_full_name(), readback, status.name(), value))
+            end
+        endtask
     endclass : uvmReuseLeaf_env
 
 // GENERATED_CODE_END

@@ -1937,14 +1937,17 @@ class projectOpen:
             registerBus = {'port': busPort['name'], 'agent': busPort['agent'],
                            'adapterClass': f"{busPort['interfaceType']}_reg_adapter"}
         # The fail test expects more transactions than the first counted
-        # output delivers, so a block with none has no fail test. The model
-        # mismatch test injects on that port's comparator, so it also needs
-        # the both DUT.
+        # output delivers, so a block with none has no fail test, and no
+        # rt-fire test, whose real-time checkers judge a counted output. The
+        # model mismatch test injects on that port's comparator, so it also
+        # needs the both DUT.
         counted = [port for port in ports if port['counter']]
         failTest = None
+        rtFireTest = None
         modelMismatchTest = None
         if counted:
             failTest = {'className': names['failTestClass'], 'counter': counted[0]['counter']}
+            rtFireTest = {'className': names['rtFireTestClass']}
             if 'both' in names['duts']:
                 modelMismatchTest = {'className': names['modelMismatchTestClass'], 'agent': counted[0]['agent']}
         ret['uvm'] = {**names, 'ports': ports, 'clocks': clocks,
@@ -1953,7 +1956,7 @@ class projectOpen:
                       'registerBlocks': registerBlocks,
                       'registerBus': registerBus,
                       'internalMonitors': internalMonitors, 'unmonitored': unmonitored,
-                      'failTest': failTest, 'modelMismatchTest': modelMismatchTest}
+                      'failTest': failTest, 'rtFireTest': rtFireTest, 'modelMismatchTest': modelMismatchTest}
 
     def getUvmInternalMonitors(self, ret, clocks, portNames):
         """The connections between a block's children that its env watches
@@ -6597,6 +6600,7 @@ class projectCreate:
                 'baseTestClass':   f"{block}_base_test",
                 'smokeTestClass':  f"{block}_smoke_test",
                 'failTestClass':   f"{block}_fail_test",
+                'rtFireTestClass': f"{block}_rt_fire_test",
                 'modelMismatchTestClass': f"{block}_model_mismatch_test",
             }
         self.config.setConfig('UVMNAMES', self.uvmNames, bin=True)

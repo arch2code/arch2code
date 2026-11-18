@@ -8,7 +8,8 @@ itself in the compile error. Its layout is fixed: the generated header with
 the include guard, the package line and the imports the variant package
 makes; a user span holding `<block>_tb_env extends <block>_env`; the
 generated `<block>_base_test`; a user span holding `<block>_smoke_test` with
-an empty run_body(); and the generated footer with `<block>_fail_test`. The
+an empty run_body(); and the generated footer with `<block>_fail_test` and
+`<block>_rt_fire_test`. The
 base test creates the env through the factory as `<block>_tb_env`, waits for
 reset, runs run_body() and then waits for every counted output under one
 objection. It hands the env its clock stop and the drain's window, deadline,
@@ -36,7 +37,10 @@ stimulus, turns the real-time rules off with a2c_rt_off, because
 the missing transaction never closes its unit, and passes only on exactly one A2C_TXN_COUNT error, or one per lane
 in Mode B, with each lane's pending count equal to the missing count, and only
 when the smoke test sent stimulus, since a dead data path also misses the
-transactions. A block
+transactions. The rt-fire test sets rt_lag_cycles to 1 on the smoke
+stimulus, demotes A2C_RT_DEADLINE, and passes only when env holds a checker
+that is not off, each such checker failed every unit it paired once, and
+the demoted errors are those of the checkers that judge. A block
 with a model, and so a both DUT, also gets `<block>_model_mismatch_test`,
 which injects a mismatch on that output's model comparator, stops with A2C_CFG
 outside Mode B, demotes only the A2C_MODEL_CMP that carries the injection
@@ -47,9 +51,9 @@ edit in either span survives it.
 A copy of `fixtures/uvm-blocks` with the two variants of
 test_uvm_register_view.py must give one ubDut_uvm_test_pkg.sv, named by both
 tops' A2C_UVM_TEST_SV. A second copy drops ubDut's two output ports, out and
-rdM, so it has no counted output: its test package has no fail or model
-mismatch test, waits on no output, and still takes the stable point. A third
-copy gives ubDut no model, so it keeps the fail test and has no model mismatch
+rdM, so it has no counted output: its test package has no fail, rt-fire or
+model mismatch test, waits on no output, and still takes the stable point. A third
+copy gives ubDut no model, so it keeps the fail and rt-fire tests and has no model mismatch
 test. A fourth copy gives ubDut an apb master port, mst. The apb slave agent
 drains its replay log itself, so that copy's wait_for_outputs() ends in Mode B
 with the stable point alone, as every copy's does.
@@ -264,6 +268,21 @@ FAIL_TEST = [
     'endclass : ubDut_fail_test',
 ]
 
+RT_FIRE_TEST = [
+    'class ubDut_rt_fire_test extends ubDut_smoke_test;',
+    'a2c_error_demoter demoter;',
+    'rt_lag_cycles = 1;',
+    'demoter.demote_id = "A2C_RT_DEADLINE";',
+    'uvm_report_cb::add(null, demoter);',
+    'while (p != null && p != env) p = p.get_parent();',
+    'if (p != null && !all[k].off) found.push_back(all[k]);',
+    "foreach (rts[k]) rts[k].max_reported = '1;",
+    'if (rts[k].units_checked() == 0 || rts[k].failures_seen() != rts[k].units_checked()) begin',
+    'if (rts[k].judges()) want += rts[k].units_checked();',
+    'end else if (wrong != "" || demoter.demoted != want) begin',
+    'endclass : ubDut_rt_fire_test',
+]
+
 MISMATCH_TEST = [
     'class ubDut_model_mismatch_test extends ubDut_smoke_test;',
     'a2c_error_demoter demoter;',
@@ -332,15 +351,16 @@ def check_layout(path, hasOutput, hasModel=True):
     (_, header), (_, span1), (_, tests), (_, span2), (_, footer) = layout
     baseTest = (BASE_TEST + (OUTPUT_WAIT if hasOutput else []) + STABLE_POINT + NO_STIMULUS
                 + (OUTPUT_DECLARED if hasOutput else []) + STIMULUS_SENT + (OUTPUT_WORK if hasOutput else []) + WORK_END)
-    footerTests = (FAIL_TEST if hasOutput else []) + (MISMATCH_TEST if hasOutput and hasModel else [])
+    footerTests = (FAIL_TEST + RT_FIRE_TEST if hasOutput else []) + (MISMATCH_TEST if hasOutput and hasModel else [])
     for what, lines, expected in (('header', header, HEADER), ('env span', span1, SPAN_1),
                                   ('tests section', tests, baseTest), ('smoke span', span2, SPAN_2),
                                   ('footer', footer, footerTests + FOOTER)):
         if not in_order(lines, expected):
             problems.append(f"{name} {what} is\n    {lines}\n  expected in order\n    {expected}")
     # OUTPUT_WAIT's fork and join also open reset_dut()'s requests.
-    if not hasOutput and any(line in tests + footer for line in OUTPUT_WAIT[1:2] + OUTPUT_DECLARED + OUTPUT_WORK + FAIL_TEST[:1]):
-        problems.append(f"{name} waits on an output or declares a fail test, and the block has no counted output")
+    if not hasOutput and any(line in tests + footer for line in OUTPUT_WAIT[1:2] + OUTPUT_DECLARED + OUTPUT_WORK + FAIL_TEST[:1]
+                             + RT_FIRE_TEST[:1]):
+        problems.append(f"{name} waits on an output or declares a fail or rt-fire test, and the block has no counted output")
     if not (hasOutput and hasModel) and MISMATCH_TEST[0] in footer:
         problems.append(f"{name} declares a model mismatch test, and the block has no model or no counted output")
     start = tests.index(MODE_B_TAIL[0]) if MODE_B_TAIL[0] in tests else -1
@@ -451,7 +471,7 @@ def run_all_tests():
     ok = True
     try:
         for name, check in (('one test package for two variants, kept across make gen', check_two_variants),
-                            ('no fail test without a counted output', check_no_output),
+                            ('no fail or rt-fire test without a counted output', check_no_output),
                             ('no model mismatch test without a model', check_no_model),
                             ('no generated drain for an apb master port', check_master),
                             ('the loopback simulates the current base test', check_loopback_copy)):

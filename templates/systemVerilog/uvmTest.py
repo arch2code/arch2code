@@ -302,6 +302,9 @@ def render_footer(uvm):
     failTest = uvm['failTest']
     if failTest:
         out += '\n' + textwrap.indent('\n'.join(fail_test(uvm, failTest)), ' '*4) + '\n'
+    rtFireTest = uvm['rtFireTest']
+    if rtFireTest:
+        out += '\n' + textwrap.indent('\n'.join(rt_fire_test(uvm, rtFireTest)), ' '*4) + '\n'
     mismatchTest = uvm['modelMismatchTest']
     if mismatchTest:
         out += '\n' + textwrap.indent('\n'.join(model_mismatch_test(uvm, mismatchTest)), ' '*4) + '\n'
@@ -381,6 +384,80 @@ def fail_test(uvm, failTest):
             '    endfunction',
             f"endclass : {cls}"]
     return lines
+
+
+def rt_fire_test(uvm, rtFireTest):
+    cls = rtFireTest['className']
+    return ["// The smoke test with the lag bound of every a2c_rt_checker under env at",
+            "// 1 clock (rt_lag_cycles), below the lag of any DUT that registers its",
+            "// output, which proves each checker's wiring: every output unit it pairs",
+            "// with an input unit misses its deadline once. Each A2C_RT_DEADLINE is",
+            "// demoted and counted. It passes only if env holds a checker that is not",
+            "// off, each such checker paired at least one unit and failed each one",
+            "// once, and the demoted errors are the failures of the checkers that",
+            "// judge, which on the model DUT is none unless rt_on_model is set. A",
+            "// checker under env that is off, as a2c_rt_off or a2c_video_env turns",
+            "// one off, is left out.",
+            f"class {cls} extends {uvm['smokeTestClass']};",
+            '    a2c_error_demoter demoter;',
+            '',
+            f"    `uvm_component_utils({cls})",
+            '',
+            '    function new(string name, uvm_component parent);',
+            '        super.new(name, parent);',
+            '        rt_lag_cycles = 1;',
+            '    endfunction',
+            '',
+            '    virtual function void build_phase(uvm_phase phase);',
+            '        super.build_phase(phase);',
+            '        demoter = a2c_error_demoter::type_id::create("demoter");',
+            '        demoter.demote_id = "A2C_RT_DEADLINE";',
+            '        uvm_report_cb::add(null, demoter);',
+            '    endfunction',
+            '',
+            "    // The checkers under env that are on.",
+            '    function void env_checkers(output a2c_rt_checker_base found[$]);',
+            '        a2c_rt_checker_base all[$];',
+            '        a2c_rt_checker_base::get_checkers(all);',
+            '        foreach (all[k]) begin',
+            '            uvm_component p = all[k].get_parent();',
+            '            while (p != null && p != env) p = p.get_parent();',
+            '            if (p != null && !all[k].off) found.push_back(all[k]);',
+            '        end',
+            '    endfunction',
+            '',
+            "    // Every failure prints, so the demoter counts each one.",
+            '    virtual function void start_of_simulation_phase(uvm_phase phase);',
+            '        a2c_rt_checker_base rts[$];',
+            '        super.start_of_simulation_phase(phase);',
+            '        env_checkers(rts);',
+            "        foreach (rts[k]) rts[k].max_reported = '1;",
+            '    endfunction',
+            '',
+            '    virtual function void report_phase(uvm_phase phase);',
+            '        a2c_rt_checker_base rts[$];',
+            '        int unsigned want = 0;',
+            '        string       wrong = "";',
+            '        super.report_phase(phase);',
+            '        env_checkers(rts);',
+            '        foreach (rts[k]) begin',
+            '            if (rts[k].units_checked() == 0 || rts[k].failures_seen() != rts[k].units_checked()) begin',
+            '                wrong = {wrong, $sformatf("; %s paired %0d units and failed %0d", rts[k].get_full_name(),',
+            '                                          rts[k].units_checked(), rts[k].failures_seen())};',
+            '            end',
+            '            if (rts[k].judges()) want += rts[k].units_checked();',
+            '        end',
+            '        if (rts.size() == 0) begin',
+            f'            `uvm_error("A2C_RT_FIRE", "{cls} found no a2c_rt_checker under env with its rules on; the test proves the wiring of the env\'s checkers")',
+            '        end else if (wrong != "" || demoter.demoted != want) begin',
+            '            `uvm_error("A2C_RT_FIRE", $sformatf("expected each checker to fail each unit it paired once, and %0d A2C_RT_DEADLINE errors; caught %0d%s",',
+            '                                                want, demoter.demoted, wrong))',
+            '        end else begin',
+            '            `uvm_info("A2C_RT_FIRE", $sformatf("%0d checkers each failed every unit they paired, %0d A2C_RT_DEADLINE errors as intended",',
+            '                                               rts.size(), demoter.demoted), UVM_LOW)',
+            '        end',
+            '    endfunction',
+            f"endclass : {cls}"]
 
 
 def model_mismatch_test(uvm, mismatchTest):

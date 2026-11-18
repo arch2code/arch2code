@@ -32,7 +32,8 @@ The env must create one agent per port with its config, one transaction
 counter for the DUT stream output and none for the input or either APB port,
 and an explicit predictor on the register bus agent's monitor with
 auto-predict off. Every port's monitor also feeds a transaction digest of
-its own. Its register model starts at its reset values. Every
+its own. Its register model starts at its reset values, and write_reg()
+writes a register and reads it back. Every
 agent's config carries the role opposite its port's direction, so the agent
 on mst, where the DUT is the master, is A2C_DST and the register bus agent
 A2C_SRC, and the env sets no agent passive. The AXI port rdM binds no id_t,
@@ -254,6 +255,10 @@ ENV_LINES = [
     'regmodel.default_map.set_sequencer(ubRegs_agent.sqr, adapter);',
     'regmodel.default_map.set_auto_predict(0);',
     'ubRegs_agent.mon.ap.connect(predictor.bus_in);',
+    'task write_reg(uvm_reg rg, uvm_reg_data_t value);',
+    'rg.write(status, value);',
+    'rg.read(status, readback);',
+    'if (status != UVM_IS_OK || readback != value) begin',
 ] + [line for port in PORTS for line in (
     f'a2c_uvm_pkg::a2c_txn_digest #({port}_item_t) {port}_digest;',
     f'{port}_digest = a2c_uvm_pkg::a2c_txn_digest#({port}_item_t)::type_id::create("{port}_digest", this);',

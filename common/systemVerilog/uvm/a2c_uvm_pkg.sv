@@ -1854,6 +1854,112 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_reg_write_subscriber
 
+    // The front-door register checks of the register model in model:
+    // uvm_reg_hw_reset_seq reads every reset value; the aliasing pass then
+    // writes each register it covers, in turn, with the complement of the
+    // value it holds, and reads every covered register back after each
+    // write, the written one expecting its new value and the others the
+    // values they held, which catches two registers decoding to one word
+    // whatever their widths; uvm_reg_bit_bash_seq last writes and reads each
+    // bit of one register at a time. The aliasing pass covers a register
+    // whose fields are all RW or RO and none volatile, and writes one whose
+    // fields are all RW in a map that grants RW; it leaves out a register
+    // with NO_REG_TESTS set, as the UVM sequences do. Its reads grow with
+    // the square of the number of registers it covers.
+    class a2c_reg_access_seq extends uvm_reg_sequence #(uvm_sequence #(uvm_reg_item));
+        `uvm_object_utils(a2c_reg_access_seq)
+
+        function new(string name = "a2c_reg_access_seq");
+            super.new(name);
+        endfunction
+
+        virtual task body();
+            uvm_reg_hw_reset_seq reset_seq = uvm_reg_hw_reset_seq::type_id::create("reset_seq");
+            uvm_reg_bit_bash_seq bash_seq  = uvm_reg_bit_bash_seq::type_id::create("bash_seq");
+            if (model == null) begin
+                `uvm_fatal("A2C_CFG", "a2c_reg_access_seq: no register model; set model before start()")
+            end
+            reset_seq.model = model;
+            reset_seq.start(null, this);
+            alias_pass();
+            bash_seq.model = model;
+            bash_seq.start(null, this);
+        endtask
+
+        static function bit covers(uvm_reg rg, output bit writable);
+            uvm_reg_field fields[$];
+            writable = rg.get_rights() == "RW";
+            if (uvm_resource_db#(bit)::get_by_name({"REG::", rg.get_full_name()}, "NO_REG_TESTS", 0) != null) return 0;
+            rg.get_fields(fields);
+            foreach (fields[i]) begin
+                string access = fields[i].get_access();
+                if (fields[i].is_volatile() || !(access inside {"RW", "RO"})) return 0;
+                if (access != "RW") writable = 0;
+            end
+            return 1;
+        endfunction
+
+        task alias_pass();
+            uvm_reg        all[$];
+            uvm_reg        regs[$];
+            bit            writable[$];
+            uvm_reg_data_t held[$];
+            uvm_status_e   status;
+            uvm_reg_data_t value;
+            model.get_registers(all);
+            foreach (all[i]) begin
+                bit w;
+                if (!covers(all[i], w)) continue;
+                regs.push_back(all[i]);
+                writable.push_back(w);
+            end
+            foreach (regs[i]) begin
+                regs[i].read(status, value, .parent(this));
+                if (status != UVM_IS_OK) begin
+                    `uvm_error("A2C_REG", $sformatf("%s read returned %s", regs[i].get_full_name(), status.name()))
+                end
+                held.push_back(value);
+            end
+            foreach (regs[i]) begin
+                uvm_reg_data_t mask = (uvm_reg_data_t'(1) << regs[i].get_n_bits()) - 1;
+                if (!writable[i]) continue;
+                held[i] = ~held[i] & mask;
+                regs[i].write(status, held[i], .parent(this));
+                if (status != UVM_IS_OK) begin
+                    `uvm_error("A2C_REG", $sformatf("%s write of 'h%0h returned %s", regs[i].get_full_name(), held[i], status.name()))
+                end
+                foreach (regs[j]) begin
+                    regs[j].read(status, value, .parent(this));
+                    if (status != UVM_IS_OK || value != held[j]) begin
+                        `uvm_error("A2C_REG", $sformatf("after a write of 'h%0h to %s, %s at 'h%0h read 'h%0h (%s), expected 'h%0h",
+                                                        held[i], regs[i].get_full_name(), regs[j].get_full_name(),
+                                                        regs[j].get_address(), value, status.name(), held[j]))
+                    end
+                end
+            end
+        endtask
+    endclass : a2c_reg_access_seq
+
+    // A block's register test: run_body() starts a2c_reg_access_seq on
+    // env.regmodel and sends nothing else, so no_stimulus_expected is set.
+    // BASE is the block's generated <block>_base_test, or a class that
+    // extends it, and the bench extends this class once, as
+    // <block>_reg_test. A test with checks of its own overrides run_body()
+    // around super.run_body(), and sets NO_REG_TESTS first on a register the
+    // sequence must leave alone.
+    virtual class a2c_reg_test #(type BASE = uvm_test) extends BASE;
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            no_stimulus_expected = 1;
+        endfunction
+
+        virtual task run_body();
+            a2c_reg_access_seq seq = a2c_reg_access_seq::type_id::create("reg_access_seq");
+            seq.model = env.regmodel;
+            seq.start(null);
+        endtask
+    endclass : a2c_reg_test
+
     // What a Mode B responder driver tells its a2c_replay_log about the two
     // lanes it serves, for the end-of-test drain. lane_starts() and
     // lane_busy() must change away from the rising edge of the log's
@@ -5188,6 +5294,12 @@ package a2c_uvm_pkg;
 
         function int unsigned failures_seen();
             return failures + unjudged;
+        endfunction
+
+        // Whether a failure raises an error: not on the model DUT, unless
+        // on_model is set. Valid from end of elaboration.
+        function bit judges();
+            return judging;
         endfunction
 
         function int unsigned resets_seen();

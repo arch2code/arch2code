@@ -131,19 +131,6 @@ package uvmRegs_uvm_test_pkg;
             out_agent.mon.ap.connect(sb.out_export);
         endfunction
 
-        task write_reg(uvm_reg rg, uvm_reg_data_t value);
-            uvm_status_e   status;
-            uvm_reg_data_t readback;
-            rg.write(status, value);
-            if (status != UVM_IS_OK) begin
-                `uvm_error("A2C_REG", $sformatf("%s write of 'h%0h returned %s", rg.get_full_name(), value, status.name()))
-            end
-            rg.read(status, readback);
-            if (status != UVM_IS_OK || readback != value) begin
-                `uvm_error("A2C_REG", $sformatf("%s read back 'h%0h (%s), wrote 'h%0h", rg.get_full_name(), readback, status.name(), value))
-            end
-        endtask
-
         task expect_reg(uvm_reg rg, uvm_reg_data_t value);
             uvm_status_e   status;
             uvm_reg_data_t got;
@@ -467,22 +454,19 @@ package uvmRegs_uvm_test_pkg;
         endtask
     endclass : uvmRegs_smoke_test
 
-    // Front-door checks, no words. uvm_reg_hw_reset_seq reads the reset
-    // value of every register of the root block, then of uBridge.uDeep alone
-    // through its own map, which is a submap of the root's.
-    class uvmRegs_reg_test extends uvmRegs_base_test;
+    // Front-door checks, no words: a2c_reg_access_seq on the root block,
+    // then uvm_reg_hw_reset_seq on uBridge.uDeep alone through its own map,
+    // which is a submap of the root's.
+    class uvmRegs_reg_test extends a2c_reg_test #(uvmRegs_base_test);
         `uvm_component_utils(uvmRegs_reg_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            no_stimulus_expected = 1;
         endfunction
 
         virtual task run_body();
-            uvm_reg_hw_reset_seq root_seq  = uvm_reg_hw_reset_seq::type_id::create("root_reset_seq");
             uvm_reg_hw_reset_seq child_seq = uvm_reg_hw_reset_seq::type_id::create("child_reset_seq");
-            root_seq.model = env.regmodel;
-            root_seq.start(null);
+            super.run_body();
             child_seq.model = env.regmodel.uBridge.uDeep;
             child_seq.start(null);
         endtask
@@ -620,6 +604,77 @@ package uvmRegs_uvm_test_pkg;
             end
         endfunction
     endclass : uvmRegs_fail_test
+
+    // The smoke test with the lag bound of every a2c_rt_checker under env at
+    // 1 clock (rt_lag_cycles), below the lag of any DUT that registers its
+    // output, which proves each checker's wiring: every output unit it pairs
+    // with an input unit misses its deadline once. Each A2C_RT_DEADLINE is
+    // demoted and counted. It passes only if env holds a checker that is not
+    // off, each such checker paired at least one unit and failed each one
+    // once, and the demoted errors are the failures of the checkers that
+    // judge, which on the model DUT is none unless rt_on_model is set. A
+    // checker under env that is off, as a2c_rt_off or a2c_video_env turns
+    // one off, is left out.
+    class uvmRegs_rt_fire_test extends uvmRegs_smoke_test;
+        a2c_error_demoter demoter;
+
+        `uvm_component_utils(uvmRegs_rt_fire_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            rt_lag_cycles = 1;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            demoter = a2c_error_demoter::type_id::create("demoter");
+            demoter.demote_id = "A2C_RT_DEADLINE";
+            uvm_report_cb::add(null, demoter);
+        endfunction
+
+        // The checkers under env that are on.
+        function void env_checkers(output a2c_rt_checker_base found[$]);
+            a2c_rt_checker_base all[$];
+            a2c_rt_checker_base::get_checkers(all);
+            foreach (all[k]) begin
+                uvm_component p = all[k].get_parent();
+                while (p != null && p != env) p = p.get_parent();
+                if (p != null && !all[k].off) found.push_back(all[k]);
+            end
+        endfunction
+
+        // Every failure prints, so the demoter counts each one.
+        virtual function void start_of_simulation_phase(uvm_phase phase);
+            a2c_rt_checker_base rts[$];
+            super.start_of_simulation_phase(phase);
+            env_checkers(rts);
+            foreach (rts[k]) rts[k].max_reported = '1;
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            a2c_rt_checker_base rts[$];
+            int unsigned want = 0;
+            string       wrong = "";
+            super.report_phase(phase);
+            env_checkers(rts);
+            foreach (rts[k]) begin
+                if (rts[k].units_checked() == 0 || rts[k].failures_seen() != rts[k].units_checked()) begin
+                    wrong = {wrong, $sformatf("; %s paired %0d units and failed %0d", rts[k].get_full_name(),
+                                              rts[k].units_checked(), rts[k].failures_seen())};
+                end
+                if (rts[k].judges()) want += rts[k].units_checked();
+            end
+            if (rts.size() == 0) begin
+                `uvm_error("A2C_RT_FIRE", "uvmRegs_rt_fire_test found no a2c_rt_checker under env with its rules on; the test proves the wiring of the env's checkers")
+            end else if (wrong != "" || demoter.demoted != want) begin
+                `uvm_error("A2C_RT_FIRE", $sformatf("expected each checker to fail each unit it paired once, and %0d A2C_RT_DEADLINE errors; caught %0d%s",
+                                                    want, demoter.demoted, wrong))
+            end else begin
+                `uvm_info("A2C_RT_FIRE", $sformatf("%0d checkers each failed every unit they paired, %0d A2C_RT_DEADLINE errors as intended",
+                                                   rts.size(), demoter.demoted), UVM_LOW)
+            end
+        endfunction
+    endclass : uvmRegs_rt_fire_test
 
     // The smoke test with a mismatch injected at pair +a2c_model_mismatch_at
     // (default 1) of the first counted output's model comparator. It runs
