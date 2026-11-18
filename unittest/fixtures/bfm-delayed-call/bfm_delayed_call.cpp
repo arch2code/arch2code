@@ -486,8 +486,9 @@ void runProbe( int delayNs, const std::string &mode )
 //           a src offer comes three or more edges after the last
 //           handshake), random (seeded), comb (rdy follows vld, or vld
 //           follows rdy), reset (high, with reset asserted again from 45 to
-//           65 ns after the lane's start). Against always the src model
-//           first reads half a clock after vld rises; src only:
+//           65 ns after the lane's start, 25 to 45 ns for memory). Against
+//           always the src model first reads half a clock after vld rises;
+//           src only:
 //           waiting (vld rises only after the model is in read()) and
 //           parked (the model first reads 15 ns after vld rises, so beat 0
 //           sits on the wire across an edge)
@@ -1963,9 +1964,12 @@ struct extregSrc : levelBase
 
 // The mid-run reset starts 45 ns after the lane's start. In the delayed src
 // runs of rv, axis and ar a beat moves only every other edge, so there the
-// reset starts an edge later, on an edge where vld and ready are high.
+// reset starts an edge later, on an edge where vld and ready are high. The
+// memory runs finish their four operations by 45 ns, so their reset starts
+// at 25 ns, with operations 2 and 3 still to go.
 int resetAfterNs( const runCfg &c )
 {
+    if (c.family == "mem") { return 25; }
     bool everyOther = c.dir == "src" && c.delayNs > 0 && (c.family == "rv" || c.family == "axis" || c.family == "ar");
     return everyOther ? 55 : 45;
 }

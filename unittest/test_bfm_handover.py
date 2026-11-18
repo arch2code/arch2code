@@ -24,14 +24,16 @@ ack, on the next edge.
 memory, apb and ahb run four operations each way. Each is served once with
 the right data, a dst call that waits returns at its completion edge and a
 posted write at its call, a src completes on the edge after the model, and
-first-transfer latency and throughput meet the protocol minimum. In error
-runs an apb PSLVERR or ahb HRESP ERROR reaches the model, or the RTL, on its
-own transfer and not the next, and an ahb error takes two cycles.
+first-write and first-read latency and throughput meet the protocol minimum.
+The mid-run reset meets an operation in flight. In error runs an apb PSLVERR
+or ahb HRESP ERROR reaches the model, or the RTL, on its own transfer and not
+the next, and an ahb error takes two cycles.
 
 status, raw and external_reg drive a level through values 1 to 8. The far
 side sees every value that stays on the wire across an edge out of reset,
 once and in order, on the edge after it is driven; external_reg also checks
-the model's mirror and the values it publishes back.
+the model's mirror and the values it publishes back. memory and the level
+channels ignore setTimed(), so they run at delay 0 only.
 
 The probes are the handover section of fixtures/bfm-delayed-call. Where
 today's BFM breaks a rule, EXPECTED_FAILURES names the check, the BFM line
@@ -63,6 +65,7 @@ BEATS = 8
 OPS = 4
 IN_ORDER = list(range(BEATS))
 DELAYS = (0, 15)
+RUN_END = 3_000_000              # ps; a level holds its last value to the end of the run
 TIMEOUT = 5                      # s; a probe runs in a few ms
 STALL = 'HDL stalled a backpressure: false interface'
 SC_STALL = 'SystemC stalled a backpressure: false producer'
@@ -97,10 +100,13 @@ CASES += [Case(f, 'src', 'always', 25, 'none', 0) for f in ('rv', 'axis')]
 # Bus runs: a completer with wait states or a master with idle edges (slow),
 # a parked src model, and errors on operations 1 and 2 (apb and ahb).
 BUS_MODES = {'dst': ('always', 'slow', 'reset', 'error'), 'src': ('always', 'parked', 'slow', 'reset', 'error')}
+# memory, status, raw and external_reg channels ignore setTimed(), so they run at delay 0 only.
+UNTIMED = ('mem',) + LEVEL
 CASES += [Case(f, dr, m, 0, 'allowed', d) for f in BUS for dr in BUS_MODES for m in BUS_MODES[dr] for d in DELAYS
-          if not (m == 'error' and f == 'mem') and not (m == 'slow' and f == 'mem' and dr == 'dst')]
+          if not (m == 'error' and f == 'mem') and not (m == 'slow' and f == 'mem' and dr == 'dst')
+          and not (f in UNTIMED and d > 0)]
 LEVEL_MODES = {'dst': ('always', 'reset'), 'src': ('always', 'every3', 'reset')}
-CASES += [Case(f, dr, m, 0, 'allowed', d) for f in LEVEL for dr in LEVEL_MODES for m in LEVEL_MODES[dr] for d in DELAYS]
+CASES += [Case(f, dr, m, 0, 'allowed', 0) for f in LEVEL for dr in LEVEL_MODES for m in LEVEL_MODES[dr]]
 
 HIDDEN_DST = "completes the model's call when it copies the beat, a handshake before the RTL takes it"
 HIDDEN_SRC = "restores ready after the model call returns, so the RTL hands over a beat the model is not reading"
@@ -318,6 +324,11 @@ for fam, srcLines, dstLines, dstRate, srcOrder, dstOrder in ACK_BFMS:
         EXPECTED_FAILURES.append(XFail((fam,), 'dst', ('throughput',), anyCase, None,
                                        f"{dstRate} waits an edge after the model's ack, one transfer per two clocks"))
 
+MEM_RESET = "reads rst_n only before the first reset, never in its loop"
+APB_ACCESS = ("waits until it samples psel and penable together, an edge after the setup phase has put the "
+              "whole request on the wire")
+AHB_SAMPLE = ("waits for the edge after the address phase before it sends the request, though a write's data is "
+              "on the wire from the timestep that edge's data phase starts and a read needs none")
 APB_PHANTOM = ("drops penable but holds psel until after complete() returns, so while a delayed complete() "
                "blocks the RTL sees psel without penable, a setup phase, and serves a transfer the model never sent")
 BUS_RESET = "never reads rst_n after the first reset, so a transfer in flight at the reset is lost or completes later"
@@ -330,26 +341,46 @@ EXPECTED_FAILURES += [
     XFail(('apb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'),
           lambda c: inReset(c) and c.delay > 0, None,
           f"apb_bfm.h:44-74 {BUS_RESET}: pready for the transfer the reset cut off completes the RTL's next one"),
-    XFail(('apb',), 'src', ('src latency',), lambda c: c.rtl == 'always', '+10 ns',
-          "apb_bfm.h:52 waits for the access phase before it sends the request, a clock after the setup phase "
-          "has the whole request on the wire"),
+    XFail(('apb',), 'src', ('src latency', 'src read latency'), lambda c: c.rtl == 'always', '+10 ns',
+          f"apb_bfm.h:52 {APB_ACCESS}"),
     XFail(('apb',), 'src', ('src latency',), lambda c: c.rtl == 'parked', '+5 ns',
-          "apb_bfm.h:52 samples psel and penable only on a clock edge, so a model that asks mid-cycle waits for "
-          "the next edge"),
+          f"apb_bfm.h:52 {APB_ACCESS}, so a model that asks mid-cycle, after the setup phase, still waits for "
+          "the edge of the access phase"),
+    XFail(('apb',), 'src', ('src read latency',), lambda c: c.rtl == 'parked', '+10 ns', f"apb_bfm.h:52 {APB_ACCESS}"),
     XFail(('apb',), 'src', ('throughput',), anyCase, '[4] edges',
-          "apb_bfm.h:52 sends the request in the access phase, 61 waits an edge before pready, and 67-73 wait "
-          "another edge after it: one transfer per four clocks, against two for apb"),
+          f"apb_bfm.h:52 {APB_ACCESS}, and 61 waits an edge after the model answers before it raises pready: "
+          "one transfer per four clocks, against two for apb"),
     XFail(('ahb',), 'dst', ('throughput',), anyCase, '2 edges',
           "ahb_bfm.h:139-164 takes the next request only after the data phase completes, so address phases do "
           "not overlap data phases"),
     XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:135-166 {BUS_RESET}"),
     XFail(('ahb',), 'src', ('throughput',), anyCase, '[2] edges',
-          "ahb_bfm.h:78 drives HREADYOUT low for at least one wait state on every transfer"),
+          "ahb_bfm.h:78-79 drive HREADYOUT low and wait an edge on every transfer, so each takes a wait state. A "
+          "fix must send the request in the timestep the data phase starts and, when the model answers in that "
+          "timestep, leave HREADYOUT high so the transfer completes on the next edge"),
+    XFail(('ahb',), 'src', ('src latency',), lambda c: c.rtl == 'always', '+10 ns', f"ahb_bfm.h:79 {AHB_SAMPLE}"),
+    XFail(('ahb',), 'src', ('src latency',), lambda c: c.rtl == 'parked', '+5 ns', f"ahb_bfm.h:79 {AHB_SAMPLE}"),
+    XFail(('ahb',), 'src', ('src read latency',), anyCase, '+20 ns',
+          f"ahb_bfm.h:93-96 samples the next address phase an edge after the completion, and 79 {AHB_SAMPLE}"),
     XFail(('ahb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'), inReset, None,
           f"ahb_bfm.h:72-98 {BUS_RESET}; line 96 takes an address phase on a reset edge and sends it to the model"),
     XFail(('extreg',), 'dst', ('the RTL sees each value on the edge after the write',), anyCase, 'value 1 +10 ns',
           "external_reg_bfm.h:126 waits an edge after each write strobe, so queued writes reach the RTL one per "
           "two clocks"),
+    XFail(('mem',), 'dst', ('served once',), inReset, 'RTL 2/2, model 4',
+          f"memory_bfm.h:83 {MEM_RESET}: 89-97 drive operations 2 and 3 on reset edges, where the RTL takes "
+          "neither, and the model's calls return"),
+    XFail(('mem',), 'dst', ('values',), inReset, None,
+          f"memory_bfm.h:83 {MEM_RESET}: 101-105 complete the read the RTL never took with the previous read's "
+          "word, 0x11"),
+    XFail(('mem',), 'src', ('values',), inReset, None,
+          f"memory_bfm.h:43 {MEM_RESET}: 46-54 take operation 2 on a reset edge and send it to the model, and "
+          "the RTL gets the stale read data"),
+    XFail(('mem',), 'src', ('src completes on the edge after the model',), inReset, '+2 clock',
+          f"memory_bfm.h:43 {MEM_RESET}: 46-54 take operation 2 on a reset edge and send it to the model"),
+    XFail(('extreg',), 'dst', ('the RTL sees every write issued out of reset',), inReset, 'missing [3, 4]',
+          "external_reg_bfm.h:126 waits an edge after each write strobe, so queued writes fall behind one per "
+          "two clocks, and line 109 drops the writes still queued at the reset"),
     XFail(('extreg',), 'src', ('the RTL sees a published value on the edge after it',), anyCase, 'value 0 +10 ns',
           "external_reg_bfm.h:48-49 drives rdata from the mirror once per edge, before the model answers that "
           "edge's write strobe, so the RTL sees the model's value an edge late"),
@@ -469,7 +500,8 @@ def handshakeChecks(case, ev, output):
         check(case, 'throughput', gaps == [PERIOD], f"handshake gaps {gaps} ps")
         if case.family == 'rvmulti' or not hs or not calls or not vld:
             return
-        NUMBERS.append((case.family, case.dir, case.rtl, gaps, calls[0][1], vld[0][1], hsTimes[0]))
+        NUMBERS.append(f"{case.family} {case.dir} rtl={case.rtl}: handshake gap {gaps} ps; model call {calls[0][1]} ps, "
+                       f"vld {vld[0][1]} ps, first handshake {hsTimes[0]} ps")
         if case.dir == 'dst':
             first = nextEdge(vld[0][1])
             check(case, 'dst latency', vld[0][1] == calls[0][1] and hsTimes[0] == first,
@@ -497,10 +529,10 @@ SRC_VALUES = [0, 0x11, 0, 0x22]
 # Fewest edges between operations: memory and pipelined ahb take one per
 # clock, apb a setup and an access phase.
 MIN_GAP = {'mem': PERIOD, 'apb': 2 * PERIOD, 'ahb': PERIOD}
-# Edges from the edge an RTL master drives operation 0, a write, to the
-# first edge its whole request is on the wire: ahb write data follows its
-# address phase.
-REQUEST_EDGES = {'mem': 1, 'apb': 1, 'ahb': 2}
+# An RTL master's request reaches the model in the timestep of the edge after
+# the master drives it: the memory access, the apb setup phase, or the ahb
+# address phase. An ahb write's data goes on the wire in that timestep, as its
+# data phase starts, so the model can answer in time for a zero-wait transfer.
 ERROR_OPS = [0, 1, 1, 0]
 
 
@@ -535,10 +567,17 @@ def busChecks(case, ev):
             check(case, 'an error reaches the RTL on its own transfer', [v for v, _ in rerr] == want,
                   f"RTL errors {[v for v, _ in rerr]}, expected {want}", f"{[v for v, _ in rerr]}")
         if case.family == 'ahb' and errorRun and len(ack) == OPS:
-            first = [(v, t) for v, t in ev.get('errfirst', [])]
+            first = ev.get('errfirst', [])
             want = [(k, ack[k][1] - PERIOD) for k in (1, 2)]
             check(case, 'an ahb error takes two cycles', first == want,
                   f"first error cycles {first}, expected {want}", f"{first}")
+    if case.rtl == 'reset':
+        # Operations started before the first reset edge outnumber those completed before it.
+        r0 = min(t for _, t in ev['rst'])
+        started = len([t for _, t in calls if t < r0]) if case.dir == 'dst' else len({v for v, t in req if t < r0})
+        done = len([t for _, t in ack if t < r0])
+        check(case, 'the reset meets an operation in flight', started > done,
+              f"first reset edge {r0}, operations started {started}, completed {done}")
     if not served:
         return
     if case.dir == 'dst':
@@ -559,7 +598,8 @@ def busChecks(case, ev):
             check(case, 'throughput', gap == MIN_GAP[case.family],
                   f"a posted write then a read: RTL sees them {gap} ps apart, protocol minimum {MIN_GAP[case.family]}",
                   f"{gap // PERIOD} edges")
-            NUMBERS.append((case.family, case.dir, case.rtl, [gap], calls[0][1], req[0][1], ack[0][1]))
+            NUMBERS.append(f"{case.family} dst rtl=always: request gap {gap} ps; model call {calls[0][1]} ps, "
+                           f"RTL sees the request {req[0][1]} ps, completes it {ack[0][1]} ps")
         return
     rcalls, rcvs = ev.get('rcall', []), ev.get('rcv', [])
     late = [k for k in range(OPS) if ack[k][1] <= rets[k][1]]
@@ -573,16 +613,19 @@ def busChecks(case, ev):
               f"model completes {[t for _, t in rets]}, RTL completion edges {[t for _, t in ack]}, expected {want}",
               f"{lag // PERIOD:+d} clock")
     if case.rtl in ('always', 'parked') and case.delay == 0:
-        first = max(req[0][1] + REQUEST_EDGES[case.family] * PERIOD, rcalls[0][1])
-        check(case, 'src latency', rcvs[0][1] == first,
-              f"RTL request {req[0][1]}, model asks {rcalls[0][1]}, model gets it {rcvs[0][1]}, expected {first}",
-              f"{(rcvs[0][1] - first) // 1000:+d} ns")
+        # Operation 0 is the first write, and operation 1 the first read.
+        for name, k in (('src latency', 0), ('src read latency', 1)):
+            first = max(req[k][1] + PERIOD, rcalls[k][1])
+            check(case, name, rcvs[k][1] == first,
+                  f"RTL request {req[k][1]}, model asks {rcalls[k][1]}, model gets it {rcvs[k][1]}, expected {first}",
+                  f"{(rcvs[k][1] - first) // 1000:+d} ns")
     if case.rtl == 'always' and case.delay == 0:
         gaps = sorted({b[1] - a[1] for a, b in zip(ack, ack[1:])})
         check(case, 'throughput', gaps == [MIN_GAP[case.family]],
               f"RTL completion gaps {gaps} ps, protocol minimum {MIN_GAP[case.family]}",
               f"{[g // PERIOD for g in gaps]} edges")
-        NUMBERS.append((case.family, case.dir, case.rtl, gaps, rcalls[0][1], req[0][1], rcvs[0][1]))
+        NUMBERS.append(f"{case.family} src rtl=always: completion gap {gaps} ps; model asks {rcalls[0][1]} ps, "
+                       f"RTL request {req[0][1]} ps, model receives it {rcvs[0][1]} ps")
 
 
 def levelHow(got, want):
@@ -612,7 +655,7 @@ def visible(writes, resetEdges, end):
 
 def inOrderAcrossReset(case, who, got, want):
     """external_reg drops a write the RTL has not taken at a reset and drives rdata 0 in reset
-    (external_reg_bfm.h:43, 93-95, 108-109), so a reset run checks only that the values seen
+    (external_reg_bfm.h:43, 93-95, 108-109), so across a reset this checks that the values seen
     come in order, none extra or repeated, and the last one arrives."""
     seen = [v for v in got if v]
     rest = iter(want)
@@ -626,9 +669,15 @@ def levelChecks(case, ev):
     resetEdges = {t for _, t in ev.get('rst', [])}
     if case.dir == 'dst':
         wire = pin if case.family != 'extreg' else calls
-        want = visible([(v, t) for v, t in wire], resetEdges, 3_000_000)
+        want = visible(wire, resetEdges, RUN_END)
         got = [v for v, _ in smp]
         if case.family == 'extreg' and case.rtl == 'reset':
+            # A write issued in reset, or in the clock before it, may be dropped (external_reg_bfm.h:93-95,
+            # 108-109); every other write must reach the RTL.
+            kept = [v for v, t in calls if nextEdge(t) not in resetEdges and nextEdge(t) - PERIOD not in resetEdges]
+            lost = [v for v in kept if v not in got]
+            check(case, 'the RTL sees every write issued out of reset', not lost,
+                  f"writes issued out of reset {kept}, RTL saw {got}", f"missing {lost}")
             inOrderAcrossReset(case, 'RTL', got, [v for v, _ in calls])
             return
         check(case, 'the RTL sees every value once, in order', got == want, f"on the wire {want}, RTL saw {got}",
@@ -669,7 +718,7 @@ def levelChecks(case, ev):
     if case.family == 'extreg':
         want = driven
     else:
-        want = visible([(v, t) for v, t in drv], set(), 3_000_000)
+        want = visible(drv, set(), RUN_END)
     got = [v for v, _ in rets]
     if case.family == 'extreg' and case.rtl == 'reset':
         inOrderAcrossReset(case, 'model', got, want)
@@ -736,9 +785,8 @@ def test_bfm_handover():
             if len(FAILURES) > before:
                 print(output)
         print("\n  Throughput and latency today (RTL always ready or valid, model back to back, no delay):")
-        for family, direction, rtl, gaps, call, vld, first in NUMBERS:
-            print(f"    {family} {direction} rtl={rtl}: handshake gap {gaps} ps; model call {call} ps, vld {vld} ps, "
-                  f"first handshake {first} ps")
+        for line in NUMBERS:
+            print(f"    {line}")
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
     assert not FAILURES, f"{len(FAILURES)} checks failed"
