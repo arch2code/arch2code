@@ -127,7 +127,12 @@ public:
                     ++wait_cycles;
                 }
             }
+            // psel stays low while complete() blocks; psel without penable would start a setup phase.
             hdl_if_p->penable = false;
+            hdl_if_p->psel = false;
+            hdl_if_p->paddr = VL_ADDR_T(0);
+            hdl_if_p->pwrite = false;
+            hdl_if_p->pwdata = VL_DATA_T(0);
             if_p->complete(data, slverr);
 
             if (!observe_ifc.empty()) {
@@ -136,11 +141,6 @@ public:
                 socket_observe_apb_resp(observe_ifc, is_write, addr_u, data_u,
                                         static_cast<uint8_t>(wait_cycles), true, slverr);
             }
-
-            hdl_if_p->psel = false;
-            hdl_if_p->paddr = VL_ADDR_T(0);
-            hdl_if_p->pwrite = false;
-            hdl_if_p->pwdata = VL_DATA_T(0);
         }
     }
 

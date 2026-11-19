@@ -321,14 +321,8 @@ APB_ACCESS = ("waits until it samples psel and penable together, an edge after t
               "whole request on the wire")
 AHB_SAMPLE = ("waits for the edge after the address phase before it sends the request, though a write's data is "
               "on the wire from the timestep that edge's data phase starts and a read needs none")
-APB_PHANTOM = ("drops penable but holds psel until after complete() returns, so while a delayed complete() "
-               "blocks the RTL sees psel without penable, a setup phase, and serves a transfer the model never sent")
 BUS_RESET = "never reads rst_n after the first reset, so a transfer in flight at the reset is lost or completes later"
 EXPECTED_FAILURES += [
-    XFail(('apb',), 'dst', ('served once',), lambda c: c.delay > 0 and not inReset(c), 'RTL 5/4, model 4',
-          f"apb_bfm.h:130-140 {APB_PHANTOM}"),
-    XFail(('apb',), 'dst', ('values',), lambda c: c.delay > 0 and not inReset(c), None,
-          f"apb_bfm.h:130-140 {APB_PHANTOM}, and the model's last read gets that transfer's data"),
     XFail(('apb',), 'dst', ('served once',), inReset, None, f"apb_bfm.h:101-144 {BUS_RESET}"),
     XFail(('apb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'),
           lambda c: inReset(c) and c.delay > 0, None,
