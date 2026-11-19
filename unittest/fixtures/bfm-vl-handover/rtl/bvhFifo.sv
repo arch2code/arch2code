@@ -20,13 +20,18 @@ import bvh_package::*;
     // A push at an edge is visible on out the next cycle, so a beat leaves one
     // clock after it enters. in.rdy depends only on the fill level, never on
     // out.rdy, so a full FIFO stops the source until the sink pops.
+    // The pointers wrap by overflowing, so the depth has to be a power of two.
     localparam int unsigned PTR_W = $clog2(BVH_FIFO_DEPTH);
     typedef bvhBeat [BVH_FIFO_DEPTH-1:0] entriesT;
 
-    `DFFR_INST(entriesT, entries, '0)
-    `DFFR_INST(logic [PTR_W-1:0], wrPtr, '0)
-    `DFFR_INST(logic [PTR_W-1:0], rdPtr, '0)
-    `DFFR_INST(logic [PTR_W:0], count, '0)
+    if ((BVH_FIFO_DEPTH & (BVH_FIFO_DEPTH - 1)) != 0) begin : depthCheck
+        $error("BVH_FIFO_DEPTH %0d is not a power of two", BVH_FIFO_DEPTH);
+    end
+
+    `DFFNR_INST(entriesT, entries)
+    `DFF_INST(logic [PTR_W-1:0], wrPtr)
+    `DFF_INST(logic [PTR_W-1:0], rdPtr)
+    `DFF_INST(logic [PTR_W:0], count)
 
     logic push, pop;
 

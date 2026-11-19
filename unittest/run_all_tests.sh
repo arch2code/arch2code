@@ -717,7 +717,7 @@ python3 test_bfm_handover.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: BFMs hand each beat over at the RTL handshake edge on a Verilated FIFO (expected failures mark today's hidden beat)"
+echo "Test Suite ${idx}: BFMs hand each beat over at the RTL handshake edge on a Verilated FIFO (expected failures mark the hidden beats, the late ready and the late reset release)"
 echo "------------------------------------------------------------------------"
 python3 test_bfm_vl_handover.py || FAILED=1
 idx=$((idx+1))

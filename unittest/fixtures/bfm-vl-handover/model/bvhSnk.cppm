@@ -68,17 +68,25 @@ bvhSnk::bvhSnk(sc_module_name blockName, const char * variant, blockBaseMode bbM
 };
 
 // BVH_MODE picks the run, see test_bfm_vl_handover.py. hold starts reading at
-// 502 ns, 2 ns after a clock edge, so no read lands on one.
+// 502 ns and pause stops for 52 ns before beat 8. Both land 2 ns after a clock
+// edge, so no read lands on one.
 void bvhSnk::receive(void)
 {
     m_eot.registerVoter();
-    const std::string mode = std::getenv("BVH_MODE");
+    const char * env = std::getenv("BVH_MODE");
+    Q_ASSERT(env != nullptr, "BVH_MODE is not set");
+    const std::string mode = env;
+    Q_ASSERT(mode == "single" || mode == "burst" || mode == "hold" || mode == "pause" || mode == "poweron",
+             "unknown BVH_MODE " + mode);
     const unsigned beats = (mode == "single" || mode == "poweron") ? 1 : 16;
     if (mode == "hold") {
         wait(sc_time(502, SC_NS));
     }
     for (unsigned k = 0; k < beats; k++) {
         bvhBeat beat;
+        if (mode == "pause" && k == 8) {
+            wait(sc_time(52, SC_NS));
+        }
         std::cout << "BVH snk call " << k << " " << sc_time_stamp().value() << std::endl;
         in->read(beat);
         std::cout << "BVH snk recv " << k << " " << (unsigned)beat.data << " " << sc_time_stamp().value() << std::endl;

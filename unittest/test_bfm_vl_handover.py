@@ -20,17 +20,19 @@ Runs, picked with BVH_MODE:
 - burst: 16 beats sent back to back, the sink reading back to back.
 - hold: 16 beats, the sink starting to read 2 ns after an edge, 400 ns after
   the source starts. The FIFO fills and its in.rdy drops.
+- pause: 16 beats, the sink reading back to back, stopping for 52 ns before
+  beat 8 while the FIFO holds more beats, then reading the rest.
 - poweron: one beat sent and read at time 0, while reset is still low.
 
 Where today's BFM breaks the rule, EXPECTED_FAILURES names the check, how it
 fails and the BFM line. A marked check that passes, or fails another way than
-its row pins, fails the suite, so a fix has to change its marker.
+its row pins, fails the suite, and so does a row no check matched. A fix has
+to change its marker.
 
-Reset: only a power-on reset is supported. The BFMs hold traffic until the first
-reset releases, and a later reset has to fail the run with a clear message.
-poweron covers the first part and passes today. The generated wrapper drives
-rst_n from one thread and gives the testbench no way to pulse it again, so this
-test cannot reach the second part. test_bfm_handover.py's reset runs meet it.
+Reset: the BFMs hold traffic until the first reset releases, and poweron checks
+that, and that the RTL takes the first beat at the first edge sampled with
+rst_n high. A later reset is not exercised here. The wrapper's reset thread is
+the only writer of rst_n, and the testbench cannot pulse it again.
 """
 
 import os
@@ -54,35 +56,44 @@ FIFO_DEPTH = 4
 BEATS = 16
 SEND_AT = 103000                # ps, 3 ns after an edge
 HOLD_READ_AT = 502000           # ps, 2 ns after an edge
+PAUSE_BEAT = 8
+PAUSE = 52000                   # ps
 RUN_TIMEOUT = 120               # s
 TIME_LIMIT_US = 5
 
-IN_ORDER = list(range(BEATS))
+MODES = ('single', 'burst', 'hold', 'pause', 'poweron')
 SIGNALS = ('in_vld', 'in_rdy', 'out_vld', 'out_rdy', 'clk', 'rst_n')
 
 # The checks, by name. Two runs use the same words only where they check the same thing.
+RUN_CLEAN = "run exits 0 with no Q_ASSERT"
+COMPLETE = "every beat is sent, returned, handshaken and received"
 FIRST_VLD = "first beat's vld rises in the timestep of the send"
 FIRST_EDGE = "the RTL takes the first beat at the first edge after the send"
 SEND_RETURN = "send returns at the RTL's handshake edge"
+RTL_LATENCY = "the FIFO gives a beat up one clock after it takes it"
 LATENCY = "send-to-receive latency equals the RTL's latency"
 RATE_IN = "back to back beats enter the RTL one per clock"
 RATE_OUT = "back to back beats reach the sink one per clock"
 RECV_EDGE = "each receive returns at the RTL's handshake edge"
+HAND_WAITING = "the RTL hands a beat over only while the sink waits in read()"
 ORDER = "order kept, no beat lost"
 RDY_DROPS = "RTL rdy deasserts while the FIFO is full and the sink holds off"
 SEND_BLOCKS = "a send is blocked while the RTL has no room"
 NO_AHEAD = "no send returns ahead of the RTL's handshakes"
 RELEASE = "the RTL's handshake comes at the first edge after the sink reads"
 RESET_HOLD = "no traffic while reset is low"
-RUN_CLEAN = "run exits 0 with no Q_ASSERT"
+FIRST_LIVE_EDGE = "the RTL takes the first beat at the first edge sampled with rst_n high"
 
 HIDDEN_DST = ("completes the model's write when it copies the beat, one handshake before the RTL takes it, "
               "so the model sees room the RTL does not have")
+HIDDEN_SRC = "restores ready after the model call returns, so the RTL hands over a beat the model is not reading"
 LATE_READY = ("sets ready from get_rdy() only on a clock edge, so the RTL's ready rises an edge after the "
               "model starts to read")
+LATE_RESET = ("wait for an edge and then read rst_n, which still shows the old value at the edge where it "
+              "rises, so the first beat starts an edge late")
 
 # A row marks a check that fails today: the run, the check, how it fails and why.
-# how pins the failure, and None accepts any failure.
+# how pins the failure.
 XFail = namedtuple('XFail', 'mode check how reason')
 EXPECTED_FAILURES = [
     XFail('single', SEND_RETURN, 'at the call', f"rdy_vld_bfm.h:154 readClocked() {HIDDEN_DST}"),
@@ -90,10 +101,14 @@ EXPECTED_FAILURES = [
           f"rdy_vld_bfm.h:154 readClocked() {HIDDEN_DST}; the FIFO takes {FIFO_DEPTH} beats, "
           f"and the fifth write returns with the RTL still stalled"),
     XFail('hold', RELEASE, '+1 clock', f"rdy_vld_bfm.h:55-60 {LATE_READY}"),
+    XFail('pause', RECV_EDGE, f'first at beat {PAUSE_BEAT}', f"rdy_vld_bfm.h:74 rdy = rdy {HIDDEN_SRC}"),
+    XFail('pause', HAND_WAITING, f'first at beat {PAUSE_BEAT}', f"rdy_vld_bfm.h:74 rdy = rdy {HIDDEN_SRC}"),
+    XFail('poweron', FIRST_LIVE_EDGE, '+1 clock', f"rdy_vld_bfm.h:53 and :150 {LATE_RESET}"),
 ]
 
 FAILURES = []
 XFAILS = []
+MATCHED = set()
 
 
 def expectedFailure(mode, name):
@@ -111,10 +126,12 @@ def check(mode, name, condition, detail, how='fails'):
         print(f"  {'PASS' if condition else 'FAIL'}: {message}")
         if not condition:
             FAILURES.append(message)
-    elif condition:
+        return
+    MATCHED.add((mode, name))
+    if condition:
         print(f"  XPASS: {message}; marked expected failure: {row.reason}")
         FAILURES.append(f"unexpected pass, {message}")
-    elif row.how is not None and row.how != how:
+    elif row.how != how:
         print(f"  FAIL: {message}; fails as '{how}', marked to fail as '{row.how}': {row.reason}")
         FAILURES.append(f"fails differently, {message}")
     else:
@@ -136,6 +153,9 @@ def require(result, what):
 def runMode(rundir, mode):
     """Runs one mode with the FIFO Verilated; returns the run and its model log."""
     build = os.path.join(rundir, 'build')
+    trace = os.path.join(build, 'simx.vcd')
+    if os.path.exists(trace):
+        os.remove(trace)
     run = subprocess.run(['./run', 'bvhTop', '--vlInst', VL_INST, '--vlTrace', '--scTimeLimit', str(TIME_LIMIT_US)],
                          capture_output=True, text=True, timeout=RUN_TIMEOUT, cwd=build,
                          env=dict(shell_make_env(), BVH_MODE=mode))
@@ -143,7 +163,7 @@ def runMode(rundir, mode):
 
 
 def modelLog(output):
-    """The model's calls and returns as lists of (index, ps) and the sink's data as a list of beats."""
+    """The model's calls and returns as lists of (index, ps), and the sink's data as a list of beats."""
     log = {'src call': [], 'src ret': [], 'snk call': [], 'snk recv': [], 'data': []}
     for who, what, k, rest in re.findall(r'^BVH (src|snk) (call|ret|recv) (\d+) (.*)$', output, re.M):
         fields = [int(f) for f in rest.split()]
@@ -158,11 +178,14 @@ def pinChanges(vcd):
     ids = {}
     changes = {}
     now = 0
+    timescale = False
     with open(vcd) as fh:
         for line in fh:
             line = line.strip()
             var = re.match(r'\$var \w+ \d+ (\S+) (\w+)', line)
-            if var:
+            if re.match(r'\$timescale\s+1ps\s+\$end', line):
+                timescale = True
+            elif var:
                 if var.group(2) in SIGNALS and var.group(1) not in ids:
                     ids[var.group(1)] = var.group(2)
             elif line.startswith('#'):
@@ -171,6 +194,8 @@ def pinChanges(vcd):
                 value = re.match(r'^([01])(\S+)$', line)
                 if value and value.group(2) in ids:
                     changes.setdefault(now, {})[ids[value.group(2)]] = int(value.group(1))
+    if not timescale:
+        raise RuntimeError(f"{vcd}: the trace timescale is not 1ps, so its times are not picoseconds")
     return changes
 
 
@@ -195,7 +220,7 @@ def firstChange(changes, signal, value):
     return next((t for t in sorted(changes) if changes[t].get(signal) == value), None)
 
 
-def ps(values):
+def ns(values):
     return [v // 1000 for v in values]
 
 
@@ -207,64 +232,79 @@ def times(entries):
     return [t for _, t in entries]
 
 
+def beatCount(mode):
+    return 1 if mode in ('single', 'poweron') else BEATS
+
+
 def checkRun(mode, run):
     asserted = re.findall(r'^\[Q_ASSERT\].*$', run.stdout + run.stderr, re.M)
-    check(mode, RUN_CLEAN, run.returncode == 0 and not asserted,
-          f"exit {run.returncode}, {asserted[0] if asserted else 'no assert'}",
+    ok = run.returncode == 0 and not asserted
+    check(mode, RUN_CLEAN, ok, f"exit {run.returncode}, {asserted[0] if asserted else 'no assert'}",
           f"exit {run.returncode}" if not asserted else asserted[0])
+    return ok
 
 
-def checkOrder(mode, log, beats):
+def checkComplete(mode, log, inHs, outHs):
+    counts = {'sends': len(log['src call']), 'returns': len(log['src ret']), 'receives': len(log['snk recv']),
+              'RTL takes': len(inHs), 'RTL gives': len(outHs)}
+    ok = all(n == beatCount(mode) for n in counts.values())
+    check(mode, COMPLETE, ok, f"expected {beatCount(mode)} of each, got {counts}")
+    return ok
+
+
+def checkOrder(mode, log):
     got = log['data']
-    check(mode, ORDER, got == list(range(beats)), f"sink got {got}")
+    check(mode, ORDER, got == list(range(beatCount(mode))), f"sink got {got}")
 
 
-def singleChecks(log, edges, changes):
+def checkRecvEdge(mode, recv, outHs):
+    wrong = next((k for k, (r, h) in enumerate(zip(recv, outHs)) if r != h), None)
+    check(mode, RECV_EDGE, wrong is None, f"receives at {ns(recv)} ns, RTL out handshakes at {ns(outHs)} ns",
+          f"first at beat {wrong}")
+
+
+def singleChecks(log, changes, inHs, outHs):
     mode = 'single'
     call, ret, recv = log['src call'][0][1], log['src ret'][0][1], log['snk recv'][0][1]
     vld = firstChange(changes, 'in_vld', 1)
     check(mode, FIRST_VLD, vld == call, f"send at {call} ps, vld rose at {vld} ps")
-    inHs, outHs = handshakes(edges, 'in_vld', 'in_rdy'), handshakes(edges, 'out_vld', 'out_rdy')
-    check(mode, FIRST_EDGE, inHs[:1] == [nextEdge(call)], f"send at {call} ps, handshake edges {inHs}")
-    if not inHs:
-        how = 'no handshake'
-    elif ret == call:
+    check(mode, FIRST_EDGE, inHs[0] == nextEdge(call), f"send at {call} ps, RTL took the beat at {inHs[0]} ps")
+    if ret == call:
         how = 'at the call'
     else:
         how = 'ahead' if ret < inHs[0] else 'late'
-    check(mode, SEND_RETURN, inHs[:1] == [ret],
-          f"returned at {ret} ps, the RTL took the beat at {inHs[0] if inHs else None} ps", how)
-    # The FIFO gives a beat up on the edge after it takes it, with out.rdy high long before.
+    check(mode, SEND_RETURN, ret == inHs[0], f"returned at {ret} ps, the RTL took the beat at {inHs[0]} ps", how)
     rtlLatency = outHs[0] - inHs[0]
-    check(mode, LATENCY, recv - inHs[0] == rtlLatency,
-          f"the RTL took the beat at {inHs[0]} ps and gave it up {rtlLatency} ps later; "
-          f"the sink received {recv - inHs[0]} ps after the RTL took it")
-    checkOrder(mode, log, 1)
+    check(mode, RTL_LATENCY, rtlLatency == PERIOD,
+          f"the RTL took the beat at {inHs[0]} ps and gave it up at {outHs[0]} ps")
+    want = nextEdge(call) + PERIOD
+    check(mode, LATENCY, recv == want,
+          f"send at {call} ps, first edge at {nextEdge(call)} ps, FIFO latency {PERIOD} ps; "
+          f"the sink received at {recv} ps, expected {want} ps")
+    checkOrder(mode, log)
 
 
-def burstChecks(log, edges):
+def burstChecks(log, inHs, outHs):
     mode = 'burst'
-    inHs, outHs = handshakes(edges, 'in_vld', 'in_rdy'), handshakes(edges, 'out_vld', 'out_rdy')
     steady = all(b - a == PERIOD for a, b in zip(inHs, inHs[1:]))
-    check(mode, RATE_IN, steady and len(inHs) == BEATS, f"{len(inHs)} handshakes at {ps(inHs)} ns")
+    check(mode, RATE_IN, steady, f"{len(inHs)} handshakes at {ns(inHs)} ns")
     recv = times(log['snk recv'])
     steady = all(b - a == PERIOD for a, b in zip(recv, recv[1:]))
-    check(mode, RATE_OUT, steady and len(recv) == BEATS, f"{len(recv)} receives at {ps(recv)} ns")
-    check(mode, RECV_EDGE, recv == outHs, f"receives at {ps(recv)} ns, RTL out handshakes at {ps(outHs)} ns")
-    checkOrder(mode, log, BEATS)
+    check(mode, RATE_OUT, steady, f"{len(recv)} receives at {ns(recv)} ns")
+    checkRecvEdge(mode, recv, outHs)
+    checkOrder(mode, log)
 
 
-def holdChecks(log, edges):
+def holdChecks(log, edges, inHs, outHs):
     mode = 'hold'
-    inHs, outHs = handshakes(edges, 'in_vld', 'in_rdy'), handshakes(edges, 'out_vld', 'out_rdy')
     read = log['snk call'][0][1]
     assert read == HOLD_READ_AT, f"the sink starts reading at {read} ps, expected {HOLD_READ_AT} ps"
     accepted = [t for t in inHs if t < read]
     full = [(t, p) for t, p in edges if accepted and accepted[-1] < t < read]
-    stuck = all(p['in_vld'] and not p['in_rdy'] for t, p in full)
-    check(mode, RDY_DROPS, len(accepted) == FIFO_DEPTH and stuck and bool(full),
+    stuck = sum(1 for t, p in full if p['in_vld'] and not p['in_rdy'])
+    check(mode, RDY_DROPS, len(accepted) == FIFO_DEPTH and stuck == len(full) and bool(full),
           f"{len(accepted)} beats taken before the read at {read} ps, in.rdy low with vld high on "
-          f"{sum(1 for t, p in full if p['in_vld'] and not p['in_rdy'])} of {len(full)} edges")
+          f"{stuck} of {len(full)} edges")
     calls = [t for t in times(log['src call']) if t < read]
     rets = [t for t in times(log['src ret']) if t < read]
     check(mode, SEND_BLOCKS, len(calls) == len(rets) + 1,
@@ -272,24 +312,40 @@ def holdChecks(log, edges):
     check(mode, NO_AHEAD, len(rets) == len(accepted),
           f"{len(rets)} returns, {len(accepted)} accepted",
           f"{len(rets)} returns, {len(accepted)} accepted")
-    first = next((t for t in outHs if t > read), None)
-    behind = (first - nextEdge(read)) // PERIOD if first is not None else None
+    first = next(t for t in outHs if t > read)
+    behind = (first - nextEdge(read)) // PERIOD
     check(mode, RELEASE, first == nextEdge(read),
           f"read at {read} ps, first handshake at {first} ps, expected {nextEdge(read)} ps",
-          f"{behind:+d} clock" if behind is not None else 'no handshake')
-    checkOrder(mode, log, BEATS)
+          f"{behind:+d} clock")
+    checkOrder(mode, log)
 
 
-def powerOnChecks(log, edges, changes):
+def pauseChecks(log, outHs):
+    mode = 'pause'
+    recv, calls = times(log['snk recv']), times(log['snk call'])
+    assert calls[PAUSE_BEAT] - recv[PAUSE_BEAT - 1] == PAUSE, \
+        f"the sink paused {calls[PAUSE_BEAT] - recv[PAUSE_BEAT - 1]} ps, expected {PAUSE} ps"
+    checkRecvEdge(mode, recv, outHs)
+    early = next((k for k, (c, h) in enumerate(zip(calls, outHs)) if c >= h), None)
+    check(mode, HAND_WAITING, early is None,
+          f"sink calls at {ns(calls)} ns, RTL out handshakes at {ns(outHs)} ns", f"first at beat {early}")
+    checkOrder(mode, log)
+
+
+def powerOnChecks(log, edges, changes, inHs):
     mode = 'poweron'
     release = firstChange(changes, 'rst_n', 1)
     early = [(t, k) for t in sorted(changes) if release is None or t < release
              for k in ('in_vld', 'out_rdy') if changes[t].get(k) == 1]
-    handshakesInReset = [t for t, p in edges if p['in_vld'] and p['in_rdy'] and not p['rst_n']]
-    check(mode, RESET_HOLD, release is not None and not early and not handshakesInReset,
+    inReset = [t for t, p in edges if p['in_vld'] and p['in_rdy'] and not p['rst_n']]
+    check(mode, RESET_HOLD, release is not None and not early and not inReset,
           f"reset released at {release} ps, the model's first send at {log['src call'][0][1]} ps, "
-          f"pins raised in reset {early}, handshakes in reset {handshakesInReset}")
-    checkOrder(mode, log, 1)
+          f"pins raised in reset {early}, handshakes in reset {inReset}")
+    live = next((t for t, p in edges if p['rst_n']), None)
+    check(mode, FIRST_LIVE_EDGE, inHs[0] == live,
+          f"first edge sampled with rst_n high at {live} ps, the RTL took the beat at {inHs[0]} ps",
+          f"{(inHs[0] - live) // PERIOD:+d} clock" if live is not None else 'no live edge')
+    checkOrder(mode, log)
 
 
 def main():
@@ -303,24 +359,38 @@ def main():
         rundir = os.path.join(project, 'rundir')
         require(make(project, 'all', 'VL_DUT=1', 'CCACHE_DISABLE=1', directory=rundir), "make all VL_DUT=1")
 
-        for mode in ('single', 'burst', 'hold', 'poweron'):
-            run, log = runMode(rundir, mode)
+        for mode in MODES:
             print(f"\n  {mode}")
+            before = len(FAILURES)
+            run, log = runMode(rundir, mode)
+            if not checkRun(mode, run):
+                print(run.stdout + run.stderr)
+                continue
             changes = pinChanges(os.path.join(rundir, 'build', 'simx.vcd'))
             edges = posedges(changes)
-            checkRun(mode, run)
-            if mode == 'single':
-                singleChecks(log, edges, changes)
-            elif mode == 'burst':
-                burstChecks(log, edges)
-            elif mode == 'hold':
-                holdChecks(log, edges)
-            else:
-                powerOnChecks(log, edges, changes)
-            if len(FAILURES) and FAILURES[-1].startswith(mode):
+            inHs, outHs = handshakes(edges, 'in_vld', 'in_rdy'), handshakes(edges, 'out_vld', 'out_rdy')
+            if checkComplete(mode, log, inHs, outHs):
+                if mode != 'poweron':
+                    assert log['src call'][0][1] == SEND_AT, \
+                        f"the source sends at {log['src call'][0][1]} ps, expected {SEND_AT} ps"
+                if mode == 'single':
+                    singleChecks(log, changes, inHs, outHs)
+                elif mode == 'burst':
+                    burstChecks(log, inHs, outHs)
+                elif mode == 'hold':
+                    holdChecks(log, edges, inHs, outHs)
+                elif mode == 'pause':
+                    pauseChecks(log, outHs)
+                else:
+                    powerOnChecks(log, edges, changes, inHs)
+            if len(FAILURES) > before:
                 print(run.stdout + run.stderr)
     finally:
         remove_tree(tmp)
+    for row in EXPECTED_FAILURES:
+        if (row.mode, row.check) not in MATCHED:
+            FAILURES.append(f"unmatched expected failure: {row.mode}: {row.check}")
+            print(f"  FAIL: no check matched the expected failure for {row.mode}: {row.check}")
 
 
 if __name__ == '__main__':
