@@ -316,12 +316,14 @@ for fam, srcLines, dstLines, srcOrder, dstOrder in ACK_BFMS:
 MEM_RESET = "reads rst_n only before the first reset, never in its loop"
 AHB_SAMPLE = ("samples HWDATA, and sends a write's request, on the edge after its address phase, so every write "
               "takes a wait state. This is a limit of reading RTL signals only at an edge, not a defect a later "
-              "change to this BFM removes: HWDATA is on the wire from the timestep the data phase starts, and "
-              "reading it there needs a same-timestep settle event, which the farm probe showed takes a "
-              "per-simulator VPI callback")
+              "change to this BFM removes. HWDATA is on the wire from the timestep the data phase starts, and "
+              "reading it there needs an event that fires once the RTL has settled in that timestep. SystemC "
+              "cannot see pending HDL activity under Xcelium or VCS, so that event needs a per-simulator VPI "
+              "callback")
 BUS_RESET = "never reads rst_n after the first reset, so a transfer in flight at the reset is lost or completes later"
-APB_SRC_RESET = (f"apb_bfm.h:44-70 {BUS_RESET}: the model answers operation 0 after the reset has cut it off, and "
-                 "serves the RTL's repeat of it after reset as operation 1")
+APB_SRC_RESET = ("apb_bfm.h:44-70 reads rst_n only where it samples a setup phase. A reset that cuts off a "
+                 "transfer after the model has answered loses the answer, and the model serves the RTL's repeat "
+                 "of it as the next operation")
 EXPECTED_FAILURES += [
     XFail(('apb',), 'dst', ('served once',), inReset, None, f"apb_bfm.h:97-140 {BUS_RESET}"),
     XFail(('apb',), 'src', ('served once',), resetDelayed, 'RTL 4/3, model 4', APB_SRC_RESET),
