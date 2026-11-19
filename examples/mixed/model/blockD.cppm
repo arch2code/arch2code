@@ -54,7 +54,7 @@ public:
     // extArr model, as the RTL: rdata = last written wdata + current rwArr + index, recomputed whenever either changes.
     void extModel(int i, external_reg_in<dRegSt>& p);
     void extRwTrack(void);
-    std::array<dRegSt, REGARR_N> extWdata_{};
+    std::array<dRegSt, REGARR_N> extWdata_;
     // The bits of field d of dRegSt: unpacking all ones masks each field to its own width.
     static inline const uint32_t D_MASK = [] { dRegSt m; m.unpack(dRegSt::_packedSt(~dRegSt::_packedSt(0))); return uint32_t(m.d); }();
 };

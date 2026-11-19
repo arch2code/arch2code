@@ -320,11 +320,12 @@ def ext_sec_init(args, prj, data):
 
         for channelType in data['connectDouble']:
             for connKey,data_ in data['connectDouble'][channelType].items():
-                srcEnds = [v for v in data_['ends'].values() if v['direction'] == "src"]
-                srcPerElement = [srcEnds] if data_['srcEndsPerElement'] is None else data_['srcEndsPerElement']
-                for ends in srcPerElement:
+                srcPerElement = data_['srcEndsPerElement']
+                for k, ends in enumerate(srcPerElement):
                     if len(ends) != 1:
-                        printError(f"Expected exactly one src instance per element for connection {connKey!r} ({channelType}), found {len(ends)}")
+                        where = 'the channel' if data_['arrayCount'] is None else f'element {k}'
+                        printError(f"connection {connKey!r} ({channelType}) has {len(ends)} src instances for {where}. "
+                                   f"Each channel element needs exactly one src. Connect exactly one instance as its source")
                         exit(warningAndErrorReport())
                 srcs = [f'"{ends[0]["instance"]}"' for ends in srcPerElement]
                 chnlData = sc_gen_block_channels(data_, prj, data)

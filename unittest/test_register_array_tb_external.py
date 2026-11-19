@@ -6,9 +6,9 @@ External keeps the array's other ends, so it builds the array's channel. That
 channel is an sc_vector, so the initializer passes the count and a creator
 that builds each element with the source block.
 
-An ro array split by index rows has a different source for each element.
-When the excluded DUT is another child, the External keeps both sources, and
-the creator names each element's own source.
+An ro array split by index rows has a different source for each element,
+and the creator names each element's own source. When the excluded DUT is
+one of those sources, the External still names it as its element's source.
 """
 
 import sys
@@ -83,7 +83,11 @@ def check_external(label, arch, excluded, expected):
         blockKey, _ = find_block(prj, 'owner')
         external = prj.getBlockData(blockKey, trimRegLeafInstance=True, excludeInstances={excluded})
         testbench.refactor_tbExternal(None, prj, external)
-        init = testbench.ext_sec_init(types.SimpleNamespace(variant=None), prj, external)
+        try:
+            init = testbench.ext_sec_init(types.SimpleNamespace(variant=None), prj, external)
+        except SystemExit:
+            print(f"FAIL: {label}\n  the External init stopped with an error")
+            return False
         lines = [line.strip() for line in init.splitlines() if line.strip().startswith(',arr(')]
         if lines != expected:
             print(f"FAIL: {label}\n  expected {expected}\n  got      {lines}\n{init}")
@@ -101,6 +105,10 @@ def run_all_tests():
                         'status_channel<cfgRegSt>(nm, "u_owner_regs"); })']),
         check_external("the External without uC builds a split ro arr with each element's source",
                        SPLIT_RO_ARCH, 'uC',
+                       [',arr("arr", 2, [&](const char * nm, size_t i) { const char * srcNames[] = '
+                        '{"uA", "uB"}; return new status_channel<cfgRegSt>(nm, srcNames[i]); })']),
+        check_external("the External without uA, a source of a split ro arr, still names uA as its element's source",
+                       SPLIT_RO_ARCH, 'uA',
                        [',arr("arr", 2, [&](const char * nm, size_t i) { const char * srcNames[] = '
                         '{"uA", "uB"}; return new status_channel<cfgRegSt>(nm, srcNames[i]); })']),
     ]

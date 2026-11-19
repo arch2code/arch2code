@@ -125,11 +125,11 @@ def constructorInit(args, prj, data):
             chnl_table[chnl] = intf_gen_utils.sc_gen_block_channels(chnlInfo, prj, data)
 
             channelBase = chnl_table[chnl]['chnl_name']
-            srcEnds = [v for v in chnlInfo["ends"].values() if v["direction"] == "src"]
             dstInstances = [v.get("instanceType") or chnlInfo.get("block", "") for v in chnlInfo["ends"].values() if v["direction"] == "dst"]
-            srcPerElement = [srcEnds] if chnlInfo['srcEndsPerElement'] is None else chnlInfo['srcEndsPerElement']
+            srcPerElement = chnlInfo['srcEndsPerElement']
             if any(len(ends) != 1 for ends in srcPerElement) or len(dstInstances) == 0:
-                printError(f"connection {chnl!r} ({channelType}) needs exactly one src end per element and at least one dst end")
+                printError(f"connection {chnl!r} ({channelType}) needs exactly one src end for each channel element and at "
+                           f"least one dst end. Connect exactly one source instance to each element and at least one destination")
                 exit(warningAndErrorReport())
             srcs = [f'"{ends[0].get("instanceType") or chnlInfo.get("block", "")}"' for ends in srcPerElement]
             dst = dstInstances[0]
