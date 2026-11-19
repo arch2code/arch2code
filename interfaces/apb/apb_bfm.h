@@ -49,7 +49,9 @@ public:
             hdl_if_p->pslverr = false;
             hdl_if_p->pready = false;
             hdl_if_p->prdata = VL_DATA_T(0);
-            while ( !(hdl_if_p->psel && hdl_if_p->penable )) {
+            // The edge that samples a setup phase ends it and starts the
+            // access phase, which ends on the first edge after the model answers.
+            while ( !(hdl_if_p->psel && !hdl_if_p->penable )) {
                 wait(clk.posedge_event());
             }
             is_write = hdl_if_p->pwrite;
@@ -58,19 +60,12 @@ public:
                 data.sc_unpack(hdl_if_p->pwdata);
             }
             slverr = if_p->requestWithResponse(is_write, addr, data);
-            wait(clk.posedge_event());
             hdl_if_p->pready = true;
             hdl_if_p->pslverr = slverr;
             if( !is_write ) {
                 hdl_if_p->prdata = VL_DATA_T(data.sc_pack());
             }
             wait(clk.posedge_event());
-            hdl_if_p->pslverr = false;
-            hdl_if_p->pready = false;
-            hdl_if_p->prdata = VL_DATA_T(0);
-            while ( hdl_if_p->psel && hdl_if_p->penable ) {
-              wait(clk.posedge_event());
-            };
         }
     }
 

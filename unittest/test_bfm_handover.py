@@ -280,10 +280,6 @@ EXPECTED_FAILURES = [
           f"axi_write_bfm.h:148-149 {RESET_SPIN}"),
     XFail(('aw',), 'src', (DONE,), resetLate, 'hang', f"axi_write_bfm.h:98-99 {RESET_SPIN}"),
     XFail(('w',), 'src', (DONE,), resetLate, 'hang', f"axi_write_bfm.h:148-149 {RESET_SPIN}"),
-
-    XFail(('apb',), 'src', ('src completes on the edge after the model',), anyCase, '+1 clock',
-          "apb_bfm.h:61 waits an edge after requestWithResponse() returns before line 62 raises pready, so "
-          "the RTL completes one edge late"),
 ]
 
 # The _ack BFMs: (family, src lines, dst lines, how a src reset run loses order, how a dst reset run loses
@@ -314,25 +310,15 @@ for fam, srcLines, dstLines, srcOrder, dstOrder in ACK_BFMS:
     ]
 
 MEM_RESET = "reads rst_n only before the first reset, never in its loop"
-APB_ACCESS = ("waits until it samples psel and penable together, an edge after the setup phase has put the "
-              "whole request on the wire")
 AHB_SAMPLE = ("waits for the edge after the address phase before it sends the request, though a write's data is "
               "on the wire from the timestep that edge's data phase starts and a read needs none")
 BUS_RESET = "never reads rst_n after the first reset, so a transfer in flight at the reset is lost or completes later"
 EXPECTED_FAILURES += [
-    XFail(('apb',), 'dst', ('served once',), inReset, None, f"apb_bfm.h:101-144 {BUS_RESET}"),
-    XFail(('apb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'),
-          lambda c: inReset(c) and c.delay > 0, None,
-          f"apb_bfm.h:44-74 {BUS_RESET}: pready for the transfer the reset cut off completes the RTL's next one"),
-    XFail(('apb',), 'src', ('src latency', 'src read latency'), lambda c: c.rtl == 'always', '+10 ns',
-          f"apb_bfm.h:52 {APB_ACCESS}"),
-    XFail(('apb',), 'src', ('src latency',), lambda c: c.rtl == 'parked', '+5 ns',
-          f"apb_bfm.h:52 {APB_ACCESS}, so a model that asks mid-cycle, after the setup phase, still waits for "
-          "the edge of the access phase"),
-    XFail(('apb',), 'src', ('src read latency',), lambda c: c.rtl == 'parked', '+10 ns', f"apb_bfm.h:52 {APB_ACCESS}"),
-    XFail(('apb',), 'src', ('throughput',), anyCase, '[4] edges',
-          f"apb_bfm.h:52 {APB_ACCESS}, and 61 waits an edge after the model answers before it raises pready: "
-          "one transfer per four clocks, against two for apb"),
+    XFail(('apb',), 'dst', ('served once',), inReset, None, f"apb_bfm.h:96-139 {BUS_RESET}"),
+    XFail(('apb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'), inReset, None,
+          f"apb_bfm.h:44-70 {BUS_RESET}: the model serves a transfer the reset cuts off, a delayed one or, at "
+          "delay 0, one whose setup phase line 54 samples on a reset edge, and serves the RTL's repeat of it as "
+          "the next"),
     XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:136-186 {BUS_RESET}"),
     XFail(('ahb',), 'src', ('throughput',), anyCase, '[2] edges',
           "ahb_bfm.h:78-79 drive HREADYOUT low and wait an edge on every transfer, so each takes a wait state. A "
