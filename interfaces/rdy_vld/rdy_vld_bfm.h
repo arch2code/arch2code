@@ -51,28 +51,36 @@ public:
         DATA_T data;
         wait(SC_ZERO_TIME);
         do { wait(clk.posedge_event()); } while (!rst_n);
+        // rdy is high only while the model waits in read(). A beat the RTL
+        // holds with rdy low is offered, so a model that reads only an active
+        // port sees it.
+        bool offered = false;
+        hdl_if_p->rdy = if_p->get_rdy();
         while (true) {
-            bool rdy = if_p->get_rdy();
-            hdl_if_p->rdy = rdy;
-            while (!(hdl_if_p->vld && hdl_if_p->rdy)) {
-                wait(clk.posedge_event());
-                rdy = if_p->get_rdy();
-                hdl_if_p->rdy = rdy;
+            wait(clk.posedge_event() | if_p->readEnteredEvent());
+            if (!clk.posedge()) {
+                hdl_if_p->rdy = if_p->get_rdy();
+                continue;
             }
-            // A beat sampled in reset is still delivered, but the monitor
-            // counts only transfers out of reset.
-            if (rst_n) {
-                m_sampledBeats++;
-                m_lastSampleTime = sc_time_stamp();
+            bool take = hdl_if_p->vld && hdl_if_p->rdy;
+            if (hdl_if_p->vld && (take || !offered)) {
+                data.sc_unpack(hdl_if_p->data);
+                if (take) {
+                    // A beat sampled in reset is still delivered, but the
+                    // monitor counts only transfers out of reset.
+                    if (rst_n) {
+                        m_sampledBeats++;
+                        m_lastSampleTime = sc_time_stamp();
+                    }
+                    // The HDL must not transfer while a delayed write blocks.
+                    hdl_if_p->rdy = false;
+                    if_p->writeClocked(data);
+                } else {
+                    if_p->offer(data);
+                }
+                offered = !take;
             }
-            data.sc_unpack(hdl_if_p->data);
-            // A delayed write blocks across clock edges, and the HDL must not
-            // transfer on them. A write that returns in this timestep leaves
-            // the next edge the rdy it would have seen without the write.
-            hdl_if_p->rdy = false;
-            if_p->writeClocked(data);
-            hdl_if_p->rdy = rdy;
-            wait(clk.posedge_event());
+            hdl_if_p->rdy = if_p->get_rdy();
         }
     }
 

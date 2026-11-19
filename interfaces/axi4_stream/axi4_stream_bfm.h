@@ -68,34 +68,42 @@ public:
         axi4StreamInfoSt<TDATA_T, TID_T, TDEST_T, TUSER_T> tinfo;
         wait(SC_ZERO_TIME);
         do { wait(clk.posedge_event()); } while (!rst_n);
+        // tready is high only while the model waits to receive. A beat the
+        // RTL holds with tready low is offered, so a model that receives only
+        // from an active port sees it.
+        bool offered = false;
+        hdl_if_p->tready = m_chnl->m_tx_out->get_rdy();
         while (true) {
-            bool tready = m_chnl->m_tx_out->get_rdy();
-            hdl_if_p->tready = tready;
-            while (!(hdl_if_p->tvalid && hdl_if_p->tready)) {
-                wait(clk.posedge_event());
-                tready = m_chnl->m_tx_out->get_rdy();
-                hdl_if_p->tready = tready;
+            wait(clk.posedge_event() | m_chnl->m_tx_out->readEnteredEvent());
+            if (!clk.posedge()) {
+                hdl_if_p->tready = m_chnl->m_tx_out->get_rdy();
+                continue;
             }
-            // A beat sampled in reset is still delivered, but the monitor
-            // counts only transfers out of reset.
-            if (rst_n) {
-                m_sampledBeats++;
-                m_lastSampleTime = sc_time_stamp();
+            bool take = hdl_if_p->tvalid && hdl_if_p->tready;
+            if (hdl_if_p->tvalid && (take || !offered)) {
+                tinfo.tdata.sc_unpack(hdl_if_p->tdata);
+                tinfo.tstrb.sc_unpack(hdl_if_p->tstrb);
+                tinfo.tkeep.sc_unpack(hdl_if_p->tkeep);
+                tinfo.tlast = (bool) hdl_if_p->tlast.read();;
+                tinfo.tid.sc_unpack(hdl_if_p->tid);
+                tinfo.tdest.sc_unpack(hdl_if_p->tdest);
+                if constexpr (hasOptionalPayload<TUSER_T>) { tinfo.tuser.sc_unpack(hdl_if_p->tuser); }
+                if (take) {
+                    // A beat sampled in reset is still delivered, but the
+                    // monitor counts only transfers out of reset.
+                    if (rst_n) {
+                        m_sampledBeats++;
+                        m_lastSampleTime = sc_time_stamp();
+                    }
+                    // The HDL must not transfer while a delayed send blocks.
+                    hdl_if_p->tready = false;
+                    if_p->sendInfo(tinfo);
+                } else {
+                    m_chnl->m_tx_out->offer(tinfo);
+                }
+                offered = !take;
             }
-            tinfo.tdata.sc_unpack(hdl_if_p->tdata);
-            tinfo.tstrb.sc_unpack(hdl_if_p->tstrb);
-            tinfo.tkeep.sc_unpack(hdl_if_p->tkeep);
-            tinfo.tlast = (bool) hdl_if_p->tlast.read();;
-            tinfo.tid.sc_unpack(hdl_if_p->tid);
-            tinfo.tdest.sc_unpack(hdl_if_p->tdest);
-            if constexpr (hasOptionalPayload<TUSER_T>) { tinfo.tuser.sc_unpack(hdl_if_p->tuser); }
-            // A delayed write blocks across clock edges, and the HDL must not
-            // transfer on them. A write that returns in this timestep leaves
-            // the next edge the tready it would have seen without the write.
-            hdl_if_p->tready = false;
-            if_p->sendInfo(tinfo);
-            hdl_if_p->tready = tready;
-            wait(clk.posedge_event());
+            hdl_if_p->tready = m_chnl->m_tx_out->get_rdy();
         }
     }
 
