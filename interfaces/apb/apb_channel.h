@@ -124,7 +124,9 @@ public:
         if (m_req_pending) {
             isWrite = m_req_is_write;
             req = m_req_data;
-            data = m_data;
+            if (m_req_is_write) {
+                data = m_data; // a read's m_data holds no request data
+            }
         }
         return m_req_pending;
     }
