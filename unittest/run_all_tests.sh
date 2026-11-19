@@ -693,6 +693,12 @@ python3 test_bfm_backpressure_checks.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: req_ack and AXI BFMs drop req / hold ready low while a delayed model call blocks"
+echo "------------------------------------------------------------------------"
+python3 test_bfm_delayed_call.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: testbench pass criteria (completion gate + scaffold)"
 echo "------------------------------------------------------------------------"
 python3 test_tb_completion_gate.py || FAILED=1
@@ -828,6 +834,12 @@ echo ""
 echo "Test Suite ${idx}: status_dst_bfm drives the latest status value"
 echo "------------------------------------------------------------------------"
 python3 test_status_dst_bfm.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: axi_write src BFM holds awready/wready low while a delayed send blocks"
+echo "------------------------------------------------------------------------"
+python3 test_axi_write_src_bfm_delayed_send.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
