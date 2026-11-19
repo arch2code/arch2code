@@ -333,10 +333,7 @@ EXPECTED_FAILURES += [
     XFail(('apb',), 'src', ('throughput',), anyCase, '[4] edges',
           f"apb_bfm.h:52 {APB_ACCESS}, and 61 waits an edge after the model answers before it raises pready: "
           "one transfer per four clocks, against two for apb"),
-    XFail(('ahb',), 'dst', ('throughput',), anyCase, '2 edges',
-          "ahb_bfm.h:139-164 takes the next request only after the data phase completes, so address phases do "
-          "not overlap data phases"),
-    XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:135-166 {BUS_RESET}"),
+    XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:136-186 {BUS_RESET}"),
     XFail(('ahb',), 'src', ('throughput',), anyCase, '[2] edges',
           "ahb_bfm.h:78-79 drive HREADYOUT low and wait an edge on every transfer, so each takes a wait state. A "
           "fix must send the request in the timestep the data phase starts and, when the model answers in that "

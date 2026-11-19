@@ -103,6 +103,9 @@ public:
 // The RTL is the slave: each request received on if_p becomes one transfer,
 // an address phase and then a data phase that lasts until HREADYOUT is high.
 // The slave's HREADY input follows its HREADYOUT, as on a one-slave bus.
+// reqReceive() releases a posted write, so the next request's address phase
+// runs alongside the write's data phase. A read or a response-aware write
+// holds the channel until complete(), so the next request starts after it.
 template<typename ADDR_T, typename DATA_T, typename VL_ADDR_T, typename VL_DATA_T>
 class ahb_dst_bfm: public sc_module {
 
@@ -117,7 +120,8 @@ public:
     SC_HAS_PROCESS (ahb_dst_bfm);
 
     ahb_dst_bfm(sc_module_name modulename) {
-        SC_THREAD(bfm_driver_thread);
+        SC_THREAD(address_thread);
+        SC_THREAD(data_thread);
     }
 
     void end_of_elaboration() override {
@@ -127,7 +131,9 @@ public:
         sc_spawn([this]() { hdl_if_p->hready = hdl_if_p->hreadyout.read(); }, "hready_follows_hreadyout", &opts);
     }
 
-    void bfm_driver_thread() {
+    // Drives each address phase until an edge with HREADY, which starts its
+    // data phase.
+    void address_thread() {
         hdl_if_p->hsel = false;
         hdl_if_p->htrans = sc_bv<2>(0);
         hdl_if_p->hsize = sc_bv<3>(AHB_HSIZE_WORD);
@@ -137,6 +143,7 @@ public:
             DATA_T data;
             bool is_write;
             if_p->reqReceive(is_write, addr, data);
+            const bool posted = is_write && !if_p->receivedWantsResponse();
             hdl_if_p->hsel = true;
             hdl_if_p->htrans = sc_bv<2>(AHB_HTRANS_NONSEQ);
             hdl_if_p->haddr = addr.sc_pack();
@@ -144,26 +151,50 @@ public:
             do { wait(clk.posedge_event()); } while (!hdl_if_p->hready);
             hdl_if_p->hsel = false;
             hdl_if_p->htrans = sc_bv<2>(0);
-            if (is_write) {
-                hdl_if_p->hwdata = data.sc_pack();
-            }
-            bool error = false;
-            for (;;) {
-                wait(clk.posedge_event());
-                if (hdl_if_p->hreadyout) {
-                    error = hdl_if_p->hresp;
-                    if (!is_write) {
-                        data.sc_unpack(hdl_if_p->hrdata);
-                    }
-                    break;
-                }
-            }
             hdl_if_p->haddr = VL_ADDR_T(0);
             hdl_if_p->hwrite = false;
-            hdl_if_p->hwdata = VL_DATA_T(0);
-            if_p->complete(data, error);
+            hdl_if_p->hwdata = is_write ? VL_DATA_T(data.sc_pack()) : VL_DATA_T(0);
+            data_phase = {is_write, posted, data};
+            data_pending = true;
+            data_start.notify(SC_ZERO_TIME);
+            if (!posted) {
+                wait(data_done);
+            }
         }
     }
+
+    // Ends each data phase on an edge with HREADYOUT. complete() acts on the
+    // last request received, which after a posted write may already be the
+    // next one, so a posted write is not completed.
+    void data_thread() {
+        while (true) {
+            while (!data_pending) {
+                wait(data_start);
+            }
+            data_pending = false;
+            dataPhase phase = data_phase;
+            do { wait(clk.posedge_event()); } while (!hdl_if_p->hreadyout);
+            if (phase.posted) {
+                continue;
+            }
+            if (!phase.is_write) {
+                phase.data.sc_unpack(hdl_if_p->hrdata);
+            }
+            if_p->complete(phase.data, hdl_if_p->hresp);
+            data_done.notify();
+        }
+    }
+
+private:
+    struct dataPhase {
+        bool is_write;
+        bool posted;
+        DATA_T data;
+    };
+    dataPhase data_phase{};
+    bool data_pending = false;
+    sc_event data_start;
+    sc_event data_done;
 
 };
 
