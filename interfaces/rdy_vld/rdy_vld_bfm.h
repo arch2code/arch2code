@@ -122,20 +122,12 @@ public:
 
     SC_HAS_PROCESS (rdy_vld_dst_bfm);
 
-    ::sc_core::sc_process_handle rdy_control_thread_handle;
-
     rdy_vld_dst_bfm(sc_module_name modulename) :
         m_stalls(name(), "HDL stalled a backpressure: false interface", "clock edges") {
         SC_THREAD(bfm_driver_thread);
-        //SC_METHOD(rdy_control_thread);
-        rdy_control_thread_handle =
-            sc_core::sc_get_curr_simcontext()->create_method_process("rdy_control_thread", false,
-                static_cast<sc_core::SC_ENTRY_FUNC>(&SC_CURRENT_USER_MODULE::rdy_control_thread), this, 0);
     }
 
     virtual void end_of_elaboration() {
-        //this->sensitive << rdy_control_thread_handle <<  hdl_if_p->rdy;
-        //if_p->enable_user_ready_control(); // delayed until here to ensure the port is bound
         m_noBackpressure = bfmNoBackpressure(if_p.get_interface(), name());
         if_p->setCycleTransaction();
     }
@@ -161,10 +153,6 @@ public:
                 }
             } while (!hdl_if_p->rdy);
         }
-    }
-
-    void rdy_control_thread() {
-        if_p->set_rdy(hdl_if_p->rdy);
     }
 
 private:

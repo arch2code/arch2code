@@ -31,11 +31,12 @@ public:
     virtual void read( T& ) = 0;
     virtual T read() = 0;
     virtual void readClocked( T& ) = 0;  // for multi cycle channels, gets one burst
+    // A BFM copies the value a writer is blocked on, or the next beat of a
+    // burst, and takes it later with read() or readClocked().
+    virtual void peek( T& ) = 0;
     virtual uint8_t * getReadPtr(void) = 0;
     virtual int getReadCycle(void) = 0;
-    virtual void set_rdy(bool) = 0;
     virtual bool get_rdy() const = 0;
-    virtual void enable_user_ready_control(void) = 0;
     virtual void push_context(uint32_t) = 0;
     virtual uint32_t get_context(void) = 0;
     virtual uint32_t get_max_size(void) = 0;
@@ -69,6 +70,11 @@ public:
     virtual std::shared_ptr<trackerBase> getTracker(void) = 0;
     virtual uint8_t * getWritePtr(void) = 0;
     virtual bool get_rdy() const = 0;
+    // Notified as each read() starts, so a BFM can raise rdy in that timestep.
+    virtual const sc_event& readEnteredEvent() const = 0;
+    // A BFM shows a beat the RTL holds: isActive() becomes true, but read()
+    // returns only on the write() that follows.
+    virtual void offer( const T& ) = 0;
     virtual void setTimedDelayPtr(std::shared_ptr<timedDelayBase> pTimedDelay) = 0;
 
 protected:
@@ -142,6 +148,7 @@ public:
     virtual void read( T& ) override;
     virtual T read() override;
     virtual void readClocked( T& ) override;
+    virtual void peek( T& ) override;
     virtual int getReadCycle(void) override
     {
         if (m_multicycle == nullptr) {
@@ -157,15 +164,6 @@ public:
         return m_multicycle->getReadBufferSize(0);
     }
     virtual void push_context(uint32_t size) override { m_multicycle->push_context(size); }
-    virtual void set_rdy(bool rdy_state) override
-    {
-        m_ready = rdy_state;
-        sc_prim_channel::request_update();
-    }
-    virtual void enable_user_ready_control(void) override
-    {
-        m_user_ready_control = true;
-    }
     virtual uint32_t get_context(void) override
     {
         if (m_tee_handle_context) {
@@ -196,6 +194,8 @@ public:
 
     virtual bool get_rdy() const override
     { return ( m_ready ); }
+    virtual const sc_event& readEnteredEvent() const override { return m_read_entered_event; }
+    virtual void offer( const T& ) override;
 
     virtual bool isActive() override { return(m_valid); }
     virtual bool isNotActive() override { return(!m_valid); }
@@ -252,15 +252,17 @@ protected:
     T    m_write_value;     // pre transaction write value during clocking
 
     sc_event m_channel_sync_event;
+    sc_event m_valid_event;
+    sc_event m_read_entered_event;
 
     sc_port_base* m_reader; // used for static design rule checking
     sc_port_base* m_writer; // used for static design rule checking
     bool m_ready = false;   // can we write the value
     bool m_valid = false;   // can we read the value
     bool m_value_written = false; // does m_value contain data not this is seperated from the ready/valid for optimization of the task switches
+    bool m_offered = false; // m_value is a beat the RTL holds, and no write() has sent it yet
     bool m_wait_event = false;
     bool m_multi_writer = false;
-    bool m_user_ready_control = false; // allow the user to externally control the ready state for verification use cases
     bool m_get_struct_value = true;
     bool m_tee_handle_context = false;
     bool m_tee_handle_copy = false;
@@ -276,8 +278,9 @@ protected:
 
     // Primary channel override base class implementation
     void update() override {
-        if (m_ready && m_valid) {
+        if (m_ready && m_valid && !m_offered) {
             m_valid = false;
+            m_ready = false;
             m_channel_sync_event.notify(SC_ZERO_TIME);
             if (m_multicycle != nullptr) {
                 m_multicycle->update(); // perform implimentation specific actions eg flip the pingpong buffer
@@ -324,18 +327,12 @@ template <class T>
 inline void rdy_vld_channel<T>::read( T& val_ )
 {
     bool logging = false;
-    // if the user is not controlling the ready
-    if (!m_user_ready_control) {
-        m_ready = true;
-    }
+    m_ready = true;
+    m_read_entered_event.notify();
     sc_prim_channel::request_update();
     sc_core::wait(m_channel_sync_event);
     val_ = m_value;
     m_value_written = false;
-    // if the user is not controlling the ready
-    if (!m_user_ready_control) {
-        m_ready = false;
-    }
     int64_t tag;
     if (m_get_struct_value) {
         tag = val_.getStructValue();
@@ -390,6 +387,8 @@ inline void rdy_vld_channel<T>::writeCore( const T& val_ )
     m_value_written = true;
     m_value = val_;
     m_valid = true;
+    m_offered = false;
+    m_valid_event.notify();
     // for external arb case, the reader is scanning isActive() rather than
     // waiting on m_channel_sync_event, so it must be notified separately
     if (m_external_arb) {
@@ -500,6 +499,38 @@ void rdy_vld_channel<T>::readClocked( T& val_)
             m_channel_sync_event.notify(SC_ZERO_TIME); // notify the write that the read is complete
             wait(SC_ZERO_TIME);
         }
+    }
+}
+
+// A burst beat after the first is already in the read buffer, so it returns
+// at once. Otherwise peek waits for a writer, and the first beat of a burst
+// comes from the writer's buffer.
+template <class T>
+void rdy_vld_channel<T>::peek( T& val_ )
+{
+    if (m_multicycle != nullptr && !m_multicycle->isNewReadTransaction()) {
+        val_ = m_read_value;
+        m_multicycle->copyReadData(m_get_struct_value ? m_read_value.getStructValue() : m_read_context, (uint8_t *)&val_);
+        return;
+    }
+    while (!m_valid) {
+        sc_core::wait(m_valid_event);
+    }
+    val_ = m_value;
+    if (m_multicycle != nullptr) {
+        int64_t tag = m_get_struct_value ? m_value.getStructValue() : m_write_context;
+        memcpy((uint8_t *)&val_, m_multicycle->getWritePtr(tag), sizeof(T));
+    }
+}
+
+template <class T>
+void rdy_vld_channel<T>::offer( const T& val_ )
+{
+    m_value = val_;
+    m_valid = true;
+    m_offered = true;
+    if (m_external_arb) {
+        m_external_event_ptr->notify(SC_ZERO_TIME);
     }
 }
 
