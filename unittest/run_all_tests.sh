@@ -705,6 +705,12 @@ python3 test_bfm_backpressure_checks.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: req_ack and AXI BFMs drop req / hold ready low while a delayed model call blocks"
+echo "------------------------------------------------------------------------"
+python3 test_bfm_delayed_call.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: testbench pass criteria (completion gate + scaffold)"
 echo "------------------------------------------------------------------------"
 python3 test_tb_completion_gate.py || FAILED=1
@@ -831,6 +837,12 @@ python3 test_status_dst_bfm.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: axi_write src BFM holds awready/wready low while a delayed send blocks"
+echo "------------------------------------------------------------------------"
+python3 test_axi_write_src_bfm_delayed_send.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: external_reg_dst_bfm drives every back-to-back write to the RTL in order"
 echo "------------------------------------------------------------------------"
 python3 test_external_reg_dst_bfm.py || FAILED=1
@@ -855,9 +867,21 @@ python3 test_ahb_reg_bus.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: pop_ack dst BFM takes every one-cycle ack and drops pop before a delayed ack()"
+echo "------------------------------------------------------------------------"
+python3 test_pop_ack_dst_bfm_delayed_ack.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: every importer of a2c.endOfTest sees one endOfTestState"
 echo "------------------------------------------------------------------------"
 python3 test_end_of_test_single_instance.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: rtl.f names no include directory for an interface-only context"
+echo "------------------------------------------------------------------------"
+python3 test_rtldotf_interface_only_context.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
