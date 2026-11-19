@@ -127,9 +127,14 @@ def constructorInit(args, prj, data):
             channelBase = chnl_table[chnl]['chnl_name']
             dstInstances = [v.get("instanceType") or chnlInfo.get("block", "") for v in chnlInfo["ends"].values() if v["direction"] == "dst"]
             srcPerElement = chnlInfo['srcEndsPerElement']
-            if any(len(ends) != 1 for ends in srcPerElement) or len(dstInstances) == 0:
-                printError(f"connection {chnl!r} ({channelType}) needs exactly one src end for each channel element and at "
-                           f"least one dst end. Connect exactly one source instance to each element and at least one destination")
+            for k, ends in enumerate(srcPerElement):
+                if len(ends) != 1:
+                    where = 'the channel' if chnlInfo['arrayCount'] is None else f'element {k}'
+                    printError(f"Internal error: connection {chnl!r} ({channelType}) has {len(ends)} src ends for "
+                               f"{where} {[end['instance'] for end in ends]}, expected exactly one")
+                    exit(warningAndErrorReport())
+            if len(dstInstances) == 0:
+                printError(f"Internal error: connection {chnl!r} ({channelType}) has no dst end, expected at least one")
                 exit(warningAndErrorReport())
             srcs = [f'"{ends[0].get("instanceType") or chnlInfo.get("block", "")}"' for ends in srcPerElement]
             dst = dstInstances[0]

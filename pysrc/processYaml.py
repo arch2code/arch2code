@@ -2587,7 +2587,7 @@ class projectOpen:
         regHandlerKey = ret.get('regHandler', None)
         regHandler = ''
         connected_regs = dict()
-        excludedEnds = dict()
+        excludedRegisterEnds = dict()
         portRowKeys = dict()
         portCountKeys = dict()
         if regHandlerKey:
@@ -2629,7 +2629,7 @@ class projectOpen:
                         ret['registerConnections'][connKey]['ends'][inst] = {'instance': inst, 'portName': reg_name, 'direction': self.regMapBlock[regType], 'indexValue': self.registerArrayValue(val, 'index')}
             if val['blockKey'] == block and val['instanceKey'] in ret['excludedInstances'] and not isRegHandler:
                 regType = ret['registers'][val['registerBlockKey']]['regType']
-                excludedEnds.setdefault(val['register'], dict())[val['instance']] = {
+                excludedRegisterEnds.setdefault(val['register'], dict())[val['instance']] = {
                     'instance': val['instance'], 'portName': val['register'], 'direction': self.regMapBlock[regType],
                     'indexValue': self.registerArrayValue(val, 'index')}
             if val['instanceKey'] in qualBlockInstances:
@@ -2665,7 +2665,7 @@ class projectOpen:
             elif port['countKey']:
                 ret['temp']['consts'][port['countKey']] = 0
         for connKey, output in ret['registerConnections'].items():
-            output['excludedEnds'] = excludedEnds.get(connKey, dict())
+            output['excludedRegisterEnds'] = excludedRegisterEnds.get(connKey, dict())
         # handle implied register connections. These interfaces connect any unconnected registers to the block
         implied_reg = dict()
         for reg_key, reg_data in ret['registers'].items():
@@ -2709,7 +2709,7 @@ class projectOpen:
                     boundaryName = ret['blockName']
                     implied_reg[reg]['ends'][boundaryKey] = {'instance': boundaryName, 'portName': reg, 'direction': self.regMapBlock[regType], 'indexValue': None}
                     implied_reg[reg]['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg, 'direction': self.regMapReg[regType], 'indexValue': None}
-                    implied_reg[reg]['excludedEnds'] = dict()
+                    implied_reg[reg]['excludedRegisterEnds'] = dict()
                 # Track register-based interface types for later processing
                 ret['temp']['registerInterfaceTypes'][ifType] = 0
                 ret['temp']['structs'][reg_data['structureKey']] = 0
@@ -3292,7 +3292,7 @@ class projectOpen:
         the source of its element."""
         if connVal['arrayCountValue'] is None:
             return [[end for end in connVal['ends'].values() if end['direction'] == 'src']]
-        ends = [*connVal['ends'].values(), *connVal['excludedEnds'].values()]
+        ends = [*connVal['ends'].values(), *connVal['excludedRegisterEnds'].values()]
         return [[end for end in ends if end['direction'] == 'src' and end['indexValue'] in (None, k)]
                 for k in range(connVal['arrayCountValue'])]
 
