@@ -115,12 +115,9 @@ RESET_DST = "ends the beat on an edge with ready high whether or not reset is lo
 RESET_SRC = "delivers a beat it samples on a reset edge, and the RTL sends that beat again after reset"
 RESET_SPIN = ("loops in zero time when the edge after a handshake is in reset: the stale valid and ready "
               "skip the inner wait, and the reset branch continues without waiting")
-WRITE_SRC_DELAY = ("keeps ready high while a delayed model call blocks, so the RTL hands over beats the BFM never "
-                   "samples; every3 offers a beat three or more edges after the last handshake, after the 15 ns "
-                   "delay has ended")
 R_DRAIN = ("axi_read_bfm.h:132-155 drops the R beat on the wire at reset and returns the model's remaining "
            "sendDataCycle() calls with no handshake, to drain the burst")
-B_DROP = ("axi_write_bfm.h:172 takes the model's B on a reset edge and 173-177 drops it, and 184-187 drops "
+B_DROP = ("axi_write_bfm.h:178 takes the model's B on a reset edge and 179-183 drops it, and 190-193 drops "
           "the B on the wire at reset")
 DST_RULE_1 = ('dst write returns never run ahead of handshakes', 'dst write returns at its handshake edge')
 SRC_RULE_1 = 'src handshake only while the model waits in read()'
@@ -158,10 +155,6 @@ def outOfReset(case):
     return case.rtl != 'reset'
 
 
-def delayLoses(case):
-    return case.delay > 0 and case.rtl != 'every3'
-
-
 # A row marks checks that fail today: (families, direction, checks, applies
 # to case, how the check fails, reason naming the BFM line). how pins the
 # failure, for example which beats are lost, and None accepts any failure.
@@ -179,15 +172,15 @@ EXPECTED_FAILURES = [
     XFail(('r',), 'dst', DST_RULE_1, outOfReset, '1 ahead', f"axi_read_bfm.h:122 receiveDataCycle() {HIDDEN_DST}"),
     XFail(('r',), 'dst', DST_RULE_1, inReset, None,
           f"axi_read_bfm.h:122 receiveDataCycle() {HIDDEN_DST}; reset adds more"),
-    XFail(('aw',), 'dst', DST_RULE_1, outOfReset, '1 ahead', f"axi_write_bfm.h:238 receiveAddr() {HIDDEN_DST}"),
+    XFail(('aw',), 'dst', DST_RULE_1, outOfReset, '1 ahead', f"axi_write_bfm.h:244 receiveAddr() {HIDDEN_DST}"),
     XFail(('aw',), 'dst', DST_RULE_1, inReset, None,
-          f"axi_write_bfm.h:238 receiveAddr() {HIDDEN_DST}; reset adds more"),
-    XFail(('w',), 'dst', DST_RULE_1, outOfReset, '1 ahead', f"axi_write_bfm.h:262 receiveDataCycle() {HIDDEN_DST}"),
+          f"axi_write_bfm.h:244 receiveAddr() {HIDDEN_DST}; reset adds more"),
+    XFail(('w',), 'dst', DST_RULE_1, outOfReset, '1 ahead', f"axi_write_bfm.h:268 receiveDataCycle() {HIDDEN_DST}"),
     XFail(('w',), 'dst', DST_RULE_1, inReset, None,
-          f"axi_write_bfm.h:262 receiveDataCycle() {HIDDEN_DST}; reset adds more"),
-    XFail(('b',), 'dst', DST_RULE_1, outOfReset, '1 ahead', f"axi_write_bfm.h:172 receiveRespCycle() {HIDDEN_DST}"),
+          f"axi_write_bfm.h:268 receiveDataCycle() {HIDDEN_DST}; reset adds more"),
+    XFail(('b',), 'dst', DST_RULE_1, outOfReset, '1 ahead', f"axi_write_bfm.h:178 receiveRespCycle() {HIDDEN_DST}"),
     XFail(('b',), 'dst', DST_RULE_1, inReset, None,
-          f"axi_write_bfm.h:172 receiveRespCycle() {HIDDEN_DST}; reset adds more"),
+          f"axi_write_bfm.h:178 receiveRespCycle() {HIDDEN_DST}; reset adds more"),
 
     XFail(('rv',), 'src', (SRC_RULE_1,), busy, 'first at beat 1', f"rdy_vld_bfm.h:74 rdy = rdy {HIDDEN_SRC}"),
     XFail(('rv',), 'src', (SRC_RETURN,), busy, 'edge', f"rdy_vld_bfm.h:74 rdy = rdy {HIDDEN_SRC}"),
@@ -199,29 +192,18 @@ EXPECTED_FAILURES = [
     XFail(('r',), 'src', (SRC_RULE_1,), busy, 'first at beat 1', f"axi_read_bfm.h:235 rready = 1 {HIDDEN_SRC}"),
     XFail(('r',), 'src', (SRC_RETURN,), busy, 'edge', f"axi_read_bfm.h:235 rready = 1 {HIDDEN_SRC}"),
     XFail(('b',), 'src', (SRC_RULE_1,), lambda c: busy(c) and c.rtl == 'always', 'first at beat 1',
-          f"axi_write_bfm.h:290 bready = 1 {HIDDEN_SRC}"),
+          f"axi_write_bfm.h:296 bready = 1 {HIDDEN_SRC}"),
     XFail(('b',), 'src', (SRC_RULE_1,), lambda c: busy(c) and c.rtl == 'random' and c.delay == 0,
           'first at beat 2',
-          f"axi_write_bfm.h:290 bready = 1 {HIDDEN_SRC}"),
+          f"axi_write_bfm.h:296 bready = 1 {HIDDEN_SRC}"),
     XFail(('b',), 'src', (SRC_RULE_1,), lambda c: busy(c) and c.rtl == 'random' and c.delay > 0,
           'first at beat 6',
-          f"axi_write_bfm.h:290 bready = 1 {HIDDEN_SRC}"),
-    XFail(('b',), 'src', (SRC_RETURN,), busy, 'edge', f"axi_write_bfm.h:290 bready = 1 {HIDDEN_SRC}"),
-    XFail(('aw',), 'src', (SRC_RULE_1,), lambda c: busy(c) or delayLoses(c), 'first at beat 1',
-          f"axi_write_bfm.h:111 sendAddr() leaves awready as it was; the BFM {HIDDEN_SRC}, and {WRITE_SRC_DELAY}"),
-    XFail(('aw',), 'src', (SRC_RETURN,), busy, 'edge',
-          f"axi_write_bfm.h:111 sendAddr() leaves awready as it was; the BFM {HIDDEN_SRC}"),
-    XFail(('aw',), 'src', (SRC_COUNT,), delayLoses, None, f"axi_write_bfm.h:111 sendAddr() {WRITE_SRC_DELAY}"),
-    XFail(('aw',), 'src', (ORDER,), lambda c: delayLoses(c) and not inReset(c), 'hs ok, model missing',
-          f"axi_write_bfm.h:111 sendAddr() {WRITE_SRC_DELAY}"),
-    XFail(('w', 'wfirst'), 'src', (SRC_RULE_1,), lambda c: busy(c) or delayLoses(c), 'first at beat 1',
-          f"axi_write_bfm.h:159 sendDataCycle() leaves wready as it was; the BFM {HIDDEN_SRC}, and {WRITE_SRC_DELAY}"),
-    XFail(('w',), 'src', (SRC_RETURN,), busy, 'edge',
-          f"axi_write_bfm.h:159 sendDataCycle() leaves wready as it was; the BFM {HIDDEN_SRC}"),
-    XFail(('w', 'wfirst'), 'src', (SRC_COUNT,), delayLoses, None,
-          f"axi_write_bfm.h:159 sendDataCycle() {WRITE_SRC_DELAY}"),
-    XFail(('w', 'wfirst'), 'src', (ORDER,), delayLoses, 'hs ok, model missing',
-          f"axi_write_bfm.h:159 sendDataCycle() {WRITE_SRC_DELAY}"),
+          f"axi_write_bfm.h:296 bready = 1 {HIDDEN_SRC}"),
+    XFail(('b',), 'src', (SRC_RETURN,), busy, 'edge', f"axi_write_bfm.h:296 bready = 1 {HIDDEN_SRC}"),
+    XFail(('aw',), 'src', (SRC_RULE_1,), busy, 'first at beat 1', f"axi_write_bfm.h:114 awready = 1 {HIDDEN_SRC}"),
+    XFail(('aw',), 'src', (SRC_RETURN,), busy, 'edge', f"axi_write_bfm.h:114 awready = 1 {HIDDEN_SRC}"),
+    XFail(('w',), 'src', (SRC_RULE_1,), busy, 'first at beat 1', f"axi_write_bfm.h:165 wready = 1 {HIDDEN_SRC}"),
+    XFail(('w',), 'src', (SRC_RETURN,), busy, 'edge', f"axi_write_bfm.h:165 wready = 1 {HIDDEN_SRC}"),
 
     XFail(('rv',), 'src', ('src latency',), readsAfterVld, '+1 clock', f"rdy_vld_bfm.h:55-60 {LATE_READY}"),
     XFail(('axis',), 'src', ('src latency',), readsAfterVld, '+1 clock', f"axi4_stream_bfm.h:72-77 {LATE_READY}"),
@@ -229,8 +211,8 @@ EXPECTED_FAILURES = [
     XFail(('r',), 'src', ('src latency',), readsAfterVld, '+1 clock', f"axi_read_bfm.h:222-226 {LATE_READY}"),
     XFail(('aw',), 'src', ('src latency',), readsAfterVld, '+1 clock', f"axi_write_bfm.h:86-96 {LATE_READY}"),
     XFail(('w', 'wfirst'), 'src', ('src latency',), readsAfterVld, '+1 clock',
-          f"axi_write_bfm.h:120-121 and 143 {LATE_READY}"),
-    XFail(('b',), 'src', ('src latency',), readsAfterVld, '+1 clock', f"axi_write_bfm.h:279-283 {LATE_READY}"),
+          f"axi_write_bfm.h:123-124 and 146 {LATE_READY}"),
+    XFail(('b',), 'src', ('src latency',), readsAfterVld, '+1 clock', f"axi_write_bfm.h:285-289 {LATE_READY}"),
 
     XFail(('rv',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"rdy_vld_bfm.h:162 {RESET_DST}"),
     XFail(('rv',), 'dst', (RESET_RETURN,), inReset, None, f"rdy_vld_bfm.h:162 {RESET_DST}"),
@@ -238,10 +220,10 @@ EXPECTED_FAILURES = [
     XFail(('axis',), 'dst', (RESET_RETURN,), inReset, None, f"axi4_stream_bfm.h:193 {RESET_DST}"),
     XFail(('ar',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_read_bfm.h:214 {RESET_DST}"),
     XFail(('ar',), 'dst', (RESET_RETURN,), inReset, None, f"axi_read_bfm.h:214 {RESET_DST}"),
-    XFail(('aw',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:248 {RESET_DST}"),
-    XFail(('aw',), 'dst', (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:248 {RESET_DST}"),
-    XFail(('w',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:271 {RESET_DST}"),
-    XFail(('w',), 'dst', (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:271 {RESET_DST}"),
+    XFail(('aw',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:254 {RESET_DST}"),
+    XFail(('aw',), 'dst', (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:254 {RESET_DST}"),
+    XFail(('w',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:277 {RESET_DST}"),
+    XFail(('w',), 'dst', (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:277 {RESET_DST}"),
     XFail(('r',), 'dst', (ORDER,), inReset, 'hs missing, model ok', R_DRAIN),
     XFail(('r',), 'dst', (RESET_RETURN,), inReset, None, R_DRAIN),
     XFail(('b',), 'dst', (ORDER,), inReset, 'hs missing, model ok', B_DROP),
@@ -272,22 +254,22 @@ EXPECTED_FAILURES = [
     XFail(('b',), 'src', (ORDER,), inReset, 'hs missing, model missing',
           "the assert below stops the run before every B is in"),
     XFail(('b',), 'src', (RESET_RETURN,), inReset, None,
-          f"axi_write_bfm.h:279-283 has no reset check and {RESET_SRC}"),
-    XFail(('b',), 'src', (SRC_RETURN,), inReset, 'edge', f"axi_write_bfm.h:279-283 has no reset check and {RESET_SRC}"),
+          f"axi_write_bfm.h:285-289 has no reset check and {RESET_SRC}"),
+    XFail(('b',), 'src', (SRC_RETURN,), inReset, 'edge', f"axi_write_bfm.h:285-289 has no reset check and {RESET_SRC}"),
     XFail(('b',), 'src', (NO_ASSERT,), inReset,
           '[Q_ASSERT][p.dut.ch] transaction id not valid (axi_write_channel.h)',
-          f"axi_write_bfm.h:279-283 has no reset check and {RESET_SRC}, so the second B finds no write "
+          f"axi_write_bfm.h:285-289 has no reset check and {RESET_SRC}, so the second B finds no write "
           "waiting for its ID"),
     XFail(('aw',), 'src', (NO_ASSERT,), lambda c: inReset(c) and c.delay > 0,
           '[Q_ASSERT][p.dut.ch] transaction id not valid (axi_write_channel.h)',
-          "axi_write_bfm.h:123-137 sends the model a dummy W beat at reset for the burst of the last AW, "
-          "with wid 0 (line 134) against an AW with ID 1"),
+          "axi_write_bfm.h:126-140 sends the model a dummy W beat at reset for the burst of the last AW, "
+          "with wid 0 (line 137) against an AW with ID 1"),
     XFail(('aw',), 'src', (ORDER,), lambda c: inReset(c) and c.delay > 0, 'hs missing, model missing',
-          f"axi_write_bfm.h:111 sendAddr() {WRITE_SRC_DELAY}, and the assert above stops the run"),
+          "the assert above stops the run before every AW is in"),
     XFail(('ar',), 'src', (DONE,), inReset, 'hang', f"axi_read_bfm.h:91-92 {RESET_SPIN}"),
     XFail(('aw',), 'src', (DONE,), resetNoDelay, 'hang', f"axi_write_bfm.h:98-99 {RESET_SPIN}"),
     XFail(('w',), 'src', (DONE,), resetNoDelay, 'hang',
-          f"axi_write_bfm.h:145-146 {RESET_SPIN}"),
+          f"axi_write_bfm.h:148-149 {RESET_SPIN}"),
 
     XFail(('apb',), 'src', ('src completes on the edge after the model',), anyCase, '+1 clock',
           "apb_bfm.h:61 waits an edge after requestWithResponse() returns before line 62 raises pready, so "
@@ -512,11 +494,16 @@ def handshakeChecks(case, ev, output):
                   f"read {calls[0][1]}, vld {vld[0][1]}, first handshake {hsTimes[0]}, expected {first}",
                   f"{(hsTimes[0] - first) // PERIOD:+d} clock")
     if case.dir == 'src' and case.rtl == 'reset':
-        # Holds for today's BFMs, which leave ready high into a reset edge. An
-        # _ack src BFM samples the request alone.
-        seen = 'rstvld' if case.family in TWO_PHASE else 'rsths'
-        check(case, 'the reset meets a beat on the wire', seen in ev, f"reset edges with the beat on the wire: "
-              f"{ev.get(seen, [])}")
+        # A src BFM has ready high at a reset edge unless the edge falls between
+        # a handshake and the return of that beat's delayed model call. Ready
+        # is low then, so the reset meets the next beat with vld alone. An _ack
+        # src BFM samples the request alone.
+        if case.family in TWO_PHASE:
+            met = ev.get('rstvld', [])
+        else:
+            met = ev.get('rsths', []) + [(v, t) for v, t in ev.get('rstvld', [])
+                                         if any(h < t < r for (_, h), (_, r) in zip(hs, rets))]
+        check(case, 'the reset meets a beat on the wire', bool(met), f"reset edges with the beat on the wire: {met}")
     if case.bp == 'none':
         line = STALL if case.dir == 'dst' else SC_STALL
         check(case, 'no-backpressure check reports the stall', f'p.dut.bfm:{line} at ' in output,
