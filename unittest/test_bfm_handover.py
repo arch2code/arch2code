@@ -286,22 +286,22 @@ EXPECTED_FAILURES = [
           "the RTL completes one edge late"),
 ]
 
-# The _ack BFMs: (family, src lines, dst lines, dst throughput line, how a src reset run loses order, how a
-# dst reset run loses order).
+# The _ack BFMs: (family, src lines, dst lines, how a src reset run loses order, how a dst reset run loses
+# order).
 ACK_BFMS = (
-    ('pushack', 'push_ack_bfm.h:39-46', 'push_ack_bfm.h:76-83', None,
+    ('pushack', 'push_ack_bfm.h:39-46', 'push_ack_bfm.h:76-83',
      'hs missing, model missing+duplicate', 'hs missing, model ok'),
-    ('popack', 'pop_ack_bfm.h:37-45', 'pop_ack_bfm.h:77-85', 'pop_ack_bfm.h:85',
+    ('popack', 'pop_ack_bfm.h:37-45', 'pop_ack_bfm.h:77-84',
      'hs missing, model ok', 'hs missing, model missing+duplicate'),
-    ('notifyack', 'notify_ack_bfm.h:37-43', 'notify_ack_bfm.h:71-76', None,
+    ('notifyack', 'notify_ack_bfm.h:37-43', 'notify_ack_bfm.h:71-76',
      'hs missing, model ok', 'hs missing, model ok'),
-    ('reqack', 'req_ack_bfm.h:39-48', 'req_ack_bfm.h:79-86', 'req_ack_bfm.h:86',
+    ('reqack', 'req_ack_bfm.h:39-48', 'req_ack_bfm.h:79-85',
      'hs missing, model missing+duplicate', 'hs missing, model missing+duplicate'),
 )
 ACK_LATE = "samples the request only on a clock edge, so the model gets it an edge after the RTL raises it"
 ACK_RATE = "drops ack for the edge after each transfer and then waits an edge to sample the request again"
 ACK_RESET = "never reads rst_n after the first reset: it serves a request it samples on a reset edge"
-for fam, srcLines, dstLines, dstRate, srcOrder, dstOrder in ACK_BFMS:
+for fam, srcLines, dstLines, srcOrder, dstOrder in ACK_BFMS:
     EXPECTED_FAILURES += [
         XFail((fam,), 'src', ('src latency',), lambda c: c.rtl in ('always', 'waiting'), '+1 clock',
               f"{srcLines} {ACK_LATE}"),
@@ -312,9 +312,6 @@ for fam, srcLines, dstLines, dstRate, srcOrder, dstOrder in ACK_BFMS:
         XFail((fam,), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"{dstLines} {RESET_DST}"),
         XFail((fam,), 'dst', (ORDER,), inReset, dstOrder, f"{dstLines} {RESET_DST}"),
     ]
-    if dstRate:
-        EXPECTED_FAILURES.append(XFail((fam,), 'dst', ('throughput',), anyCase, None,
-                                       f"{dstRate} waits an edge after the model's ack, one transfer per two clocks"))
 
 MEM_RESET = "reads rst_n only before the first reset, never in its loop"
 APB_ACCESS = ("waits until it samples psel and penable together, an edge after the setup phase has put the "

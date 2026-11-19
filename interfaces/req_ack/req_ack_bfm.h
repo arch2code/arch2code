@@ -83,7 +83,6 @@ public:
             // Drop req before a delayed ack() blocks, as push_ack_dst_bfm drops push.
             hdl_if_p->req = false;
             if_p->ack(rdata);
-            wait(clk.posedge_event());
         }
     }
 

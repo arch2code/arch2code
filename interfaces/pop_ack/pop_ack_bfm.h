@@ -82,7 +82,6 @@ public:
             // see pop on them, or it pops the next entry.
             hdl_if_p->pop = false;
             if_p->ack(rdata);
-            wait(clk.posedge_event());
         }
     }
 
