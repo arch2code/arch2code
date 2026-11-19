@@ -3262,6 +3262,7 @@ class projectOpen:
         for connSource in self.connMapping['connectDouble']:
             for connVal in ret['connectDouble'][connSource].values():
                 connVal['endsPerChannel'] = self._endsPerChannel(connVal)
+                connVal['srcEndsPerElement'] = self._srcEndsPerElement(connVal)
 
     @staticmethod
     def _endsPerChannel(connVal):
@@ -3273,6 +3274,17 @@ class projectOpen:
             return len(connVal['ends'])
         return max(sum(1 for end in connVal['ends'].values() if end['indexValue'] in (None, k))
                    for k in range(connVal['arrayCountValue']))
+
+    @staticmethod
+    def _srcEndsPerElement(connVal):
+        """The src ends of each element of an array channel, None for a
+        scalar channel. An ro array split by index rows has a different
+        child driving each element."""
+        if connVal['arrayCountValue'] is None:
+            return None
+        return [[end for end in connVal['ends'].values()
+                 if end['direction'] == 'src' and end['indexValue'] in (None, k)]
+                for k in range(connVal['arrayCountValue'])]
 
 
     def getBDPorts(self, ret):

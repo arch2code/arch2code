@@ -353,4 +353,4 @@ def channelConstructor(args, prj, data, line, sig):
                 print(f"warning: interface {line['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
 
     return intf_gen_utils.sc_channel_init(line['name'], f'("{line["name"]}"+name).c_str()', line['arrayCount'],
-                                          sig['channel_type'], f', srcName{backpressure_arg}{extra}{auto_mode}')
+                                          sig['channel_type'], ['srcName'], f'{backpressure_arg}{extra}{auto_mode}')

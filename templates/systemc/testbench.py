@@ -320,11 +320,13 @@ def ext_sec_init(args, prj, data):
 
         for channelType in data['connectDouble']:
             for connKey,data_ in data['connectDouble'][channelType].items():
-                srcInstances = [v['instance'] for v in data_['ends'].values() if v['direction'] == "src"]
-                if len(srcInstances) != 1:
-                    printError(f"Expected exactly one src instance for connection {connKey!r} ({channelType}), found {len(srcInstances)}")
-                    exit(warningAndErrorReport())
-                srcInst = srcInstances[0]
+                srcEnds = [v for v in data_['ends'].values() if v['direction'] == "src"]
+                srcPerElement = [srcEnds] if data_['srcEndsPerElement'] is None else data_['srcEndsPerElement']
+                for ends in srcPerElement:
+                    if len(ends) != 1:
+                        printError(f"Expected exactly one src instance per element for connection {connKey!r} ({channelType}), found {len(ends)}")
+                        exit(warningAndErrorReport())
+                srcs = [f'"{ends[0]["instance"]}"' for ends in srcPerElement]
                 chnlData = sc_gen_block_channels(data_, prj, data)
                 # The external pseudo-block re-creates the DUT's channels, so it must
                 # repeat the DUT's multicycle arguments. A channel constructed
@@ -334,7 +336,7 @@ def ext_sec_init(args, prj, data):
                     data_, chnlData['multicycle_types'], prj, warn=False)
                 out.append('   ,' + sc_channel_init(
                     chnlData['chnl_name'], f'"{chnlData["chnl_name"]}"', data_['arrayCount'],
-                    chnlData['channel_type'], f', "{srcInst}"{chnlData["backpressure_arg"]}{extra}{autoMode}'))
+                    chnlData['channel_type'], srcs, f'{chnlData["backpressure_arg"]}{extra}{autoMode}'))
                 # Mirror the DUT's cross-interface thunker emission inside the
                 # external pseudo-block. Without these entries the consumer-side
                 # port whose interface is bridged by a thunker in the DUT would

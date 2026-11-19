@@ -125,12 +125,14 @@ def constructorInit(args, prj, data):
             chnl_table[chnl] = intf_gen_utils.sc_gen_block_channels(chnlInfo, prj, data)
 
             channelBase = chnl_table[chnl]['chnl_name']
-            srcInstances = [v.get("instanceType") or chnlInfo.get("block", "") for v in chnlInfo["ends"].values() if v["direction"] == "src"]
+            srcEnds = [v for v in chnlInfo["ends"].values() if v["direction"] == "src"]
             dstInstances = [v.get("instanceType") or chnlInfo.get("block", "") for v in chnlInfo["ends"].values() if v["direction"] == "dst"]
-            if len(srcInstances) != 1 or len(dstInstances) == 0:
-                printError(f"connection {chnl!r} ({channelType}) needs exactly one src and at least one dst end")
+            srcPerElement = [srcEnds] if chnlInfo['srcEndsPerElement'] is None else chnlInfo['srcEndsPerElement']
+            if any(len(ends) != 1 for ends in srcPerElement) or len(dstInstances) == 0:
+                printError(f"connection {chnl!r} ({channelType}) needs exactly one src end per element and at least one dst end")
                 exit(warningAndErrorReport())
-            src, dst = srcInstances[0], dstInstances[0]
+            srcs = [f'"{ends[0].get("instanceType") or chnlInfo.get("block", "")}"' for ends in srcPerElement]
+            dst = dstInstances[0]
             uniqueDstInstances = list(dict.fromkeys(dstInstances))
             if len(uniqueDstInstances) > 1:
                 printWarning(
@@ -157,10 +159,10 @@ def constructorInit(args, prj, data):
             else:
                 defaultValue = ''
 
-            ctorArgs = f', "{ src }"{chnl_table[chnl]["backpressure_arg"]}{extra}{autoMode}{defaultValue}'
+            ctorArgs = f'{chnl_table[chnl]["backpressure_arg"]}{extra}{autoMode}{defaultValue}'
             out.append('        ,' + intf_gen_utils.sc_channel_init(
                 chnl_table[chnl]['chnl_name'], f'"{ channelTitle }"', chnlInfo['arrayCount'],
-                chnl_table[chnl]['channel_type'], ctorArgs))
+                chnl_table[chnl]['channel_type'], srcs, ctorArgs))
 
             # Thunker entries are emitted after subBlockInstances below to
             # match classDecl.py declaration order, preserving the original

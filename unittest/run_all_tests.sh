@@ -807,13 +807,13 @@ python3 test_register_array_layout.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: a testbench External re-creates a whole register array's channel as a vector"
+echo "Test Suite ${idx}: a testbench External re-creates a register array's channel as a vector, with each element's source"
 echo "------------------------------------------------------------------------"
 python3 test_register_array_tb_external.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: a split ext array generates, a register handler registers in address order, and a child port does not depend on row order"
+echo "Test Suite ${idx}: split ext and ro arrays generate, a register handler registers in address order, and a child port does not depend on row order"
 echo "------------------------------------------------------------------------"
 python3 test_register_array_generation.py || FAILED=1
 idx=$((idx+1))

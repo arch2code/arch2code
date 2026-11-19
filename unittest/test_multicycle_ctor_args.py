@@ -143,7 +143,7 @@ def _test_testbench_emitters_route_through_the_helper():
 
     # An owning-block argument closing the constructor immediately is a
     # constructor emitted without the multicycle arguments.
-    truncated = re.findall(r'"\{(?:instName|srcInst)\}"(?:\)|\')', template)
+    truncated = re.findall(r'"\{instName\}"(?:\)|\')', template)
     if truncated:
         print(f"FAIL: {len(truncated)} channel constructor emission(s) close "
               "right after the block name, so they carry no multicycle "
@@ -151,10 +151,11 @@ def _test_testbench_emitters_route_through_the_helper():
         return False
 
     # Both emitters (the connectDouble loop and the connectionMaps loop in
-    # ext_sec_init) must be present. The backpressure argument, when the
-    # interface takes one, sits between the block name and the multicycle
-    # arguments.
-    complete = re.findall(r'"\{(?:instName|srcInst)\}"(?:\{[^{}]+\})?\{extra\}\{autoMode\}(?:\)|\'\)\))',
+    # ext_sec_init) must be present. The connectDouble loop passes its source
+    # names to sc_channel_init apart from the other arguments. The
+    # backpressure argument, when the interface takes one, sits between the
+    # block name and the multicycle arguments.
+    complete = re.findall(r'(?:"\{instName\}"|srcs, f\')(?:\{[^{}]+\})?\{extra\}\{autoMode\}(?:\)|\'\)\))',
                           template)
     if len(complete) < 2:
         print(f"FAIL: expected 2 channel constructor emissions carrying the "

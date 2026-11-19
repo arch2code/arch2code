@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generated output for register arrays.
 
-Three fixtures, each scaffolded and fully regenerated outside the repository
+Each fixture is scaffolded and fully regenerated outside the repository
 working tree:
 
 - An ext array whose two elements go to two instances of one child block, one
@@ -9,6 +9,11 @@ working tree:
   and one child per element, but each element channel has two. The owner
   model, the owner RTL and the child's Verilator wrappers must generate, and
   the owner binds each child to its own element.
+- An ro array whose two elements go to two child instances, one `index:` row
+  each, so each element has its own src end. Once with both instances of one
+  block, once with instances of two blocks. The owner model, the owner RTL and
+  the children's Verilator wrappers must generate, and the owner binds each
+  child to its own element.
 - A register handler model whose block owns a `regType: memory` register and
   a larger rw array. The array is placed below the memory, and the handler
   registers its address ranges in ascending order, because addressMap asserts
@@ -65,6 +70,15 @@ registerConnections:
     - { register: extArr, block: owner, instance: uF0, index: 0 }
     - { register: extArr, block: owner, instance: uF1, index: 1 }
 """
+
+SPLIT_RO = SPLIT_EXT.replace('regType: ext', 'regType: ro').replace('extArr', 'roArr') \
+    .replace('ext array split', 'ro array split')
+
+SPLIT_RO_BLOCKS = SPLIT_RO.replace(
+    render_plain_block('child', '        hasVl: true\n'),
+    render_plain_block('childA', '        hasVl: true\n') + render_plain_block('childB', '        hasVl: true\n')) \
+    .replace('uF0:        { container: owner, instanceType: child }', 'uF0:        { container: owner, instanceType: childA }') \
+    .replace('uF1:        { container: owner, instanceType: child }', 'uF1:        { container: owner, instanceType: childB }')
 
 MEMORY_BELOW_ARRAY = HEAD + COMMON_BLOCKS + render_leaf('owner') + render_plain_block('child') \
     + COMMON_INSTANCES + """\
@@ -169,6 +183,25 @@ def check_split_ext(fixture):
             raise AssertionError(f"owner RTL does not bind `{bind}` once:\n{rtl}")
 
 
+def check_split_ro(design, children):
+    def check(fixture):
+        emitted = generate(fixture, design)
+        model = emitted_text(emitted, 'owner.cppm')
+        for bind in ('uF0->roArr(roArr[0]);', 'uF1->roArr(roArr[1]);', 'u_owner_regs->roArr.bind(roArr);'):
+            if bind not in model:
+                raise AssertionError(f"owner model does not bind `{bind}`:\n{model}")
+        rtl = emitted_text(emitted, 'owner.sv')
+        for child, inst, index in ((children[0], 'uF0', 0), (children[1], 'uF1', 1)):
+            if not re.search(rf'{child} {inst} \(\s*\.roArr\s*\(roArr\[{index}\]\)', rtl):
+                raise AssertionError(f"owner RTL does not bind {inst} to roArr[{index}]:\n{rtl}")
+        for child in dict.fromkeys(children):
+            wrapper = emitted_text(emitted, f'{child}_hdl_sc_wrapper.h')
+            if 'status_src_bfm<cfgRegSt' not in wrapper:
+                raise AssertionError(f"{child} Verilator wrapper does not drive roArr:\n{wrapper}")
+            emitted_text(emitted, f'{child}_hdl_sv_wrapper.sv')
+    return check
+
+
 def check_registration_order(fixture):
     emitted = generate(fixture, MEMORY_BELOW_ARRAY, INDEX_SHARED)
     handler = emitted_text(emitted, 'owner_regs.cppm')
@@ -211,6 +244,10 @@ def run_case(label, check):
 def main():
     results = [
         run_case("an ext array split by index rows generates, each child bound to its element", check_split_ext),
+        run_case("an ro array split by index rows across one block generates, each child bound to its element",
+                 check_split_ro(SPLIT_RO, ('child', 'child'))),
+        run_case("an ro array split by index rows across two blocks generates, each child bound to its element",
+                 check_split_ro(SPLIT_RO_BLOCKS, ('childA', 'childB'))),
         run_case("the register handler model registers address ranges in ascending order", check_registration_order),
         run_case("a child port's count spelling does not depend on registerConnections order", check_count_spelling_order),
     ]

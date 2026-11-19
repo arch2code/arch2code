@@ -314,14 +314,19 @@ def sc_channel_bind(conn_data, end_data, port_ref, channel_ref):
         return f'{port_ref}.bind({channel_ref})'
     return f'{port_ref}({channel_ref}[{end_data["indexValue"]}])'
 
-def sc_channel_init(member, name_expr, array_count, channel_type, ctor_args):
-    # Member initializer of a channel. ctor_args follows the name, each
-    # argument with a leading comma. The elements of a channel vector take
-    # those arguments too, so a creator builds each one.
+def sc_channel_init(member, name_expr, array_count, channel_type, srcs, ctor_args):
+    # Member initializer of a channel. srcs holds the source name expression
+    # of each element, one entry for a scalar channel. ctor_args follows the
+    # source name, each argument with a leading comma. The elements of a
+    # channel vector take those arguments too, so a creator builds each one.
     if array_count is None:
-        return f'{member}({name_expr}{ctor_args})'
-    return (f'{member}({name_expr}, {array_count}, '
-            f'[&](const char * nm, size_t) {{ return new {channel_type}(nm{ctor_args}); }})')
+        return f'{member}({name_expr}, {srcs[0]}{ctor_args})'
+    if len(set(srcs)) == 1:
+        return (f'{member}({name_expr}, {array_count}, '
+                f'[&](const char * nm, size_t) {{ return new {channel_type}(nm, {srcs[0]}{ctor_args}); }})')
+    return (f'{member}({name_expr}, {array_count}, [&](const char * nm, size_t i) {{ '
+            f'const char * srcNames[] = {{{", ".join(srcs)}}}; '
+            f'return new {channel_type}(nm, srcNames[i]{ctor_args}); }})')
 
 def sc_vector_of(type_name, count):
     # The member type of one interface, or of a register array's interfaces.
