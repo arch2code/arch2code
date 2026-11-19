@@ -17,6 +17,7 @@ module blockBRegs
         status_if.src rwArr [REGARR_N],
         external_reg_if.src extArr [REGARR_N],
         external_reg_if.src extFArr [EXTFARR_N],
+        status_if.dst roFArr [EXTFARR_N],
         memory_if.src blockBTable1,
         input clk,
         input rst_n
@@ -47,8 +48,12 @@ module blockBRegs
     localparam int unsigned REG_BLOCKB_EXTFARR_STRIDE = 32'h00000008; // extFArr element stride
     localparam int unsigned REG_BLOCKB_EXTFARR_0 = REG_BLOCKB_EXTFARR + 0 * REG_BLOCKB_EXTFARR_STRIDE; // extFArr[0]
     localparam int unsigned REG_BLOCKB_EXTFARR_1 = REG_BLOCKB_EXTFARR + 1 * REG_BLOCKB_EXTFARR_STRIDE; // extFArr[1]
-    localparam int unsigned REG_BLOCKB_RWD = 32'h00000190; // A Read Write register
-    localparam int unsigned REG_BLOCKB_ROBSIZE = 32'h00000198; // A Read Only register with a structure that has a definition from an included context
+    localparam int unsigned REG_BLOCKB_ROFARR = 32'h00000190; // A Read Only register array with one element per blockF instance
+    localparam int unsigned REG_BLOCKB_ROFARR_STRIDE = 32'h00000008; // roFArr element stride
+    localparam int unsigned REG_BLOCKB_ROFARR_0 = REG_BLOCKB_ROFARR + 0 * REG_BLOCKB_ROFARR_STRIDE; // roFArr[0]
+    localparam int unsigned REG_BLOCKB_ROFARR_1 = REG_BLOCKB_ROFARR + 1 * REG_BLOCKB_ROFARR_STRIDE; // roFArr[1]
+    localparam int unsigned REG_BLOCKB_RWD = 32'h000001a0; // A Read Write register
+    localparam int unsigned REG_BLOCKB_ROBSIZE = 32'h000001a8; // A Read Only register with a structure that has a definition from an included context
 
     dRegSt rwD_reg;
     logic rwD_reg_update_0;
@@ -95,6 +100,12 @@ module blockBRegs
 
     dRegSt extFArr_1_reg;
     assign extFArr_1_reg = extFArr[1].rdata;
+
+    dRegSt roFArr_0_reg;
+    assign roFArr_0_reg = roFArr[0].data;
+
+    dRegSt roFArr_1_reg;
+    assign roFArr_1_reg = roFArr[1].data;
 
     // blockBTable1
     bigSt nxt_blockBTable1_data, blockBTable1_data;
@@ -332,6 +343,14 @@ module blockBRegs
                 REG_BLOCKB_EXTFARR_1 : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(extFArr_1_reg[6:0]);
+                end
+                REG_BLOCKB_ROFARR_0 : begin
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = apbDataSt'(roFArr_0_reg[6:0]);
+                end
+                REG_BLOCKB_ROFARR_1 : begin
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = apbDataSt'(roFArr_1_reg[6:0]);
                 end
                 [REG_BLOCKB_BLOCKBTABLE1:REG_BLOCKB_BLOCKBTABLE1 + REG_BLOCKB_BLOCKBTABLE1_SIZE - 32'd4]: begin
                     case (3'(apb_addr - REG_BLOCKB_BLOCKBTABLE1))

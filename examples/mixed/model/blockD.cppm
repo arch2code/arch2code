@@ -85,6 +85,9 @@ blockD::blockD(sc_module_name blockName, const char * variant, blockBaseMode bbM
     ADD_TEST(test_mem_hier_blockd_read);
     SC_THREAD(blockBTableExtModel);
     SC_THREAD(blockBTable37BitModel);
+    for (auto & w : extWdata_) {
+        w.d = 0;
+    }
     for (size_t i = 0; i < REGARR_N; i++) {
         sc_spawn([this, i]() { extModel(i, extArr[i]); }, sc_gen_unique_name("extModel", false));
     }

@@ -17,6 +17,7 @@ import mixedBlockC_package::*;
     status_if.dst rwD,
     status_if.dst rwArr [REGARR_N],
     external_reg_if.dst extFArr,
+    status_if.src roFArr,
     input clk, rst_n
 );
 
@@ -48,5 +49,7 @@ end
 dRegSt extFWdata;
 `DFFEN(extFWdata, extFArr.wdata, |extFArr.write)
 assign extFArr.rdata.d = extFWdata.d + sevenBitT'(fred);
+
+assign roFArr.data.d = sevenBitT'(ROFARR_SEED + fred);
 
 endmodule: blockF

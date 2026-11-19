@@ -48,6 +48,9 @@ module blockF_hdl_sv_wrapper
     output bit [6:0] extFArr_rdata,
     input bit [1:0] extFArr_write,
 
+    // status_if.src
+    output bit [6:0] roFArr_data,
+
     input clk,
     input rst_n
 );
@@ -99,6 +102,11 @@ module blockF_hdl_sv_wrapper
     assign `A2C_HDL_BOUNDARY_DLY extFArr_rdata = extFArr.rdata;
     assign `A2C_HDL_BOUNDARY_DLY extFArr.write = extFArr_write;
 
+    // status_if.src
+    status_if #(.data_t(dRegSt)) roFArr();
+
+    assign `A2C_HDL_BOUNDARY_DLY roFArr_data = roFArr.data;
+
     blockF #(.bob(bob), .fred(fred)) dut (
         .cStuffIf(cStuffIf), // rdy_vld_if.src
         .dStuffIf(dStuffIf), // rdy_vld_if.dst
@@ -107,6 +115,7 @@ module blockF_hdl_sv_wrapper
         .rwD(rwD), // status_if.dst
         .rwArr(rwArr), // status_if.dst [REGARR_N]
         .extFArr(extFArr), // external_reg_if.dst
+        .roFArr(roFArr), // status_if.src
         .clk(clk),
         .rst_n(rst_n)
     );

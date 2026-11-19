@@ -317,6 +317,16 @@ void cpu::test_reg_cpu_arr(void)
     apbDataSt data;
     bool ok = true;
 
+    // Out of reset blockD holds wdata 0 and rwArr is 0, so extArr element i reads back i.
+    for (uint32_t i = 0; i < REG_BLOCKB_EXTARR_COUNT; i++) {
+        addr.address = extAddr(i);
+        cpu_main->request(false, addr, data);
+        if ((data.data & D_MASK) != i) {
+            log_.logPrint(std::format("CPU extArr[{}] reset readback 0x{:x}, expected 0x{:x}", i, data.data & D_MASK, i), LOG_ALWAYS);
+            errorCode::fail("extArr reset readback mismatch");
+            ok = false;
+        }
+    }
     for (uint32_t i = 0; i < REG_BLOCKB_RWARR_COUNT; i++) {
         addr.address = rwAddr(i);
         data.data = RWARR_SEED + i;
@@ -392,8 +402,20 @@ void cpu::test_reg_cpu_arr(void)
             ok = false;
         }
     }
+    // uBlockF<i> drives roFArr element i with ROFARR_SEED + fred, and fred is i, as for extFArr.
+    auto roFAddr = [](uint32_t i) { return BASE_ADDR_UBLOCKB + REG_BLOCKB_ROFARR + i * REG_BLOCKB_ROFARR_STRIDE; };
+    for (uint32_t i = 0; i < REG_BLOCKB_ROFARR_COUNT; i++) {
+        addr.address = roFAddr(i);
+        cpu_main->request(false, addr, data);
+        const uint32_t expect = (ROFARR_SEED + i) & D_MASK;
+        if ((data.data & D_MASK) != expect) {
+            log_.logPrint(std::format("CPU roFArr[{}] readback 0x{:x}, expected 0x{:x}", i, data.data & D_MASK, expect), LOG_ALWAYS);
+            errorCode::fail("roFArr readback mismatch");
+            ok = false;
+        }
+    }
     if (ok) {
-        log_.logPrint("CPU register array write/readback success (rwArr[0..3], extArr[0..3], extFArr[0..1])", LOG_ALWAYS);
+        log_.logPrint("CPU register array write/readback success (rwArr[0..3], extArr[0..3], extFArr[0..1], roFArr[0..1])", LOG_ALWAYS);
     }
 }
 

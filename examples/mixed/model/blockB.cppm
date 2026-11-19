@@ -73,6 +73,8 @@ public:
     sc_vector< external_reg_channel< dRegSt > > extArr;
     // An External register array with one element per blockF instance
     sc_vector< external_reg_channel< dRegSt > > extFArr;
+    // A Read Only register array with one element per blockF instance
+    sc_vector< status_channel< dRegSt > > roFArr;
 
     //instances contained in block
     std::shared_ptr<blockDBase> uBlockD;
@@ -139,6 +141,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,rwArr("blockB_rwArr", REGARR_N, [&](const char * nm, size_t) { return new status_channel< dRegSt >(nm, "blockB", dRegSt::_packedSt(0x0)); })
         ,extArr("blockB_extArr", REGARR_N, [&](const char * nm, size_t) { return new external_reg_channel< dRegSt >(nm, "blockB", dRegSt::_packedSt(0x0)); })
         ,extFArr("blockB_extFArr", EXTFARR_N, [&](const char * nm, size_t) { return new external_reg_channel< dRegSt >(nm, "blockB", dRegSt::_packedSt(0x0)); })
+        ,roFArr("blockB_roFArr", EXTFARR_N, [&](const char * nm, size_t) { return new status_channel< dRegSt >(nm, "blockB", dRegSt::_packedSt(0x0)); })
         ,uBlockD(std::dynamic_pointer_cast<blockDBase>(instanceFactory::createInstance(name(), "uBlockD", "blockD", "", "mixed")))
         ,uBlockF0(std::dynamic_pointer_cast<blockFBase<mixed_blockFVariant0Config>>(instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0", "mixed.mixed_blockB.mixed_blockF")))
         ,uBlockF1(std::dynamic_pointer_cast<blockFBase<mixed_blockFVariant1Config>>(instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1", "mixed.mixed_blockB.mixed_blockF")))
@@ -195,6 +198,9 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     uBlockF0->extFArr(extFArr[0]);
     uBlockBRegs->extFArr.bind(extFArr);
     uBlockF1->extFArr(extFArr[1]);
+    uBlockF0->roFArr(roFArr[0]);
+    uBlockBRegs->roFArr.bind(roFArr);
+    uBlockF1->roFArr(roFArr[1]);
     // memory connections
     uBlockD->blockBTable1(blockBTable1_port1);
     blockBTable1.bindPort(blockBTable1_port1);

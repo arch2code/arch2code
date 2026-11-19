@@ -29,6 +29,8 @@ public:
     rdy_vld_out< seeSt > cStuffIf;
     // dStuffIf->uBlockF1: An interface for D
     rdy_vld_out< dSt > dSout;
+    // blockB->reg(roFArr) A Read Only register array with one element per blockF instance
+    status_out< dRegSt > roFArr;
 
     // dst ports
     // uBlockD->dStuffIf: An interface for D
@@ -46,6 +48,7 @@ public:
     blockFBase(std::string name, const char * variant) :
         cStuffIf("cStuffIf")
         ,dSout("dSout")
+        ,roFArr("roFArr")
         ,dStuffIf("dStuffIf")
         ,dSin("dSin")
         ,rwD("rwD")
@@ -56,6 +59,7 @@ public:
     {
         cStuffIf->setTimed(nsec, mode);
         dSout->setTimed(nsec, mode);
+        roFArr->setTimed(nsec, mode);
         dStuffIf->setTimed(nsec, mode);
         dSin->setTimed(nsec, mode);
         rwD->setTimed(nsec, mode);
@@ -67,6 +71,7 @@ public:
     {
         cStuffIf->setLogging(verbosity);
         dSout->setLogging(verbosity);
+        roFArr->setLogging(verbosity);
         dStuffIf->setLogging(verbosity);
         dSin->setLogging(verbosity);
         rwD->setLogging(verbosity);
@@ -83,6 +88,8 @@ public:
     rdy_vld_in< seeSt > cStuffIf;
     // dStuffIf->uBlockF1: An interface for D
     rdy_vld_in< dSt > dSout;
+    // blockB->reg(roFArr) A Read Only register array with one element per blockF instance
+    status_in< dRegSt > roFArr;
 
     // dst ports
     // uBlockD->dStuffIf: An interface for D
@@ -100,6 +107,7 @@ public:
     blockFInverted(std::string name) :
         cStuffIf(("cStuffIf"+name).c_str())
         ,dSout(("dSout"+name).c_str())
+        ,roFArr(("roFArr"+name).c_str())
         ,dStuffIf(("dStuffIf"+name).c_str())
         ,dSin(("dSin"+name).c_str())
         ,rwD(("rwD"+name).c_str())
@@ -110,6 +118,7 @@ public:
     {
         cStuffIf->setTimed(nsec, mode);
         dSout->setTimed(nsec, mode);
+        roFArr->setTimed(nsec, mode);
         dStuffIf->setTimed(nsec, mode);
         dSin->setTimed(nsec, mode);
         rwD->setTimed(nsec, mode);
@@ -121,6 +130,7 @@ public:
     {
         cStuffIf->setLogging(verbosity);
         dSout->setLogging(verbosity);
+        roFArr->setLogging(verbosity);
         dStuffIf->setLogging(verbosity);
         dSin->setLogging(verbosity);
         rwD->setLogging(verbosity);
@@ -137,6 +147,8 @@ public:
     rdy_vld_channel< seeSt > cStuffIf;
     // An interface for D
     rdy_vld_channel< dSt > dSout;
+    // A Read Only register array with one element per blockF instance
+    status_channel< dRegSt > roFArr;
 
     // dst ports
     // An interface for D
@@ -154,6 +166,7 @@ public:
     blockFChannels(std::string name, std::string srcName) :
     cStuffIf(("cStuffIf"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,dSout(("dSout"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,roFArr(("roFArr"+name).c_str(), srcName)
     ,dStuffIf(("dStuffIf"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,dSin(("dSin"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,rwD(("rwD"+name).c_str(), srcName)
@@ -166,6 +179,8 @@ public:
         b->cStuffIf( cStuffIf );
         a->dSout( dSout );
         b->dSout( dSout );
+        a->roFArr( roFArr );
+        b->roFArr( roFArr );
         a->dStuffIf( dStuffIf );
         b->dStuffIf( dStuffIf );
         a->dSin( dSin );

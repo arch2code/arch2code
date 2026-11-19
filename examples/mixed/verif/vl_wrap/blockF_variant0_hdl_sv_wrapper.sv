@@ -48,6 +48,9 @@ module blockF_variant0_hdl_sv_wrapper
     output bit [6:0] extFArr_rdata,
     input bit [1:0] extFArr_write,
 
+    // status_if.src
+    output bit [6:0] roFArr_data,
+
     input clk,
     input rst_n
 );
@@ -75,6 +78,7 @@ module blockF_variant0_hdl_sv_wrapper
         .extFArr_wdata(extFArr_wdata),
         .extFArr_rdata(extFArr_rdata),
         .extFArr_write(extFArr_write),
+        .roFArr_data(roFArr_data),
         .clk(clk),
         .rst_n(rst_n)
     );

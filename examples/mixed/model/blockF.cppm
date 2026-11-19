@@ -43,6 +43,7 @@ public:
     using blockFBase<Config>::rwD;
     using blockFBase<Config>::rwArr;
     using blockFBase<Config>::extFArr;
+    using blockFBase<Config>::roFArr;
 
 
     memories mems;
@@ -83,6 +84,7 @@ blockF<Config>::blockF(sc_module_name blockName, const char * variant, blockBase
         sc_spawn([this, i]() { rwWatch(i, rwArr[i]); }, sc_gen_unique_name("rwWatch", false));
     }
     SC_THREAD(extFModel);
+    sc_spawn([this]() { dRegSt v; v.d = (ROFARR_SEED + fred) & D_MASK; roFArr->write(v); }, sc_gen_unique_name("roFDrive", false));
 };
 
 template<typename Config>

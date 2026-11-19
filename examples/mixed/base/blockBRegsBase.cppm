@@ -45,6 +45,8 @@ public:
     apb_in< apbAddrSt, apbDataSt > apbReg;
     // blockB->reg(roBsize) A Read Only register with a structure that has a definition from an included context
     status_in< bSizeRegSt > roBsize;
+    // blockB->reg(roFArr) A Read Only register array with one element per blockF instance
+    sc_vector< status_in< dRegSt > > roFArr;
 
 
     blockBRegsBase(std::string name, const char * variant) :
@@ -57,6 +59,7 @@ public:
         ,blockBTable1("blockBTable1")
         ,apbReg("apbReg")
         ,roBsize("roBsize")
+        ,roFArr("roFArr", EXTFARR_N)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -69,6 +72,7 @@ public:
         blockBTable1->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
+        for (auto & p : roFArr) p->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -82,6 +86,7 @@ public:
         blockBTable1->setLogging(verbosity);
         apbReg->setLogging(verbosity);
         roBsize->setLogging(verbosity);
+        for (auto & p : roFArr) p->setLogging(verbosity);
     };
 };
 export class blockBRegsInverted : public virtual blockPortBase
@@ -108,6 +113,8 @@ public:
     apb_out< apbAddrSt, apbDataSt > apbReg;
     // blockB->reg(roBsize) A Read Only register with a structure that has a definition from an included context
     status_out< bSizeRegSt > roBsize;
+    // blockB->reg(roFArr) A Read Only register array with one element per blockF instance
+    sc_vector< status_out< dRegSt > > roFArr;
 
 
     blockBRegsInverted(std::string name) :
@@ -120,6 +127,7 @@ public:
         ,blockBTable1(("blockBTable1"+name).c_str())
         ,apbReg(("apbReg"+name).c_str())
         ,roBsize(("roBsize"+name).c_str())
+        ,roFArr(("roFArr"+name).c_str(), EXTFARR_N)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -132,6 +140,7 @@ public:
         blockBTable1->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
+        for (auto & p : roFArr) p->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -145,6 +154,7 @@ public:
         blockBTable1->setLogging(verbosity);
         apbReg->setLogging(verbosity);
         roBsize->setLogging(verbosity);
+        for (auto & p : roFArr) p->setLogging(verbosity);
     };
 };
 export class blockBRegsChannels
@@ -171,6 +181,8 @@ public:
     apb_channel< apbAddrSt, apbDataSt > apbReg;
     // A Read Only register with a structure that has a definition from an included context
     status_channel< bSizeRegSt > roBsize;
+    // A Read Only register array with one element per blockF instance
+    sc_vector< status_channel< dRegSt > > roFArr;
 
 
     blockBRegsChannels(std::string name, std::string srcName) :
@@ -183,6 +195,7 @@ public:
     ,blockBTable1(("blockBTable1"+name).c_str(), srcName)
     ,apbReg(("apbReg"+name).c_str(), srcName)
     ,roBsize(("roBsize"+name).c_str(), srcName)
+    ,roFArr(("roFArr"+name).c_str(), EXTFARR_N, [&](const char * nm, size_t) { return new status_channel< dRegSt >(nm, srcName); })
     {};
     void bind( blockBRegsBase *a, blockBRegsInverted *b)
     {
@@ -204,6 +217,8 @@ public:
         b->apbReg( apbReg );
         a->roBsize( roBsize );
         b->roBsize( roBsize );
+        a->roFArr.bind( roFArr );
+        b->roFArr.bind( roFArr );
     };
 };
 
