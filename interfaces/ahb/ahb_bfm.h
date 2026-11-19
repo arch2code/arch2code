@@ -167,7 +167,7 @@ public:
 
     // Ends each data phase on an edge with HREADYOUT. complete() acts on the
     // last request received, which after a posted write may already be the
-    // next one, so a posted write is not completed.
+    // next one, so the thread does not complete a posted write.
     void data_thread() {
         while (true) {
             while (!data_pending) {

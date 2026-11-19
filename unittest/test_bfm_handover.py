@@ -151,6 +151,10 @@ def resetNoDelay(case):
     return case.rtl == 'reset' and case.delay == 0
 
 
+def resetDelayed(case):
+    return case.rtl == 'reset' and case.delay > 0
+
+
 def resetLate(case):
     return case.rtl == 'resetlate'
 
@@ -310,23 +314,27 @@ for fam, srcLines, dstLines, srcOrder, dstOrder in ACK_BFMS:
     ]
 
 MEM_RESET = "reads rst_n only before the first reset, never in its loop"
-AHB_SAMPLE = ("samples HWDATA, and sends a write's request, on the edge after its address phase. The data is on "
-              "the wire from the timestep that edge's data phase starts, but a BFM reads RTL signals only on edges")
+AHB_SAMPLE = ("samples HWDATA, and sends a write's request, on the edge after its address phase, so every write "
+              "takes a wait state. This is a limit of reading RTL signals only at an edge, not a defect a later "
+              "change to this BFM removes: HWDATA is on the wire from the timestep the data phase starts, and "
+              "reading it there needs a same-timestep settle event, which the farm probe showed takes a "
+              "per-simulator VPI callback")
 BUS_RESET = "never reads rst_n after the first reset, so a transfer in flight at the reset is lost or completes later"
+APB_SRC_RESET = (f"apb_bfm.h:44-70 {BUS_RESET}: the model answers operation 0 after the reset has cut it off, and "
+                 "serves the RTL's repeat of it after reset as operation 1")
 EXPECTED_FAILURES += [
-    XFail(('apb',), 'dst', ('served once',), inReset, None, f"apb_bfm.h:96-139 {BUS_RESET}"),
-    XFail(('apb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'), inReset, None,
-          f"apb_bfm.h:44-70 {BUS_RESET}: the model serves a transfer the reset cuts off, a delayed one or, at "
-          "delay 0, one whose setup phase line 54 samples on a reset edge, and serves the RTL's repeat of it as "
-          "the next"),
+    XFail(('apb',), 'dst', ('served once',), inReset, None, f"apb_bfm.h:97-140 {BUS_RESET}"),
+    XFail(('apb',), 'src', ('served once',), resetDelayed, 'RTL 4/3, model 4', APB_SRC_RESET),
+    XFail(('apb',), 'src', ('values',), resetDelayed, None, APB_SRC_RESET),
+    XFail(('apb',), 'src', ('an error reaches the RTL on its own transfer',), resetDelayed, '[0, 0, 0]', APB_SRC_RESET),
     XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:138-188 {BUS_RESET}"),
     XFail(('ahb',), 'src', ('throughput',), anyCase, '[1, 2] edges',
-          f"ahb_bfm.h:82-84 {AHB_SAMPLE}, so each write takes a wait state. A read takes none"),
+          f"ahb_bfm.h:82-84 {AHB_SAMPLE}. A read takes no wait state"),
     XFail(('ahb',), 'src', ('src latency',), lambda c: c.rtl == 'always', '+10 ns', f"ahb_bfm.h:83 {AHB_SAMPLE}"),
     XFail(('ahb',), 'src', ('src latency',), lambda c: c.rtl == 'parked', '+5 ns', f"ahb_bfm.h:83 {AHB_SAMPLE}"),
     XFail(('ahb',), 'src', ('src read latency',), anyCase, '+10 ns',
           f"the read's address phase waits out the wait state of the write before it, as ahb_bfm.h:83 {AHB_SAMPLE}. "
-          "Line 98 takes the read on the edge HREADY rises"),
+          "Line 98 takes the read on the first edge that samples HREADY high"),
     XFail(('ahb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'), inReset, None,
           f"ahb_bfm.h:74-100 {BUS_RESET}; line 98 takes an address phase on a reset edge and sends it to the model"),
     XFail(('mem',), 'dst', ('served once',), inReset, 'RTL 2/2, model 4',
@@ -495,8 +503,8 @@ SRC_VALUES = [0, 0x11, 0, 0x22]
 MIN_GAP = {'mem': PERIOD, 'apb': 2 * PERIOD, 'ahb': PERIOD}
 # An RTL master's request reaches the model in the timestep of the edge after
 # the master drives it: the memory access, the apb setup phase, or the ahb
-# address phase. An ahb write's data goes on the wire in that timestep, as its
-# data phase starts, so the model can answer in time for a zero-wait transfer.
+# address phase. An ahb write's data goes on the wire only after that edge, and
+# a BFM reads it on the next one, so every ahb src write takes a wait state.
 ERROR_OPS = [0, 1, 1, 0]
 
 

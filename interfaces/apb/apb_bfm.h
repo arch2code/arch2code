@@ -49,9 +49,10 @@ public:
             hdl_if_p->pslverr = false;
             hdl_if_p->pready = false;
             hdl_if_p->prdata = VL_DATA_T(0);
-            // The edge that samples a setup phase ends it and starts the
-            // access phase, which ends on the first edge after the model answers.
-            while ( !(hdl_if_p->psel && !hdl_if_p->penable )) {
+            // The edge that samples a setup phase out of reset ends it and
+            // starts the access phase, which ends on the first edge after the
+            // model answers.
+            while ( !(rst_n && hdl_if_p->psel && !hdl_if_p->penable )) {
                 wait(clk.posedge_event());
             }
             is_write = hdl_if_p->pwrite;
