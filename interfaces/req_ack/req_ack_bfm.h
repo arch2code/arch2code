@@ -80,8 +80,9 @@ public:
                 wait(clk.posedge_event());
             } while (!hdl_if_p->ack);
             rdata.sc_unpack(hdl_if_p->rdata);
-            if_p->ack(rdata);
+            // Drop req before a delayed ack() blocks, as push_ack_dst_bfm drops push.
             hdl_if_p->req = false;
+            if_p->ack(rdata);
             wait(clk.posedge_event());
         }
     }

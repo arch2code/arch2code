@@ -290,7 +290,10 @@ public:
             b_data.bid = (ID) hdl_if_p->bid.read().to_uint();
             b_data.bresp = (_axiResponseT) hdl_if_p->bresp.read().to_uint();
             if constexpr (hasOptionalPayload<BU>) { b_data.user.sc_unpack(hdl_if_p->buser); }
+            // Hold bready low while a delayed send blocks, as rdy_vld_src_bfm does with rdy.
+            hdl_if_p->bready = 0;
             if_p->sendRespCycle(b_data);
+            hdl_if_p->bready = 1;
             wait(clk.posedge_event());
         }
     }

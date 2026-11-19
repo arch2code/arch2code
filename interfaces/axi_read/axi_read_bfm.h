@@ -101,7 +101,10 @@ public:
                 std::lock_guard<std::mutex> lock(m_pending_mutex);
                 m_pending_r_beats = static_cast<int>(ar_data.arlen) + 1;
             }
+            // Hold arready low while a delayed send blocks, as rdy_vld_src_bfm does with rdy.
+            hdl_if_p->arready = 0;
             if_p->sendAddr(ar_data);
+            hdl_if_p->arready = 1;
             wait(clk.posedge_event());
         }
     }
@@ -226,7 +229,10 @@ public:
             r_data.rresp = (_axiResponseT) hdl_if_p->rresp.read().to_uint();
             r_data.rlast = (bool) hdl_if_p->rlast.read();
             if constexpr (hasOptionalPayload<RU>) { r_data.user.sc_unpack(hdl_if_p->ruser); }
+            // Hold rready low while a delayed send blocks, as rdy_vld_src_bfm does with rdy.
+            hdl_if_p->rready = 0;
             if_p->sendDataCycle(r_data);
+            hdl_if_p->rready = 1;
             wait(clk.posedge_event());
         }
     }
