@@ -1,0 +1,62 @@
+# A model source, a Verilated FIFO and a model sink in a row. The FIFO's two
+# rdy_vld ports each get a BFM in the generated wrapper.
+
+constants:
+    BVH_FIFO_DEPTH: { value: 4, desc: "Entries in the FIFO" }
+
+types:
+    bvhDataT: { width: 16, desc: "Beat payload" }
+
+structures:
+    bvhBeat:
+        data: { varType: bvhDataT, desc: "Beat index" }
+
+interfaces:
+    bvhIf:
+        desc: "Beat stream"
+        interfaceType: rdy_vld
+        structures:
+            - { structure: bvhBeat, structureType: data_t }
+
+blocks:
+    bvhTop:
+        desc: "DUT top"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    bvhTop_tb:
+        desc: "Testbench container for bvhTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    bvhSrc:
+        desc: "Sends beats"
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    bvhFifo:
+        desc: "FIFO, one clock from push to pop"
+        hasMdl: true
+        hasTb: false
+        hasVl: true
+        hasRtl: true
+    bvhSnk:
+        desc: "Receives beats"
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+
+instances:
+    bvhTop_tb: { container: bvhTop_tb, instanceType: bvhTop_tb, instGroup: top }
+    u_bvhTop:  { container: bvhTop_tb, instanceType: bvhTop,    instGroup: top }
+    uSrc:      { container: bvhTop,    instanceType: bvhSrc,    instGroup: top }
+    uFifo:     { container: bvhTop,    instanceType: bvhFifo,   instGroup: top }
+    uSnk:      { container: bvhTop,    instanceType: bvhSnk,    instGroup: top }
+
+connections:
+    - { interface: bvhIf, src: uSrc,  srcport: out, dst: uFifo, dstport: in, name: fifoIn }
+    - { interface: bvhIf, src: uFifo, srcport: out, dst: uSnk,  dstport: in, name: fifoOut }
