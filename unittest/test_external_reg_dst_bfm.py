@@ -2,8 +2,8 @@
 """external_reg_dst_bfm delivers every command to the RTL, in order.
 
 The dst BFM turns each reg_write_cmd from the model into a one-cycle `write`
-pulse on the HDL side, then waits a further clock for the registered rdata.
-Firmware may write the same register again before those two clocks are over.
+pulse on the HDL side. Firmware may write the same register again before
+that pulse is over.
 The channel's read() only sees a command issued while a reader is waiting, so
 the BFM keeps a reader on the channel at all times and queues what it reads.
 Each command then reaches the RTL as its own pulse, in the order issued.

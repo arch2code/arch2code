@@ -344,9 +344,6 @@ EXPECTED_FAILURES += [
           f"ahb_bfm.h:93-96 samples the next address phase an edge after the completion, and 79 {AHB_SAMPLE}"),
     XFail(('ahb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'), inReset, None,
           f"ahb_bfm.h:72-98 {BUS_RESET}; line 96 takes an address phase on a reset edge and sends it to the model"),
-    XFail(('extreg',), 'dst', ('the RTL sees each value on the edge after the write',), anyCase, 'value 1 +10 ns',
-          "external_reg_bfm.h:126 waits an edge after each write strobe, so queued writes reach the RTL one per "
-          "two clocks"),
     XFail(('mem',), 'dst', ('served once',), inReset, 'RTL 2/2, model 4',
           f"memory_bfm.h:83 {MEM_RESET}: 89-97 drive operations 2 and 3 on reset edges, where the RTL takes "
           "neither, and the model's calls return"),
@@ -358,9 +355,6 @@ EXPECTED_FAILURES += [
           "the RTL gets the stale read data"),
     XFail(('mem',), 'src', ('src completes on the edge after the model',), inReset, '+2 clock',
           f"memory_bfm.h:43 {MEM_RESET}: 46-54 take operation 2 on a reset edge and send it to the model"),
-    XFail(('extreg',), 'dst', ('the RTL sees every write issued out of reset',), inReset, 'missing [3, 4]',
-          "external_reg_bfm.h:126 waits an edge after each write strobe, so queued writes fall behind one per "
-          "two clocks, and line 109 drops the writes still queued at the reset"),
     XFail(('extreg',), 'src', ('the RTL sees a published value on the edge after it',), anyCase, 'value 0 +10 ns',
           "external_reg_bfm.h:48-49 drives rdata from the mirror once per edge, before the model answers that "
           "edge's write strobe, so the RTL sees the model's value an edge late"),
@@ -643,7 +637,7 @@ def visible(writes, resetEdges, end):
 
 def inOrderAcrossReset(case, who, got, want):
     """external_reg drops a write the RTL has not taken at a reset and drives rdata 0 in reset
-    (external_reg_bfm.h:43, 93-95, 108-109), so across a reset this checks that the values seen
+    (external_reg_bfm.h:43, 92-94, 108-109), so across a reset this checks that the values seen
     come in order, none extra or repeated, and the last one arrives."""
     seen = [v for v in got if v]
     rest = iter(want)
@@ -660,7 +654,7 @@ def levelChecks(case, ev):
         want = visible(wire, resetEdges, RUN_END)
         got = [v for v, _ in smp]
         if case.family == 'extreg' and case.rtl == 'reset':
-            # A write issued in reset, or in the clock before it, may be dropped (external_reg_bfm.h:93-95,
+            # A write issued in reset, or in the clock before it, may be dropped (external_reg_bfm.h:92-94,
             # 108-109); every other write must reach the RTL.
             kept = [v for v, t in calls if nextEdge(t) not in resetEdges and nextEdge(t) - PERIOD not in resetEdges]
             lost = [v for v in kept if v not in got]

@@ -83,8 +83,7 @@ public:
 
     // read() sees only a command issued while it waits, so a dedicated reader
     // queues each one and a write arriving mid-strobe is not lost. Firmware
-    // reads the mirror, which follows RTL rdata a clock behind, so a readback
-    // can trail the firmware's writes by up to two clocks per queued command.
+    // reads the mirror, which follows RTL rdata a clock behind.
     // update_mirror does not notify read(), so rdata publishes never re-enter here.
     void write_reader_thread() {
         while (true) {
@@ -99,8 +98,9 @@ public:
         }
     }
 
-    // Each queued reg_write_cmd() → one-cycle HDL write strobe, in order.
-    // A reset discards the queue, as it clears the RTL register.
+    // Each queued reg_write_cmd() → one-cycle HDL write strobe, in order, so
+    // queued commands strobe on consecutive edges. A reset discards the queue,
+    // as it clears the RTL register.
     void write_driver_thread() {
         hdl_if_p->write = 0;
         hdl_if_p->wdata = VL_DATA_T(0);
@@ -112,6 +112,7 @@ public:
                 continue;
             }
             if (pending.empty()) {
+                hdl_if_p->write = 0;
                 wait(pending_event);
                 continue;
             }
@@ -121,17 +122,12 @@ public:
             hdl_if_p->wdata = data.sc_pack();
             hdl_if_p->write = 1; // non-zero strobe; RTL uses |write
             wait(clk.posedge_event());
-            hdl_if_p->write = 0;
-            // Registered rdata updates on the write edge; sample on the next clock.
-            wait(clk.posedge_event());
-
-            DATA_T rdata;
-            rdata.sc_unpack(hdl_if_p->rdata);
-            if_p->update_mirror(rdata);
         }
     }
 
     // HDL rdata → TLM mirror so APB readNonBlocking() sees live STATUS/etc.
+    // Registered rdata changes on a write's edge, so the mirror follows it on
+    // the next.
     void rdata_monitor_thread() {
         DATA_T last{};
         bool have_last = false;
