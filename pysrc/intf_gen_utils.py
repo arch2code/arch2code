@@ -927,6 +927,12 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     #out['channel_decl'] = f"{chnl_type}<{chnl_params}> {intf_name}_chnl;"
     out['channel_decl'] = f"{chnl_type}<{chnl_params}> {intf_name};"
     out['port_decl'] = f"{port_type}<{chnl_params}> {intf_name};"
+    # The initial-value argument of a channel built for this port, as the
+    # connection's own channel takes it.
+    initial_value = sc_register_initial_value(intf_def, connectionData, prj)
+    typenameKw = 'typename ' if '<Config>' in chnl_params else ''
+    out['initial_value_arg'] = ('' if initial_value is None
+                                else f", {typenameKw}{chnl_params.strip()}::_packedSt({initial_value})")
 
     hdl_intf_type = intf_def['sc_channel']['type'] + '_hdl_if'
     hdl_intf_name, bfm_name = sc_hdl_member_names(intf_name)
@@ -1072,6 +1078,16 @@ def sc_multicycle_ctor_args(conn_data, multicycle_types, prj, warn=True):
 
     return extra, autoMode
 
+def sc_register_initial_value(intf_def, conn_data, prj):
+    """A channel that carries a register starts at the register's defaultValue,
+    so every channel on the register's path reads the same value before the
+    first write. Returns that value as hex, or None when the channel carries no
+    register or its type takes no initial value."""
+    if not (intf_def['sc_channel']['set_initial_value'] and 'register' in conn_data):
+        return None
+    return hex(prj.getConst(conn_data['defaultValue']))
+
+
 def sc_gen_block_channels(conn_data, prj, block_data):
 
     out = {}
@@ -1091,8 +1107,7 @@ def sc_gen_block_channels(conn_data, prj, block_data):
     out['intf_name'] = chnl_name
     out['chnl_name'] = chnl_name
     out['desc'] = intf_data['desc']
-    out['set_initial_value'] = intf_def['sc_channel'].get('set_initial_value', False) and 'register' in conn_data
-    out['default_value'] = conn_data.get('defaultValue', 0)
+    out['initial_value'] = sc_register_initial_value(intf_def, conn_data, prj)
 
     # The channel's struct template arguments are typed by the connected
     # child's per-variant Config. `configOverride` is the winning end's neutral

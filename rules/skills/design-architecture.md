@@ -197,7 +197,7 @@ connectionMaps:
 | `desc` | Required. |
 | `defaultValue` | Reset value. Default `0`. |
 | `offset` | Manual offset. Default `0`, auto-assigned. |
-| `tandem` | On an `ro` register, the default for every `registerConnections` row of it. On an `ro` register no `registerConnections` row connects, how a Tandem run compares firmware reads of it. See [Tandem status compare](#tandem-status-compare). |
+| `tandem` | On an `ro` or `ext` register, the default for every `registerConnections` row of it. On an `ro` or `ext` register no `registerConnections` row connects, how a Tandem run compares firmware reads of it. See [Tandem status compare](#tandem-status-compare). |
 
 ### Memories (`memories:`)
 
@@ -242,11 +242,11 @@ registerConnections:
   - {register: rwD, block: blockB, instance: uBlockF0}
 ```
 
-A row of an `ro` register takes `tandem:` for the status output it gives the child. See [Tandem status compare](#tandem-status-compare).
+A row of an `ro` register takes `tandem:` for the status output it gives the child. A row of an `ext` register takes it for the value the child publishes for firmware to read. See [Tandem status compare](#tandem-status-compare).
 
 ### Tandem status compare
 
-A Tandem run (see `run-tandem.md`) compares each status output of the leaf block it runs. By default `--tandemStatusFatal` decides whether a mismatch fails the run, and `--tandemLevelWindow` sets how long the two sides may differ. The `tandem:` key on the row that defines one status output sets its own policy:
+A Tandem run (see `run-tandem.md`) compares each status output of the leaf block it runs, and the value the leaf publishes on each `ext` register it owns through a `registerConnections` row. By default `--tandemStatusFatal` decides whether a mismatch fails the run, and `--tandemLevelWindow` sets how long the two sides may differ. The `tandem:` key on the row that defines one status output sets its own policy:
 
 | Value | Compare |
 | :--- | :--- |
@@ -256,17 +256,18 @@ A Tandem run (see `run-tandem.md`) compares each status output of the leaf block
 | `off` | Not compared. The tee still forwards the primary's value. |
 | a positive number | A level window in ns for this port, in place of the run window. A mismatch always fails the run. |
 
-Rows that define a leaf's status output:
+Rows that set the compare of a leaf's status output or `ext` register port:
 
 *   A `connections:` row with a `status` interface. The key applies to its `src` end.
 *   A `connectionMaps:` row with a `status` interface and `direction: src`. The key applies to the child's port.
 *   A `registerConnections:` row of an `ro` register. A `registers:` row of an `ro` register sets the default for all of its rows. If both set it, the values must match.
+*   A `registerConnections:` row of an `ext` register. The key applies to the value the child publishes for firmware to read. The command compare on the side that drives the register always fails the run on a mismatch. The `registers:` row sets the default, as for an `ro` register.
 
-`make db` rejects any other value, and the key on any other row. That covers a non-status interface, a `src` or child block that is not a leaf with both `hasMdl` and `hasRtl`, a `direction: dst` map, and an `rw`, `ext` or `memory` register. A container cannot run in Tandem, so to set the policy of an output that a container forwards from a child, put the key on the `connectionMaps` row that names the child.
+`make db` rejects any other value, and the key on any other row. That covers a non-status interface, a `src` or child block that is not a leaf with both `hasMdl` and `hasRtl`, a `direction: dst` map, and an `rw` or `memory` register. On an `external_reg` connection that no register backs, the value the owner publishes compares under the run-wide default (`--tandemStatusFatal`, `--tandemLevelWindow`), because only a `registers:` or `registerConnections:` row of an `ext` register can set the key. Other non-status interfaces always compare. A container cannot run in Tandem, so to set the policy of an output that a container forwards from a child, put the key on the `connectionMaps` row that names the child.
 
 #### Register reads
 
-An `ro` register that no `registerConnections` row connects is written by its own block, and a Tandem run of that block sees it only when firmware reads it over the register bus. Its value is a level, so if the two sides change it a little apart, a read in the gap returns different data from each side. The `tandem:` key on its `registers:` row sets what the register-bus tee does with a read data mismatch at that register's address:
+An `ro` or `ext` register that no `registerConnections` row connects lives inside its own block, and a Tandem run of that block sees it only when firmware reads it over the register bus. Its value is a level, so if the two sides change it a little apart, a read in the gap returns different data from each side. The `tandem:` key on its `registers:` row sets what the register-bus tee does with a read data mismatch at that register's address:
 
 | Value | Read data mismatch |
 | :--- | :--- |
@@ -275,6 +276,8 @@ An `ro` register that no `registerConnections` row connects is written by its ow
 | `final` or `off` | Not compared. |
 
 Firmware always gets the primary's data and error response. A PSLVERR or HRESP mismatch, and a write, compare as before. The block must be a leaf with both `hasMdl` and `hasRtl`. `make db` rejects the key on a register owned by a block that cannot run in Tandem.
+
+On a write-one-to-clear register, `warn` waives only the read compare. A clear that lands between the two sides' sets still leaves them different, so the block must order its clears against its sets as the RTL does, for example with a synchLock site (A2C Pro).
 
 ```yaml
 registers:

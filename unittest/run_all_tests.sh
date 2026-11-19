@@ -849,15 +849,15 @@ python3 test_status_dst_bfm.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: external_reg_dst_bfm drives every back-to-back write to the RTL in order"
+echo "Test Suite ${idx}: axi_write src BFM holds awready/wready low while a delayed send blocks"
 echo "------------------------------------------------------------------------"
-python3 test_external_reg_dst_bfm.py || FAILED=1
+python3 test_axi_write_src_bfm_delayed_send.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: pop_ack dst BFM takes every one-cycle ack and drops pop before a delayed ack()"
+echo "Test Suite ${idx}: external_reg_dst_bfm drives every back-to-back write to the RTL in order"
 echo "------------------------------------------------------------------------"
-python3 test_pop_ack_dst_bfm_delayed_ack.py || FAILED=1
+python3 test_external_reg_dst_bfm.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
@@ -876,6 +876,12 @@ echo ""
 echo "Test Suite ${idx}: generated AHB router and register handler RTL answer AHB-Lite transfers"
 echo "------------------------------------------------------------------------"
 python3 test_ahb_reg_bus.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: pop_ack dst BFM takes every one-cycle ack and drops pop before a delayed ack()"
+echo "------------------------------------------------------------------------"
+python3 test_pop_ack_dst_bfm_delayed_ack.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
@@ -1188,6 +1194,18 @@ echo ""
 echo "Test Suite ${idx}: make db resolves the tandem: status-compare policy and rejects its misuse"
 echo "------------------------------------------------------------------------"
 python3 test_tandem_status_policy.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: every channel on a register's path starts at the register's defaultValue"
+echo "------------------------------------------------------------------------"
+python3 test_register_channel_initial_value.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: external_reg_channel legs, wakeup deltas and Tandem hooks"
+echo "------------------------------------------------------------------------"
+python3 test_external_reg_channel.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

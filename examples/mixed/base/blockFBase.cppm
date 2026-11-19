@@ -131,7 +131,7 @@ public:
     ,dSout(("dSout"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,dStuffIf(("dStuffIf"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,dSin(("dSin"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
-    ,rwD(("rwD"+name).c_str(), srcName)
+    ,rwD(("rwD"+name).c_str(), srcName, dRegSt::_packedSt(0x0))
     {};
     void bind( blockFBase<Config> *a, blockFInverted<Config> *b)
     {

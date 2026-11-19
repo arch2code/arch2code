@@ -1380,7 +1380,7 @@ struct ipRegAddrSt {
     }
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
-    inline ipRegAddrT _getAddress(void) { return( address); }
+    inline ipRegAddrT _getAddress(void) const { return( address); }
     inline void pack(_packedSt &_ret) const
     {
         memset(&_ret, 0, sizeof(_ret));

@@ -775,7 +775,7 @@ def getSet(vars, indent, prj=None, useConfig=False):
             out.append(f"{indent}inline void _setTail({varType} value) {{ { var } = value; }}")
         # address field
         if generator == 'address':
-            out.append(f"{indent}inline {varType} _getAddress(void) {{ return( { var }); }}")
+            out.append(f"{indent}inline {varType} _getAddress(void) const {{ return( { var }); }}")
         # address field
         if generator == 'data':
             out.append(f"{indent}inline {varType} _getData(void) {{ return( { var }); }}")

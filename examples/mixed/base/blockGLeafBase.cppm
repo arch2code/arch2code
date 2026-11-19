@@ -65,7 +65,7 @@ public:
 
 
     blockGLeafChannels(std::string name, std::string srcName) :
-    rwG(("rwG"+name).c_str(), srcName)
+    rwG(("rwG"+name).c_str(), srcName, dRegSt::_packedSt(0x0))
     {};
     void bind( blockGLeafBase *a, blockGLeafInverted *b)
     {

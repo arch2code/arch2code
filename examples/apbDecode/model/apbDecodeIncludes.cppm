@@ -547,7 +547,7 @@ struct apbAddrSt {
     }
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
-    inline apbAddrT _getAddress(void) { return( address); }
+    inline apbAddrT _getAddress(void) const { return( address); }
     inline void pack(_packedSt &_ret) const
     {
         memset(&_ret, 0, sizeof(_ret));

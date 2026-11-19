@@ -7,6 +7,7 @@
 #include "sysc/kernel/sc_event.h"
 #include "sysc/kernel/sc_simcontext.h"
 #include "sysc/tracing/sc_trace.h"
+#include <functional>
 #include <typeinfo>
 #include <iostream>
 #include "portBase.h"
@@ -46,6 +47,10 @@ public:
     virtual void update_mirror( const T& val_ ) = 0;
     // Block until the architectural mirror is updated (tandem return path).
     virtual void wait_mirror(void) = 0;
+    // Only a Tandem tee sets this; user models do not. Each reg_write_cmd()
+    // calls the hook with its value, in the caller's process and delta, after
+    // it notifies read()'s event. The hook must not wait.
+    virtual void setCommandHook( std::function<void(const T&)> hook ) = 0;
 
 protected:
     // constructor
@@ -72,6 +77,11 @@ public:
     virtual void write( const T& val_ ) = 0;
     virtual void reg_write_cmd( const T& val_ ) = 0;
     virtual void wait_mirror(void) = 0;
+    // Only a Tandem tee sets this; user models do not. Each mirror change, by
+    // update_mirror() or reg_write(), calls the hook with the new value, in
+    // the caller's process and delta, after it notifies the mirror event. The
+    // hook must not wait.
+    virtual void setMirrorHook( std::function<void(const T&)> hook ) = 0;
 
 protected:
     // constructor
@@ -141,6 +151,8 @@ public:
     virtual void reg_write_cmd( const T& val_ ) override; // CPU cmd: notify only
     virtual void update_mirror( const T& val_ ) override;
     virtual void wait_mirror(void) override;
+    virtual void setCommandHook( std::function<void(const T&)> hook ) override { m_command_hook = std::move(hook); }
+    virtual void setMirrorHook( std::function<void(const T&)> hook ) override { m_mirror_hook = std::move(hook); }
     // other methods
     operator T ()
         { return read(); }
@@ -178,6 +190,8 @@ protected:
     sc_event* m_channel_update_event_ptr;
     sc_event m_reg_write_event;
     sc_event m_mirror_event;
+    std::function<void(const T&)> m_command_hook;
+    std::function<void(const T&)> m_mirror_hook;
 
     sc_port_base* m_reader; // used for static design rule checking
     sc_port_base* m_writer; // used for static design rule checking
@@ -260,6 +274,9 @@ inline void external_reg_channel<T>::reg_write( const T& val_ )
     m_reg_write_event.notify(SC_ZERO_TIME);
     if (mirror_changed) {
         m_mirror_event.notify(SC_ZERO_TIME);
+        if (m_mirror_hook) {
+            m_mirror_hook(val_);
+        }
     }
 }
 
@@ -269,6 +286,9 @@ inline void external_reg_channel<T>::reg_write_cmd( const T& val_ )
     m_write_data = val_;
     interfaceBase::delay(false);
     m_reg_write_event.notify(SC_ZERO_TIME);
+    if (m_command_hook) {
+        m_command_hook(val_);
+    }
 }
 
 template <class T>
@@ -280,6 +300,9 @@ inline void external_reg_channel<T>::update_mirror( const T& val_ )
     m_mirror = val_;
     m_mirror_valid = true;
     m_mirror_event.notify(SC_ZERO_TIME);
+    if (m_mirror_hook) {
+        m_mirror_hook(val_);
+    }
 }
 
 template <class T>
