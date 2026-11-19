@@ -30,10 +30,12 @@ static constexpr unsigned AHB_HTRANS_NONSEQ = 2;
 static constexpr unsigned AHB_HSIZE_WORD = 2;
 
 // The RTL is the master: each transfer it starts becomes a response-aware
-// request on if_p. HREADYOUT stays low from the address phase until the
-// request completes, so every transfer takes at least one wait state. An
-// address phase in the last cycle of a data phase is taken as the next
-// transfer.
+// request on if_p. HREADYOUT is low while the model works on a request. A
+// read goes to the model on the edge that takes its address phase, so a
+// model that answers in that timestep adds no wait state. A write's HWDATA
+// goes on the wire after that edge, so the BFM samples it on the next one,
+// and every write takes a wait state. An address phase in the last cycle of
+// a data phase is taken as the next transfer.
 template<typename ADDR_T, typename DATA_T, typename VL_ADDR_T, typename VL_DATA_T>
 class ahb_src_bfm: public sc_module {
 
@@ -76,9 +78,9 @@ public:
             bool started = addressPhase(addr, is_write);
             while (started) {
                 hdl_if_p->hreadyout = false;
-                wait(clk.posedge_event());
                 DATA_T data;
                 if (is_write) {
+                    wait(clk.posedge_event());
                     data.sc_unpack(hdl_if_p->hwdata);
                 }
                 const bool error = if_p->requestWithResponse(is_write, addr, data);
