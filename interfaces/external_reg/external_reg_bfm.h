@@ -30,32 +30,52 @@ public:
 
     external_reg_src_bfm(sc_module_name modulename) {
         SC_THREAD(bfm_driver_thread);
+        SC_THREAD(mirror_watch_thread);
     }
 
+    // rdata follows the TLM architectural mirror out of reset. The model
+    // answers a strobe after the edge that carries it, so rdata also follows
+    // each mirror change, and the RTL samples the new value on the next edge.
     void bfm_driver_thread() {
         hdl_if_p->rdata = VL_DATA_T(0);
         while (!rst_n) {
             wait(clk.posedge_event());
         }
+        bool live = false;
         while (true) {
-            wait(clk.posedge_event());
-            if (!rst_n) {
-                hdl_if_p->rdata = VL_DATA_T(0);
+            wait(clk.posedge_event() | mirror_changed);
+            if (clk.posedge()) {
+                live = rst_n;
+                if (!live) {
+                    hdl_if_p->rdata = VL_DATA_T(0);
+                    continue;
+                }
+            }
+            if (!live) {
                 continue;
             }
 
-            // Drive HDL rdata from the TLM architectural mirror.
             DATA_T rdata = if_p->readNonBlocking();
             hdl_if_p->rdata = rdata.sc_pack();
 
             // Forward a one-cycle HDL write strobe into the TLM command path.
-            if (hdl_if_p->write.read().or_reduce()) {
+            if (clk.posedge() && hdl_if_p->write.read().or_reduce()) {
                 DATA_T wdata;
                 wdata.sc_unpack(hdl_if_p->wdata);
                 if_p->reg_write_cmd(wdata);
             }
         }
     }
+
+    void mirror_watch_thread() {
+        while (true) {
+            if_p->wait_mirror();
+            mirror_changed.notify(SC_ZERO_TIME);
+        }
+    }
+
+private:
+    sc_event mirror_changed;
 
 };
 
