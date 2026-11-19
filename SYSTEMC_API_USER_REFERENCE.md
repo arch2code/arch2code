@@ -441,8 +441,8 @@ Simple streaming protocol with ready/valid handshaking. Most commonly used for d
 #### Source Side (Writing Data)
 
 **API:**
-- `myPort->write(data)` - Blocking write, waits for ready
-- `myPort->writeClocked(data)` - Multi-cycle burst write (one beat per call)
+- `myPort->write(data)` - Blocking write. It returns when the reader takes the value. When the reader is RTL behind a BFM, that is the clock edge where the RTL takes the beat.
+- `myPort->writeClocked(data)` - Multi-cycle burst write (one beat per call). Against RTL, the call that ends a burst returns when the RTL takes the burst's first beat.
 - `myPort->write(data, size)` - Transactional write with size/tag
 - `myPort->getWritePtr()` - Get buffer pointer for multi-cycle writes
 - `myPort->get_rdy()` - Check if sink is ready (non-blocking)
@@ -476,7 +476,8 @@ void producer::producerOutRdyVld(void)
 **Important - Ready Signaling:**
 - Calling `read()` on a destination (sink) interface **signals the module is ready**
 - The `read()` function asserts the ready signal and waits for valid data
-- This is the standard way to indicate readiness - manual ready control is not needed
+- This is the standard way to indicate readiness. There is no manual ready control.
+- When the writer is RTL behind a BFM, the RTL sees ready only while the model waits in `read()`, and `read()` returns at the edge where the RTL hands the beat over.
 
 **Example - Basic Read:**
 
@@ -493,6 +494,16 @@ void consumer::consumerInRdyVld(void)
     test_rdy_vld->read(data);  // Next read - ready signaled again
 }
 ```
+
+#### BFM Side
+
+The rdy_vld, axi4_stream and AXI BFMs use three more calls to hand a beat over at the RTL's handshake edge. Models do not call them.
+
+- `inPort->peek(data)` - Copies the value a writer is blocked on, or the next beat of a burst, and leaves the writer blocked. A dst BFM drives `vld` with it in the timestep of the model's send, then takes the value with `read()` or `readClocked()` at the handshake edge.
+- `outPort->readEnteredEvent()` - Notified as each `read()` starts. A src BFM sets `rdy` from `get_rdy()` when it fires, so `rdy` rises in the timestep of the model's `read()`.
+- `outPort->offer(data)` - Shows a beat the RTL holds while the model is not reading. `isActive()` becomes true and the external event fires, so a model that reads only an active port sees it. `read()` returns only on the `write()` that follows at the handshake edge.
+
+The AXI and axi4_stream BFMs reach these calls through the channel's public inner rdy_vld ports, such as `m_addr_in` and `m_tx_out`.
 
 ### 4.2 apb_channel - APB Bus Protocol
 
@@ -2099,14 +2110,9 @@ void myModule::autoHandshake() {
     data_st data;
     outputPort->write(data);  // Channel manages handshake
 }
-
-// Only for advanced cases, on an rdy_vld sink port:
-void myModule::manualHandshake() {
-    inputPort->enable_user_ready_control();
-    inputPort->set_rdy(true);
-    // Manual control...
-}
 ```
+
+A send returns when the receiver takes the value, and against RTL that is the RTL's handshake edge. A model that sends A and then does something the RTL needs before it can accept A deadlocks. That is a model bug. Do the other work first, or in another thread.
 
 ### 9.3 Logging
 

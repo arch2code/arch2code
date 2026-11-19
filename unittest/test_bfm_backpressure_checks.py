@@ -462,19 +462,19 @@ def test_bfm_backpressure_checks():
             check(gaps[:3] == [10, 10, 10] and gaps[3] > 10,
                   f"rvSrcMultiDelay waits only after the transaction border beat (gaps={gaps})")
 
-        # The HDL ignores rdy on a no-backpressure channel. With the reader
-        # stalled, beat two is sampled at 50 ns and the write blocks across 60 ns.
+        # The HDL ignores rdy on a no-backpressure channel. The reader takes
+        # beat one at 40 ns and pauses, so rdy is low from the 50 ns edge.
         rec = records.get('rvSrcNoneGap', {'hdl': 0, 'recv': []})
         hdl, received = rec['hdl'], len(rec['recv'])
         lines = bfmLines(output, 'rvSrcNoneGap')
         check(hdl == BEATS and received < hdl, f"rvSrcNoneGap loses beats (hdl={hdl} received={received})")
-        check(lines == [f'p.rvSrcNoneGap.bfm:{SC_STALL} at 60 ns',
+        check(lines == [f'p.rvSrcNoneGap.bfm:{SC_STALL} at 50 ns',
                         f'p.rvSrcNoneGap.bfm:{SC_STALL}, {hdl - received} clock edges in total'],
-              f"rvSrcNoneGap warns of the SystemC stall at 60 ns and counts {hdl - received} stalled edges, "
+              f"rvSrcNoneGap warns of the SystemC stall at 50 ns and counts {hdl - received} stalled edges, "
               f"one per lost beat, with no lost-beat warning (got {lines})")
 
         # The HDL honours rdy on a no-backpressure channel, so the slow reader
-        # stalls it from the 60 ns edge but loses nothing.
+        # stalls it from the 50 ns edge but loses nothing.
         for family in ['rv', 'ax']:
             scenario = f'{family}SrcNoneHonour'
             rec = records.get(scenario)
@@ -482,9 +482,9 @@ def test_bfm_backpressure_checks():
             check(rec is not None and rec['hdl'] == BEATS and rec['recv'] == IN_ORDER,
                   f"{scenario} delivers all {BEATS} beats in order ({rec})")
             check(not any(LOST in line for line in lines), f"{scenario} logs no lost beat (got {lines})")
-            check(len(lines) == 2 and lines[0] == f'p.{scenario}.bfm:{SC_STALL} at 60 ns'
+            check(len(lines) == 2 and lines[0] == f'p.{scenario}.bfm:{SC_STALL} at 50 ns'
                   and lines[1].startswith(f'p.{scenario}.bfm:{SC_STALL}, '),
-                  f"{scenario} warns that SystemC stalled the producer, first at 60 ns (got {lines})")
+                  f"{scenario} warns that SystemC stalled the producer, first at 50 ns (got {lines})")
         if len(FAILURES) > before:
             print(output)
     finally:

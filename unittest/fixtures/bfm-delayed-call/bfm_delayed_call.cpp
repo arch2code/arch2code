@@ -486,14 +486,17 @@ void runProbe( int delayNs, const std::string &mode )
 //           a src offer comes three or more edges after the last
 //           handshake), random (seeded), comb (rdy follows vld, or vld
 //           follows rdy), reset (high, with reset asserted again from 45 to
-//           65 ns after the lane's start; 55 to 75 ns in delayed rv, axis
-//           and ar src runs; 25 to 45 ns for memory). Against
+//           65 ns after the lane's start; 65 to 85 ns in delayed rv, axis
+//           and ar src runs; 55 to 75 ns in delayed aw and w src runs; 25 to
+//           45 ns for memory). Against
 //           always the src model first reads half a clock after vld rises;
 //           src only:
 //           waiting (vld rises only after the model is in read()),
 //           parked (the model first reads 15 ns after vld rises, so beat 0
-//           sits on the wire across an edge) and resetlate (reset, with the
-//           reset an edge later, from 55 to 75 ns)
+//           sits on the wire across an edge), resetlate (reset, with the
+//           reset an edge later, from 65 to 85 ns) and arb (always, with a
+//           model that waits on setExternalEvent() and calls read() only
+//           while isActive(); rv, axis, ar and aw)
 //           A bus runs four operations, write, read, write, read: always,
 //           reset, slow (the RTL completer adds two wait states, or the
 //           RTL master two idle edges), error (apb and ahb: operations 1
@@ -565,6 +568,10 @@ struct handoverBase : sc_module
     sc_event started;
     bool modelReading = false;
     sc_event firstRequest;
+    // An arb model's port: watch binds arbEv as its external event.
+    std::function<void()> watch;
+    std::function<bool()> active;
+    sc_event arbEv;
 
     handoverBase( sc_module_name n, const runCfg &c ) : sc_module( n ), cfg( c ) {}
 
@@ -619,7 +626,9 @@ struct handoverBase : sc_module
                 wait( cfg.rtl == "always" ? 5 : 15, SC_NS );
             }
             modelReading = true;
+            if (cfg.rtl == "arb") { watch(); }
             for (int k = 0; k < BEATS; k++) {
+                while (cfg.rtl == "arb" && !active()) { wait( arbEv ); }
                 logEv( "call", k );
                 logEv( "ret", recv() );
                 if (cfg.busyNs) { wait( cfg.busyNs, SC_NS ); }
@@ -851,6 +860,8 @@ struct rvSrc : handoverBase
     {
         timed = ch.get();
         in( *ch ); bfm.if_p( *ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        watch = [this] { in->setExternalEvent( &arbEv ); };
+        active = [this] { return in->isActive(); };
         measureSrc( rvLane( hdl ), {}, [this] {
             wordSt v;
             if (cfg.family == "rvmulti") { in->readClocked( v ); } else { in->read( v ); }
@@ -893,6 +904,8 @@ struct axisSrc : handoverBase
     {
         timed = &ch;
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        watch = [this] { in->setExternalEvent( &arbEv ); };
+        active = [this] { return in->isActive(); };
         measureSrc( axisLane( hdl ), {}, [this] {
             axisT s;
             in->receiveInfo( s );
@@ -967,6 +980,8 @@ struct arSrc : handoverBase
     {
         timed = &ch;
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        watch = [this] { in->setExternalEvent( &arbEv ); };
+        active = [this] { return in->isActive(); };
         measureSrc( arLane( hdl ), {}, [this] {
             arT a;
             in->receiveAddr( a );
@@ -1119,6 +1134,8 @@ struct awSrc : wrSrcBase
 {
     awSrc( sc_module_name n, const runCfg &c ) : wrSrcBase( n, c )
     {
+        watch = [this] { in->setExternalEvent( &arbEv ); };
+        active = [this] { return in->isActive(); };
         measureSrc( awLane( hdl ), {}, [this] {
             awT a;
             in->receiveAddr( a );
@@ -1965,16 +1982,20 @@ struct extregSrc : levelBase
 };
 
 // The mid-run reset starts 45 ns after the lane's start. A delayed src run
-// moves a beat every other edge. For rv, axis and ar the reset starts an edge
-// later, on an edge where vld and ready are high. aw and w keep 45 ns, so the
-// reset lands while a delayed model call blocks, and their resetlate runs
-// cover the later edge. The memory runs finish their four operations by
-// 45 ns, so their reset starts at 25 ns, with operations 2 and 3 still to go.
+// moves a beat every other edge. For rv, axis and ar the reset starts 65 ns
+// after, on an edge where vld and ready are high. For aw and w it starts
+// 55 ns after, so it lands while a delayed model call blocks, and their
+// resetlate runs cover the edge after. The memory runs finish their four
+// operations by 45 ns, so their reset starts at 25 ns, with operations 2 and
+// 3 still to go.
 int resetAfterNs( const runCfg &c )
 {
     if (c.family == "mem") { return 25; }
-    bool everyOther = c.dir == "src" && c.delayNs > 0 && (c.family == "rv" || c.family == "axis" || c.family == "ar");
-    return everyOther || c.rtl == "resetlate" ? 55 : 45;
+    bool delayedSrc = c.dir == "src" && c.delayNs > 0;
+    if (delayedSrc && (c.family == "rv" || c.family == "axis" || c.family == "ar" || c.rtl == "resetlate")) {
+        return 65;
+    }
+    return delayedSrc && (c.family == "aw" || c.family == "w") ? 55 : 45;
 }
 
 template <class DUT>

@@ -84,11 +84,6 @@ RELEASE = "the RTL's handshake comes at the first edge after the sink reads"
 RESET_HOLD = "no traffic while reset is low"
 FIRST_LIVE_EDGE = "the RTL takes the first beat at the first edge sampled with rst_n high"
 
-HIDDEN_DST = ("completes the model's write when it copies the beat, one handshake before the RTL takes it, "
-              "so the model sees room the RTL does not have")
-HIDDEN_SRC = "restores ready after the model call returns, so the RTL hands over a beat the model is not reading"
-LATE_READY = ("sets ready from get_rdy() only on a clock edge, so the RTL's ready rises an edge after the "
-              "model starts to read")
 LATE_RESET = ("waits for an edge and then reads rst_n, which still shows the old value at the edge where it "
               "rises, so the first beat starts an edge late. The src BFM's same wait at line 53 is not "
               "checked here")
@@ -97,13 +92,6 @@ LATE_RESET = ("waits for an edge and then reads rst_n, which still shows the old
 # how pins the failure.
 XFail = namedtuple('XFail', 'mode check how reason')
 EXPECTED_FAILURES = [
-    XFail('single', SEND_RETURN, 'at the call', f"rdy_vld_bfm.h:154 readClocked() {HIDDEN_DST}"),
-    XFail('hold', NO_AHEAD, '5 returns, 4 accepted',
-          f"rdy_vld_bfm.h:154 readClocked() {HIDDEN_DST}; the FIFO takes {FIFO_DEPTH} beats, "
-          f"and the fifth write returns with the RTL still stalled"),
-    XFail('hold', RELEASE, '+1 clock', f"rdy_vld_bfm.h:55-60 {LATE_READY}"),
-    XFail('pause', RECV_EDGE, f'first at beat {PAUSE_BEAT}', f"rdy_vld_bfm.h:74 rdy = rdy {HIDDEN_SRC}"),
-    XFail('pause', HAND_WAITING, f'first at beat {PAUSE_BEAT}', f"rdy_vld_bfm.h:74 rdy = rdy {HIDDEN_SRC}"),
     XFail('poweron', FIRST_LIVE_EDGE, '+1 clock', f"rdy_vld_bfm.h:150 {LATE_RESET}"),
 ]
 
