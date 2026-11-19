@@ -108,7 +108,10 @@ public:
                 std::lock_guard<std::mutex> lock(m_pending_mutex);
                 m_pending_w_beats = static_cast<int>(aw_data.awlen) + 1;
             }
+            // Hold awready low while a delayed send blocks, as rdy_vld_src_bfm does with rdy.
+            hdl_if_p->awready = 0;
             if_p->sendAddr(aw_data);
+            hdl_if_p->awready = 1;
             wait(clk.posedge_event());
         }
     }
@@ -156,7 +159,10 @@ public:
                     --m_pending_w_beats;
                 }
             }
+            // Hold wready low while a delayed send blocks, as rdy_vld_src_bfm does with rdy.
+            hdl_if_p->wready = 0;
             if_p->sendDataCycle(w_data);
+            hdl_if_p->wready = 1;
             wait(clk.posedge_event());
         }
     }
