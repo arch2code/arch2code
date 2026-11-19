@@ -95,6 +95,10 @@ CASES += [Case(f, 'src', m, b, 'allowed', d) for f in HANDSHAKE for m, b in SRC_
           if not (f in TWO_PHASE and m == 'comb')]
 CASES += [Case('rvmulti', dr, 'always', 0, 'allowed', d) for dr in ('dst', 'src') for d in DELAYS]
 CASES += [Case('wfirst', 'src', 'always', 0, 'allowed', d) for d in DELAYS]
+# A delayed aw or w src run moves a beat every other edge. Its reset, 45 ns
+# after the lane starts, lands while a delayed model call blocks. resetlate
+# starts the reset an edge later, where vld and ready are high.
+CASES += [Case(f, 'src', 'resetlate', 0, 'allowed', 15) for f in ('aw', 'w')]
 CASES += [Case(f, 'dst', 'hold', 0, 'none', 0) for f in ('rv', 'axis')]
 CASES += [Case(f, 'src', 'always', 25, 'none', 0) for f in ('rv', 'axis')]
 # Bus runs: a completer with wait states or a master with idle edges (slow),
@@ -145,6 +149,10 @@ def inReset(case):
 
 def resetNoDelay(case):
     return case.rtl == 'reset' and case.delay == 0
+
+
+def resetLate(case):
+    return case.rtl == 'resetlate'
 
 
 def readsAfterVld(case):
@@ -270,6 +278,8 @@ EXPECTED_FAILURES = [
     XFail(('aw',), 'src', (DONE,), resetNoDelay, 'hang', f"axi_write_bfm.h:98-99 {RESET_SPIN}"),
     XFail(('w',), 'src', (DONE,), resetNoDelay, 'hang',
           f"axi_write_bfm.h:148-149 {RESET_SPIN}"),
+    XFail(('aw',), 'src', (DONE,), resetLate, 'hang', f"axi_write_bfm.h:98-99 {RESET_SPIN}"),
+    XFail(('w',), 'src', (DONE,), resetLate, 'hang', f"axi_write_bfm.h:148-149 {RESET_SPIN}"),
 
     XFail(('apb',), 'src', ('src completes on the edge after the model',), anyCase, '+1 clock',
           "apb_bfm.h:61 waits an edge after requestWithResponse() returns before line 62 raises pready, so "
@@ -493,16 +503,19 @@ def handshakeChecks(case, ev, output):
             check(case, 'src latency', hsTimes[0] == first,
                   f"read {calls[0][1]}, vld {vld[0][1]}, first handshake {hsTimes[0]}, expected {first}",
                   f"{(hsTimes[0] - first) // PERIOD:+d} clock")
-    if case.dir == 'src' and case.rtl == 'reset':
+    if case.dir == 'src' and case.rtl in ('reset', 'resetlate'):
         # A src BFM has ready high at a reset edge unless the edge falls between
         # a handshake and the return of that beat's delayed model call. Ready
-        # is low then, so the reset meets the next beat with vld alone. An _ack
-        # src BFM samples the request alone.
+        # is low then, so the reset meets the next beat with vld alone. A
+        # resetlate run must meet vld and ready high. An _ack src BFM samples
+        # the request alone.
         if case.family in TWO_PHASE:
             met = ev.get('rstvld', [])
+        elif case.rtl == 'resetlate':
+            met = ev.get('rsths', [])
         else:
             met = ev.get('rsths', []) + [(v, t) for v, t in ev.get('rstvld', [])
-                                         if any(h < t < r for (_, h), (_, r) in zip(hs, rets))]
+                                         if any(hv == rv and h < t < r for hv, h in hs for rv, r in rets)]
         check(case, 'the reset meets a beat on the wire', bool(met), f"reset edges with the beat on the wire: {met}")
     if case.bp == 'none':
         line = STALL if case.dir == 'dst' else SC_STALL

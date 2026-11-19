@@ -486,12 +486,14 @@ void runProbe( int delayNs, const std::string &mode )
 //           a src offer comes three or more edges after the last
 //           handshake), random (seeded), comb (rdy follows vld, or vld
 //           follows rdy), reset (high, with reset asserted again from 45 to
-//           65 ns after the lane's start, 25 to 45 ns for memory). Against
+//           65 ns after the lane's start; 55 to 75 ns in delayed rv, axis
+//           and ar src runs; 25 to 45 ns for memory). Against
 //           always the src model first reads half a clock after vld rises;
 //           src only:
-//           waiting (vld rises only after the model is in read()) and
+//           waiting (vld rises only after the model is in read()),
 //           parked (the model first reads 15 ns after vld rises, so beat 0
-//           sits on the wire across an edge)
+//           sits on the wire across an edge) and resetlate (reset, with the
+//           reset an edge later, from 55 to 75 ns)
 //           A bus runs four operations, write, read, write, read: always,
 //           reset, slow (the RTL completer adds two wait states, or the
 //           RTL master two idle edges), error (apb and ahb: operations 1
@@ -1962,16 +1964,17 @@ struct extregSrc : levelBase
     }
 };
 
-// The mid-run reset starts 45 ns after the lane's start. In the delayed src
-// runs of rv, axis and ar a beat moves only every other edge, so there the
-// reset starts an edge later, on an edge where vld and ready are high. The
-// memory runs finish their four operations by 45 ns, so their reset starts
-// at 25 ns, with operations 2 and 3 still to go.
+// The mid-run reset starts 45 ns after the lane's start. A delayed src run
+// moves a beat every other edge. For rv, axis and ar the reset starts an edge
+// later, on an edge where vld and ready are high. aw and w keep 45 ns, so the
+// reset lands while a delayed model call blocks, and their resetlate runs
+// cover the later edge. The memory runs finish their four operations by
+// 45 ns, so their reset starts at 25 ns, with operations 2 and 3 still to go.
 int resetAfterNs( const runCfg &c )
 {
     if (c.family == "mem") { return 25; }
     bool everyOther = c.dir == "src" && c.delayNs > 0 && (c.family == "rv" || c.family == "axis" || c.family == "ar");
-    return everyOther ? 55 : 45;
+    return everyOther || c.rtl == "resetlate" ? 55 : 45;
 }
 
 template <class DUT>
@@ -1984,7 +1987,7 @@ struct handoverTop : sc_module
 
     SC_HAS_PROCESS( handoverTop );
     handoverTop( sc_module_name n, const runCfg &c ) :
-        sc_module( n ), clk( "clk", 10, SC_NS ), dut( "dut", c ), midReset( c.rtl == "reset" )
+        sc_module( n ), clk( "clk", 10, SC_NS ), dut( "dut", c ), midReset( c.rtl == "reset" || c.rtl == "resetlate" )
     {
         dut.clk( clk ); dut.rst_n( rst_n );
         SC_THREAD( run );
