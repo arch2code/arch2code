@@ -176,7 +176,7 @@ public:
             hdl_if_p->tid = VL_TID_T(0);
             hdl_if_p->tdest = VL_TDEST_T(0);
             if constexpr (hasOptionalPayload<TUSER_T>) { hdl_if_p->tuser = VL_TUSER_T(0); }
-            if_p->receiveInfo(tinfo);
+            m_chnl->m_tx_in->peek(tinfo);
             hdl_if_p->tvalid = 1;
             hdl_if_p->tdata = tinfo.tdata.sc_pack();
             hdl_if_p->tstrb = tinfo.tstrb.sc_pack();
@@ -191,6 +191,8 @@ public:
                     m_stalls.fail(sc_time_stamp());
                 }
             } while (!hdl_if_p->tready);
+            // The model's send returns at the edge where the RTL takes the beat.
+            if_p->receiveInfo(tinfo);
         }
     }
 

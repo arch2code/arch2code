@@ -143,7 +143,7 @@ public:
         while (true) {
             hdl_if_p->vld = 0;
             hdl_if_p->data = VL_DATA_T(0);
-            if_p->readClocked(data);
+            if_p->peek(data);
             hdl_if_p->vld = 1;
             hdl_if_p->data = data.sc_pack();
             do {
@@ -152,6 +152,8 @@ public:
                     m_stalls.fail(sc_time_stamp());
                 }
             } while (!hdl_if_p->rdy);
+            // The model's write returns at the edge where the RTL takes the beat.
+            if_p->readClocked(data);
         }
     }
 

@@ -175,8 +175,9 @@ public:
             hdl_if_p->bid = VL_ID_T(0);
             hdl_if_p->bresp = 0;
             if constexpr (hasOptionalPayload<BU>) { hdl_if_p->buser = VL_BUSER_T(0); }
-            if_p->receiveRespCycle(b_data);
+            m_chnl->m_resp_in->peek(b_data);
             if (!rst_n.read()) {
+                if_p->receiveRespCycle(b_data);
                 while (!rst_n.read()) {
                     wait(clk.posedge_event());
                 }
@@ -193,6 +194,9 @@ public:
                     break;
                 }
             } while (!hdl_if_p->bready);
+            // The model's send returns at the edge where the RTL takes the beat,
+            // or where reset drops it.
+            if_p->receiveRespCycle(b_data);
         }
     }
 
@@ -241,7 +245,7 @@ public:
             hdl_if_p->awsize = 0;
             hdl_if_p->awburst = 0;
             if constexpr (hasOptionalPayload<AWU>) { hdl_if_p->awuser = VL_AWUSER_T(0); }
-            if_p->receiveAddr(aw_data);
+            m_chnl->m_addr_in->peek(aw_data);
             hdl_if_p->awvalid = 1;
             hdl_if_p->awid = aw_data.awid;
             hdl_if_p->awaddr = aw_data.awaddr.sc_pack();
@@ -252,6 +256,8 @@ public:
             do {
                 wait(clk.posedge_event());
             } while (!hdl_if_p->awready);
+            // The model's send returns at the edge where the RTL takes the beat.
+            if_p->receiveAddr(aw_data);
         }
     }
 
@@ -265,7 +271,7 @@ public:
             hdl_if_p->wstrb = VL_STRB_T(0);
             hdl_if_p->wlast = 0;
             if constexpr (hasOptionalPayload<WU>) { hdl_if_p->wuser = VL_WUSER_T(0); }
-            if_p->receiveDataCycle(w_data);
+            m_chnl->m_data_in->peek(w_data);
             hdl_if_p->wvalid = 1;
             hdl_if_p->wid = w_data.wid;
             hdl_if_p->wdata = w_data.wdata.sc_pack();
@@ -275,6 +281,8 @@ public:
             do {
                 wait(clk.posedge_event());
             } while (!hdl_if_p->wready);
+            // The model's send returns at the edge where the RTL takes the beat.
+            if_p->receiveDataCycle(w_data);
         }
     }
 

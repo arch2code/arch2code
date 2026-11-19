@@ -119,17 +119,12 @@ public:
             hdl_if_p->rresp = 0;
             hdl_if_p->rlast = 0;
             if constexpr (hasOptionalPayload<RU>) { hdl_if_p->ruser = VL_RUSER_T(0); }
-            if_p->receiveDataCycle(r_data);
-            {
-                std::lock_guard<std::mutex> lock(m_pending_mutex);
-                if (m_pending_r_beats > 0) {
-                    --m_pending_r_beats;
-                }
-            }
+            m_chnl->m_data_in->peek(r_data);
             // During ARESETn the port_socket drains outstanding AR with dummy
             // beats. Still drive them onto the wire (DUT ignores while reset)
             // so channel beat counts stay aligned; drop RVALID if reset.
             if (!rst_n.read()) {
+                takeR(r_data);
                 hdl_if_p->rvalid = 0;
                 if (r_data.rlast) {
                     std::lock_guard<std::mutex> lock(m_pending_mutex);
@@ -154,10 +149,21 @@ public:
                     break;
                 }
             } while (!hdl_if_p->rready);
+            // The model's send returns at the edge where the RTL takes the beat,
+            // or where reset drops it.
+            takeR(r_data);
         }
     }
 
 private:
+
+    void takeR(axiReadRespSt<DATA_T, RU, ID, IDW> &r_data) {
+        if_p->receiveDataCycle(r_data);
+        std::lock_guard<std::mutex> lock(m_pending_mutex);
+        if (m_pending_r_beats > 0) {
+            --m_pending_r_beats;
+        }
+    }
 
     axi_read_channel<ADDR_T, DATA_T, ARU, RU, ID, IDW> * m_chnl;
     std::mutex m_pending_mutex;
@@ -201,7 +207,7 @@ public:
             hdl_if_p->arsize = 0;
             hdl_if_p->arburst = 0;
             if constexpr (hasOptionalPayload<ARU>) { hdl_if_p->aruser = VL_ARUSER_T(0); }
-            if_p->receiveAddr(ar_data);
+            m_chnl->m_addr_in->peek(ar_data);
             hdl_if_p->arvalid = 1;
             hdl_if_p->arid = ar_data.arid;
             hdl_if_p->araddr = ar_data.araddr.sc_pack();
@@ -212,6 +218,8 @@ public:
             do {
                 wait(clk.posedge_event());
             } while (!hdl_if_p->arready);
+            // The model's send returns at the edge where the RTL takes the beat.
+            if_p->receiveAddr(ar_data);
         }
     }
 
