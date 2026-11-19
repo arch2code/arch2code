@@ -1531,6 +1531,8 @@ class projectOpen:
         self.getBDIncludes(ret)
         # collect interface definitions for all interface types used in the block
         self.getBDInterfaceDefs(ret)
+        # Tandem ports whose tee is a module the wrapper builds, not a thread: the external_reg ports
+        self.getBDTandemModuleTees(ret)
         # which generated channels ignore setTimed
         self.getBDEffectiveBackpressure(ret)
         self.getBDConfigInfo(ret)
@@ -2473,6 +2475,13 @@ class projectOpen:
         if ret['addressDecode']['hasDecoder']:
             ret['addressDecode']['addressBits'] = (self.data['blocks'][decodeBlock]['maxAddress']).bit_length()
             ret['addressDecode']['addressGroup'] = addressGroup
+
+    def getBDTandemModuleTees(self, ret):
+        import pysrc.intf_gen_utils as intf_gen_utils
+        ret['tandemModuleTees'] = [
+            portData['name'] for ports in ret['ports'].values() for portData in ports.values()
+            if intf_gen_utils.get_intf_type(intf_gen_utils.get_intf_data(portData['connection'], self)['interfaceType'],
+                                            ret) == 'external_reg']
 
     def getBDTandemRegisterReads(self, ret):
         # The registers whose firmware reads a Tandem run compares by their
