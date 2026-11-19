@@ -89,8 +89,9 @@ HIDDEN_DST = ("completes the model's write when it copies the beat, one handshak
 HIDDEN_SRC = "restores ready after the model call returns, so the RTL hands over a beat the model is not reading"
 LATE_READY = ("sets ready from get_rdy() only on a clock edge, so the RTL's ready rises an edge after the "
               "model starts to read")
-LATE_RESET = ("wait for an edge and then read rst_n, which still shows the old value at the edge where it "
-              "rises, so the first beat starts an edge late")
+LATE_RESET = ("waits for an edge and then reads rst_n, which still shows the old value at the edge where it "
+              "rises, so the first beat starts an edge late. The src BFM's same wait at line 53 is not "
+              "checked here")
 
 # A row marks a check that fails today: the run, the check, how it fails and why.
 # how pins the failure.
@@ -103,12 +104,13 @@ EXPECTED_FAILURES = [
     XFail('hold', RELEASE, '+1 clock', f"rdy_vld_bfm.h:55-60 {LATE_READY}"),
     XFail('pause', RECV_EDGE, f'first at beat {PAUSE_BEAT}', f"rdy_vld_bfm.h:74 rdy = rdy {HIDDEN_SRC}"),
     XFail('pause', HAND_WAITING, f'first at beat {PAUSE_BEAT}', f"rdy_vld_bfm.h:74 rdy = rdy {HIDDEN_SRC}"),
-    XFail('poweron', FIRST_LIVE_EDGE, '+1 clock', f"rdy_vld_bfm.h:53 and :150 {LATE_RESET}"),
+    XFail('poweron', FIRST_LIVE_EDGE, '+1 clock', f"rdy_vld_bfm.h:150 {LATE_RESET}"),
 ]
 
 FAILURES = []
 XFAILS = []
 MATCHED = set()
+SKIPPED = set()                 # modes whose checks did not run
 
 
 def expectedFailure(mode, name):
@@ -365,11 +367,14 @@ def main():
             run, log = runMode(rundir, mode)
             if not checkRun(mode, run):
                 print(run.stdout + run.stderr)
+                SKIPPED.add(mode)
                 continue
             changes = pinChanges(os.path.join(rundir, 'build', 'simx.vcd'))
             edges = posedges(changes)
             inHs, outHs = handshakes(edges, 'in_vld', 'in_rdy'), handshakes(edges, 'out_vld', 'out_rdy')
-            if checkComplete(mode, log, inHs, outHs):
+            if not checkComplete(mode, log, inHs, outHs):
+                SKIPPED.add(mode)
+            else:
                 if mode != 'poweron':
                     assert log['src call'][0][1] == SEND_AT, \
                         f"the source sends at {log['src call'][0][1]} ps, expected {SEND_AT} ps"
@@ -388,9 +393,14 @@ def main():
     finally:
         remove_tree(tmp)
     for row in EXPECTED_FAILURES:
-        if (row.mode, row.check) not in MATCHED:
-            FAILURES.append(f"unmatched expected failure: {row.mode}: {row.check}")
-            print(f"  FAIL: no check matched the expected failure for {row.mode}: {row.check}")
+        if (row.mode, row.check) in MATCHED:
+            continue
+        if row.mode in SKIPPED:
+            message = f"expected failure not evaluated, the {row.mode} run was incomplete: {row.check}"
+        else:
+            message = f"unmatched expected failure: {row.mode}: {row.check}"
+        FAILURES.append(message)
+        print(f"  FAIL: {message}")
 
 
 if __name__ == '__main__':

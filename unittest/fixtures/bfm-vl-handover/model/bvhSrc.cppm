@@ -74,9 +74,15 @@ void bvhSrc::send(void)
     m_eot.registerVoter();
     const char * env = std::getenv("BVH_MODE");
     Q_ASSERT(env != nullptr, "BVH_MODE is not set");
+    if (env == nullptr) {
+        return;
+    }
     const std::string mode = env;
-    Q_ASSERT(mode == "single" || mode == "burst" || mode == "hold" || mode == "pause" || mode == "poweron",
-             "unknown BVH_MODE " + mode);
+    const bool known = mode == "single" || mode == "burst" || mode == "hold" || mode == "pause" || mode == "poweron";
+    Q_ASSERT(known, "unknown BVH_MODE " + mode);
+    if (!known) {
+        return;
+    }
     const unsigned beats = (mode == "single" || mode == "poweron") ? 1 : 16;
     // 103 ns is 3 ns after a clock edge, and 73 ns after reset releases, so the
     // BFM is already waiting for a beat.

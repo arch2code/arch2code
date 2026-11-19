@@ -24,7 +24,7 @@ import bvh_package::*;
     localparam int unsigned PTR_W = $clog2(BVH_FIFO_DEPTH);
     typedef bvhBeat [BVH_FIFO_DEPTH-1:0] entriesT;
 
-    if ((BVH_FIFO_DEPTH & (BVH_FIFO_DEPTH - 1)) != 0) begin : depthCheck
+    if ((BVH_FIFO_DEPTH & (BVH_FIFO_DEPTH - 1)) != 0) begin : gen_depthCheck
         $error("BVH_FIFO_DEPTH %0d is not a power of two", BVH_FIFO_DEPTH);
     end
 
