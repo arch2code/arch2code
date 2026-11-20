@@ -501,7 +501,8 @@ void runProbe( int delayNs, const std::string &mode )
 //           rv, axis, ar and aw), arbdrop (arb with a busy model, where the
 //           RTL lowers vld on the first beat it holds with rdy low, keeps it
 //           low for two edges, then offers the beat again; rv, axis, ar
-//           and aw)
+//           and aw), arbdroplate (arbdrop, with vld lowered 7 ns after the
+//           edge, so after the falling edge that offered the beat)
 //           A bus runs four operations, write, read, write, read: always,
 //           reset, slow (the RTL completer adds two wait states, or the
 //           RTL master two idle edges), error (apb and ahb: operations 1
@@ -526,6 +527,7 @@ void runProbe( int delayNs, const std::string &mode )
 //   rstact     an arbreset model sees isActive() mid-clock after a reset edge
 //   act        an arbreset or arbdrop model sees isActive() mid-clock out of
 //              reset
+//   actr       an arbdroplate model sees isActive() just after a rising edge
 //   drop       an arbdrop RTL lowers vld on this beat with no handshake
 //   req, ack   non-handshake RTL: it starts an operation, or the operation
 //              completes on this edge
@@ -603,7 +605,9 @@ struct handoverBase : sc_module
         if (!rst_n) { logEv( "rstcall", 0 ); }
     }
 
-    bool arb() const { return cfg.rtl == "arb" || cfg.rtl == "arbreset" || cfg.rtl == "arbdrop"; }
+    bool arb() const { return cfg.rtl == "arb" || cfg.rtl == "arbreset" || dropping(); }
+
+    bool dropping() const { return cfg.rtl == "arbdrop" || cfg.rtl == "arbdroplate"; }
 
     // The hold and the mid-run reset count from the edge at or before the
     // lane's first send or offer.
@@ -661,11 +665,16 @@ struct handoverBase : sc_module
         } else {
             sc_spawn( [this, l, go] { sender( l, go ); } );
         }
-        if (cfg.rtl == "arbreset" || cfg.rtl == "arbdrop") {
+        if (cfg.rtl == "arbreset" || dropping()) {
             sc_spawn( [this] {
                 while (true) {
                     wait( clk.posedge_event() );
                     bool resetEdge = !rst_n;
+                    if (cfg.rtl == "arbdroplate") {
+                        // A delta later, as at the falling edge below.
+                        wait( SC_ZERO_TIME );
+                        if (rst_n && active()) { logEv( "actr", 0 ); }
+                    }
                     // This observer and the BFM wake in the same falling-edge
                     // delta, in either order. Reading a delta later sees the
                     // BFM's offer whichever ran first.
@@ -726,8 +735,13 @@ struct handoverBase : sc_module
                 logEv( "hs", l.beat ? l.beat() : n );
                 n++;
                 lastHs = edge;
-            } else if (l.vld && cfg.rtl == "arbdrop" && dropEdge < 0) {
+            } else if (l.vld && dropping() && dropEdge < 0) {
                 // Lower vld on a beat held with rdy low, for two edges.
+                // arbdroplate lowers it after the falling edge.
+                if (cfg.rtl == "arbdroplate") {
+                    wait( 7, SC_NS );
+                    if (l.rdy) { continue; }
+                }
                 logEv( "drop", l.beat ? l.beat() : n );
                 l.vld = false;
                 dropEdge = edge;

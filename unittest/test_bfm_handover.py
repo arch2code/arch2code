@@ -20,7 +20,8 @@ A src model that waits on setExternalEvent() and reads only an active port
 read(). The BFM offers it a beat at the falling edge after vld rises, so the
 RTL takes the first beat at the next rising edge. In rtl=arbreset such a
 model must not see a beat that reset took off the wire, and in rtl=arbdrop a
-beat the RTL dropped with no handshake.
+beat the RTL dropped with no handshake. rtl=arbdroplate drops it after the
+falling edge, so the BFM withdraws it at the rising edge instead.
 
 Every run also checks that it ends without a hang or a Q_ASSERT, that order
 holds and no beat is lost, and, with no delay, that no model call returns on
@@ -124,6 +125,8 @@ CASES += [Case(f, 'src', 'arbreset', 25, 'allowed', d) for f in ('rv', 'axis', '
 # The same busy model, with an RTL that lowers vld on an offered beat for two
 # edges, with no handshake.
 CASES += [Case(f, 'src', 'arbdrop', 25, 'allowed', 0) for f in ('rv', 'axis', 'ar', 'aw')]
+# The same, with vld lowered after the falling edge that offered the beat.
+CASES += [Case(f, 'src', 'arbdroplate', 25, 'allowed', 0) for f in ('rv', 'axis', 'ar', 'aw')]
 CASES += [Case(f, dr, m, 0, 'allowed', d) for f in BUS for dr in BUS_MODES for m in BUS_MODES[dr] for d in DELAYS
           if not (m == 'error' and f == 'mem') and not (m == 'slow' and f == 'mem' and dr == 'dst')
           and not (f in UNTIMED and d > 0)]
@@ -361,6 +364,19 @@ def handshakeChecks(case, ev, deltas, output):
             gap = drops[0][1] + PERIOD // 2
             check(case, 'an arbitrating reader sees no beat the RTL dropped', gap not in act,
                   f"drop at {drops[0][1]}, active at {gap}: {gap in act}")
+    if case.rtl == 'arbdroplate':
+        # The model sees the beat active at the falling edge before the RTL
+        # lowers vld. The BFM sees vld low at the next rising edge and
+        # withdraws the beat, so it is not active just after that edge.
+        drops, act = ev.get('drop', []), {t for _, t in ev.get('act', [])}
+        actr = {t for _, t in ev.get('actr', [])}
+        offered = drops[0][1] // PERIOD * PERIOD + PERIOD // 2 if drops else None
+        check(case, 'the RTL drops a beat offered to the model after the falling edge',
+              bool(drops) and drops[0][1] > offered and offered in act, f"drops {drops}, active {sorted(act)}")
+        if drops:
+            edge = nextEdge(drops[0][1])
+            check(case, 'an arbitrating reader sees no beat the RTL dropped', edge not in actr,
+                  f"drop at {drops[0][1]}, active just after {edge}: {edge in actr}")
     if case.rtl == 'reset' and case.dir == 'src' and case.family in TWO_PHASE:
         check(case, RESET_CALL, not ev.get('rstcall'),
               f"model gets a request at {[t for _, t in ev.get('rstcall', [])]}, reset edges "
