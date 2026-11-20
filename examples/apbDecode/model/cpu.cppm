@@ -32,10 +32,15 @@ public:
 
     // GENERATED_CODE_END
     // block implementation members
+    // Time for a verilated block to leave its reset.
+    static constexpr int RTL_SETTLE_NS = 20;
+    // The bits of field d of arrRegSt: unpacking all ones masks each field to its own width.
+    static inline const uint32_t D_MASK = [] { arrRegSt m; m.unpack(arrRegSt::_packedSt(~arrRegSt::_packedSt(0))); return uint32_t(m.d); }();
 
     void test_apbDecode(void);
     void endOfTestThread(void);
     void memAccessTest(void);
+    void test_reg_cpu_arr(void);
 
     void writeBlockATable0Mem(const int, aMemSt &);
     void readBlockATable0Mem(const int, aMemSt &);
@@ -68,6 +73,7 @@ cpu::cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     ADD_TEST(test_apbDecode);
+    ADD_TEST(test_reg_cpu_arr);
     SC_THREAD(endOfTestThread);
 };
 
@@ -278,3 +284,53 @@ void cpu::readBlockBTableMem(const int rowId, bMemSt &entry) {
     entry.sc_unpack(bMemSc);
 }
 
+
+// Register array test. Write every rwArr element at BASE + i * STRIDE, then read every rwArr and roArr element back.
+// roArr[i] is driven by blockA from rwArr[(i+1)%N] + i + ROARR_BIAS. A write to an ro element must leave it unchanged.
+void cpu::test_reg_cpu_arr(void)
+{
+    // The verilated blockA is in reset for its first cycles. Start after it.
+    wait(RTL_SETTLE_NS, SC_NS);
+    apbAddrSt addr;
+    apbDataSt wr, rd;
+    auto rwAddr = [](uint32_t i) { return BASE_ADDR_UBLOCKA + REG_BLOCKA_RWARR + i * REG_BLOCKA_RWARR_STRIDE; };
+    auto roAddr = [](uint32_t i) { return BASE_ADDR_UBLOCKA + REG_BLOCKA_ROARR + i * REG_BLOCKA_ROARR_STRIDE; };
+    static_assert(REG_BLOCKA_RWARR_COUNT == REGARR_N && REG_BLOCKA_ROARR_COUNT == REGARR_N, "count mismatch");
+    auto val = [](uint32_t i) { return 0xa000u + 0x111u * (i + 1); };
+    for (uint32_t i = 0; i < REG_BLOCKA_RWARR_COUNT; i++) {
+        addr.address = rwAddr(i);
+        wr.data = val(i);
+        log_.logPrint(std::format("cpu rwArr[{}] write addr {:#x} data {:#x}", i, (uint64_t)addr.address, (uint64_t)wr.data));
+        apbReg->request(true, addr, wr);
+    }
+    for (uint32_t i = 0; i < REG_BLOCKA_RWARR_COUNT; i++) {
+        addr.address = rwAddr(i);
+        apbReg->request(false, addr, rd);
+        Q_ASSERT(rd.data == val(i), std::format("rwArr[{}] @{:#x} got {:#x} want {:#x}", i, (uint64_t)addr.address, (uint64_t)rd.data, val(i)));
+    }
+    for (uint32_t i = 0; i < REG_BLOCKA_ROARR_COUNT; i++) {
+        addr.address = roAddr(i);
+        apbReg->request(false, addr, rd);
+        uint32_t want = (val((i + 1) % REGARR_N) + i + ROARR_BIAS) & D_MASK;
+        log_.logPrint(std::format("cpu roArr[{}] read addr {:#x} data {:#x}", i, (uint64_t)addr.address, (uint64_t)rd.data));
+        Q_ASSERT(rd.data == want, std::format("roArr[{}] @{:#x} got {:#x} want {:#x}", i, (uint64_t)addr.address, (uint64_t)rd.data, want));
+    }
+    // ro write is dropped
+    addr.address = roAddr(1);
+    wr.data = 0xdead;
+    apbReg->request(true, addr, wr);
+    apbReg->request(false, addr, rd);
+    uint32_t want1 = (val(2) + 1 + ROARR_BIAS) & D_MASK;
+    Q_ASSERT(rd.data == want1, std::format("roArr[1] changed by an ro write: got {:#x} want {:#x}", (uint64_t)rd.data, want1));
+    // a second rw write moves the matching ro element, and only that one
+    addr.address = rwAddr(3);
+    wr.data = 0x1234;
+    apbReg->request(true, addr, wr);
+    addr.address = roAddr(2);
+    apbReg->request(false, addr, rd);
+    Q_ASSERT(rd.data == ((0x1234u + 2 + ROARR_BIAS) & D_MASK), std::format("roArr[2] after rwArr[3] update got {:#x}", (uint64_t)rd.data));
+    addr.address = roAddr(3);
+    apbReg->request(false, addr, rd);
+    Q_ASSERT(rd.data == ((val(0) + 3 + ROARR_BIAS) & D_MASK), std::format("roArr[3] disturbed: got {:#x}", (uint64_t)rd.data));
+    log_.logPrint("CPU register array write/readback success (rwArr[0..3], roArr[0..3])", LOG_ALWAYS);
+}

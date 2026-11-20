@@ -189,6 +189,12 @@ SV spelling is `intf_gen_utils.sv_signal_type`. SystemC bridge spelling is
   the SystemC `_bitWidth` agree at compile time. `unittest/test_vl_boundary_widths_build.py`
   checks that each top's `V<top>.h`, VCS port map and Xcelium shell list the
   same pins.
+- A port that takes a whole array register is an interface array inside the
+  wrapper and has one flat pin set per element, `<port>_<k>_<signal>`, in
+  element order (`pinPrefixes`, stamped by `projectOpen._stampPortArray`). The
+  wrapper assigns each element's pins by constant index, unrolled once per
+  element, because SV cannot build a pin name from a genvar. An element port,
+  taken with `index:`, is a scalar port with ordinary pins.
 
 **Width-1 rule.** A vector pin stays a vector at width 1: SV `bit [0:0]`,
 SystemC `sc_bv<1>`, VCS port map `1 bitvector sc_bv`, Xcelium `sc_bv<1>`. The

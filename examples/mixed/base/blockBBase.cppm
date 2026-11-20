@@ -5,6 +5,7 @@
 module;
 #include "systemc.h"
 #include "apb_channel.h"
+#include "external_reg_channel.h"
 #include "memory_channel.h"
 #include "notify_ack_channel.h"
 #include "rdy_vld_channel.h"
