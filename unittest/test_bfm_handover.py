@@ -123,13 +123,16 @@ CASES += [Case(f, dr, m, 0, 'allowed', 0) for f in LEVEL for dr in LEVEL_MODES f
 
 RESET_DST = "ends the beat on an edge with ready high whether or not reset is low"
 RESET_SRC = "delivers a beat it samples on a reset edge, and the RTL sends that beat again after reset"
-R_DRAIN = ("axi_read_bfm.h:136-164 drops the R beat on the wire at reset and returns the model's remaining "
+R_DRAIN = ("axi_read_bfm.h:120-148 drops the R beat on the wire at reset and returns the model's remaining "
            "sendDataCycle() calls with no handshake, to drain the burst")
-B_DROP = ("axi_write_bfm.h:201-207 takes the model's B on a reset edge and drops it, and 215-222 drops the B "
+B_DROP = ("axi_write_bfm.h:163-168 takes the model's B on a reset edge and drops it, and 176-183 drops the B "
           "on the wire at reset")
-DUMMY_W = ("axi_write_bfm.h:143-159 drains the burst of the last AW at reset: it sends the model a zero W beat, "
+DUMMY_W = ("axi_write_bfm.h:127-145 drains the burst of the last AW at reset: it sends the model a zero W beat, "
            "with that AW's ID, for each beat left. The model reads them as data. That is how the drain works, not "
            "a fault in this run")
+TAKE_IN_RESET = f"rdy_vld_src_driver.h:63-67 {RESET_SRC}"
+R_TAKE_IN_RESET = f"axi_read_bfm.h:235 adds no reset handling, and {TAKE_IN_RESET}"
+B_TAKE_IN_RESET = f"axi_write_bfm.h:290 adds no reset handling, and {TAKE_IN_RESET}"
 DST_RULE_1 = ('dst write returns never run ahead of handshakes', 'dst write returns at its handshake edge')
 SRC_RULE_1 = 'src handshake only while the model waits in read()'
 SRC_RETURN = 'src read returns at its handshake edge'
@@ -168,50 +171,42 @@ def resetLate(case):
 # failure, for example which beats are lost, and None accepts any failure.
 XFail = namedtuple('XFail', 'families dir checks applies how reason')
 EXPECTED_FAILURES = [
-    XFail(('rv',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"rdy_vld_bfm.h:162 {RESET_DST}"),
-    XFail(('rv',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"rdy_vld_bfm.h:162 {RESET_DST}"),
-    XFail(('axis',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi4_stream_bfm.h:201 {RESET_DST}"),
-    XFail(('axis',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi4_stream_bfm.h:201 {RESET_DST}"),
-    XFail(('ar',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_read_bfm.h:230 {RESET_DST}"),
-    XFail(('ar',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_read_bfm.h:230 {RESET_DST}"),
-    XFail(('aw',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:283 {RESET_DST}"),
-    XFail(('aw',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:283 {RESET_DST}"),
-    XFail(('w',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:308 {RESET_DST}"),
-    XFail(('w',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:308 {RESET_DST}"),
+    XFail(('rv',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"rdy_vld_bfm.h:145 {RESET_DST}"),
+    XFail(('rv',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"rdy_vld_bfm.h:145 {RESET_DST}"),
+    XFail(('axis',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi4_stream_bfm.h:187 {RESET_DST}"),
+    XFail(('axis',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi4_stream_bfm.h:187 {RESET_DST}"),
+    XFail(('ar',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_read_bfm.h:227 {RESET_DST}"),
+    XFail(('ar',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_read_bfm.h:227 {RESET_DST}"),
+    XFail(('aw',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:257 {RESET_DST}"),
+    XFail(('aw',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:257 {RESET_DST}"),
+    XFail(('w',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:282 {RESET_DST}"),
+    XFail(('w',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:282 {RESET_DST}"),
     XFail(('r',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, R_DRAIN),
     XFail(('r',), 'dst', (ORDER,), inReset, 'hs missing, model ok', R_DRAIN),
     XFail(('b',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, B_DROP),
     XFail(('b',), 'dst', (ORDER,), inReset, 'hs missing, model ok', B_DROP),
 
-    XFail(('rv',), 'src', (ORDER,), inReset, 'hs missing, model missing+duplicate', f"rdy_vld_bfm.h:68-77 {RESET_SRC}"),
-    XFail(('rv',), 'src', (RESET_RETURN, SRC_COUNT), inReset, None, f"rdy_vld_bfm.h:68-77 {RESET_SRC}"),
-    XFail(('rv',), 'src', (SRC_RETURN,), inReset, 'count', f"rdy_vld_bfm.h:68-77 {RESET_SRC}"),
-    XFail(('axis',), 'src', (ORDER,), inReset, 'hs missing, model missing+duplicate',
-          f"axi4_stream_bfm.h:91-100 {RESET_SRC}"),
-    XFail(('axis',), 'src', (RESET_RETURN, SRC_COUNT), inReset, None, f"axi4_stream_bfm.h:91-100 {RESET_SRC}"),
-    XFail(('axis',), 'src', (SRC_RETURN,), inReset, 'count', f"axi4_stream_bfm.h:91-100 {RESET_SRC}"),
-    XFail(('r',), 'src', (ORDER,), inReset, 'hs missing, model missing+duplicate',
-          f"axi_read_bfm.h:243-265 has no reset check and {RESET_SRC}"),
-    XFail(('r',), 'src', (RESET_RETURN,), inReset, None, f"axi_read_bfm.h:243-265 has no reset check and {RESET_SRC}"),
-    XFail(('r',), 'src', (SRC_RETURN,), inReset, 'edge', f"axi_read_bfm.h:243-265 has no reset check and {RESET_SRC}"),
+    XFail(('rv',), 'src', (ORDER,), inReset, 'hs missing, model missing+duplicate', TAKE_IN_RESET),
+    XFail(('rv',), 'src', (RESET_RETURN, SRC_COUNT), inReset, None, TAKE_IN_RESET),
+    XFail(('rv',), 'src', (SRC_RETURN,), inReset, 'count', TAKE_IN_RESET),
+    XFail(('axis',), 'src', (ORDER,), inReset, 'hs missing, model missing+duplicate', TAKE_IN_RESET),
+    XFail(('axis',), 'src', (RESET_RETURN, SRC_COUNT), inReset, None, TAKE_IN_RESET),
+    XFail(('axis',), 'src', (SRC_RETURN,), inReset, 'count', TAKE_IN_RESET),
+    XFail(('r',), 'src', (ORDER,), inReset, 'hs missing, model missing+duplicate', R_TAKE_IN_RESET),
+    XFail(('r',), 'src', (RESET_RETURN,), inReset, None, R_TAKE_IN_RESET),
+    XFail(('r',), 'src', (SRC_RETURN,), inReset, 'edge', R_TAKE_IN_RESET),
     XFail(('r',), 'src', (NO_ASSERT,), inReset, '[Q_ASSERT][p.dut.ch] last set incorrectly (axi_read_channel.h)',
-          f"axi_read_bfm.h:243-265 has no reset check and {RESET_SRC}, so the burst's eighth beat is not the one "
-          "with rlast"),
+          f"{R_TAKE_IN_RESET}, so the burst's eighth beat is not the one with rlast"),
     XFail(('b',), 'src', (ORDER,), inReset, 'hs missing, model missing',
           "the assert below stops the run before every B is in"),
-    XFail(('b',), 'src', (RESET_RETURN,), inReset, None,
-          f"axi_write_bfm.h:321-341 has no reset check and {RESET_SRC}"),
-    XFail(('b',), 'src', (SRC_RETURN,), inReset, 'edge', f"axi_write_bfm.h:321-341 has no reset check and {RESET_SRC}"),
-    XFail(('b',), 'src', (NO_ASSERT,), inReset,
-          '[Q_ASSERT][p.dut.ch] transaction id not valid (axi_write_channel.h)',
-          f"axi_write_bfm.h:321-341 has no reset check and {RESET_SRC}, so the second B finds no write "
-          "waiting for its ID"),
+    XFail(('b',), 'src', (RESET_RETURN,), inReset, None, B_TAKE_IN_RESET),
+    XFail(('b',), 'src', (SRC_RETURN,), inReset, 'edge', B_TAKE_IN_RESET),
+    XFail(('b',), 'src', (NO_ASSERT,), inReset, '[Q_ASSERT][p.dut.ch] transaction id not valid (axi_write_channel.h)',
+          f"{B_TAKE_IN_RESET}, so the second B finds no write waiting for its ID"),
     XFail(('w',), 'src', (ORDER,), lambda c: inReset(c) or resetLate(c), 'hs missing, model missing+duplicate',
           DUMMY_W),
-    XFail(('w',), 'src', (RESET_RETURN, SRC_COUNT), lambda c: inReset(c) or resetLate(c), None,
-          DUMMY_W),
-    XFail(('w',), 'src', (SRC_RETURN,), lambda c: inReset(c) or resetLate(c), 'count',
-          DUMMY_W),
+    XFail(('w',), 'src', (RESET_RETURN, SRC_COUNT), lambda c: inReset(c) or resetLate(c), None, DUMMY_W),
+    XFail(('w',), 'src', (SRC_RETURN,), lambda c: inReset(c) or resetLate(c), 'count', DUMMY_W),
 ]
 
 # The _ack BFMs: (family, src lines, dst lines, how a src reset run loses order, how a dst reset run loses

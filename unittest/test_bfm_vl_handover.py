@@ -85,14 +85,14 @@ RESET_HOLD = "no traffic while reset is low"
 FIRST_LIVE_EDGE = "the RTL takes the first beat at the first edge sampled with rst_n high"
 
 LATE_RESET = ("waits for an edge and then reads rst_n, which still shows the old value at the edge where it "
-              "rises, so the first beat starts an edge late. The src BFM's same wait at line 53 is not "
+              "rises, so the first beat starts an edge late. The src BFM's same wait at line 56 is not "
               "checked here")
 
 # A row marks a check that fails today: the run, the check, how it fails and why.
 # how pins the failure.
 XFail = namedtuple('XFail', 'mode check how reason')
 EXPECTED_FAILURES = [
-    XFail('poweron', FIRST_LIVE_EDGE, '+1 clock', f"rdy_vld_bfm.h:150 {LATE_RESET}"),
+    XFail('poweron', FIRST_LIVE_EDGE, '+1 clock', f"rdy_vld_bfm.h:133 {LATE_RESET}"),
 ]
 
 FAILURES = []

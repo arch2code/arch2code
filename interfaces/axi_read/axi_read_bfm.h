@@ -5,9 +5,11 @@
 
 #include "systemc.h"
 #include "axi_read_channel.h"
+#include "rdy_vld_src_driver.h"
 #include "optionalPayload.h"
 
 #include <mutex>
+#include <optional>
 
 // The ARUSER and RUSER sidebands are optional, so both of each one's template
 // arguments sit in the argument tail: the payload type (ARU, RU) and the
@@ -65,58 +67,40 @@ public:
     axi_read_src_bfm(sc_module_name modulename) {
         SC_THREAD(bfm_driver_ar_thread);
         SC_THREAD(bfm_driver_r_thread);
+        SC_METHOD(sample_edges);
+        sensitive << clk.pos();
+        dont_initialize();
     }
 
     virtual void end_of_elaboration() {
         m_chnl = dynamic_cast<axi_read_channel<ADDR_T, DATA_T, ARU, RU, ID, IDW> *>(if_p.get_interface());
         if_p->setCycleTransaction(PORTTYPE_OUT);
+        m_ar.emplace(m_chnl->m_addr_out, clk, rst_n, hdl_if_p->arvalid, hdl_if_p->arready, [this](arT &ar_data) {
+            ar_data.arid = (ID) hdl_if_p->arid.read().to_uint();
+            ar_data.araddr.sc_unpack(hdl_if_p->araddr);
+            ar_data.arlen = (uint8_t) hdl_if_p->arlen.read().to_uint();
+            ar_data.arsize = (_axiSizeT) hdl_if_p->arsize.read().to_uint();
+            ar_data.arburst = (_axiBurstT) hdl_if_p->arburst.read().to_uint();
+            if constexpr (hasOptionalPayload<ARU>) { ar_data.user.sc_unpack(hdl_if_p->aruser); }
+        });
     }
 
     void bfm_driver_ar_thread() {
-        axiReadAddressSt<ADDR_T, ARU, ID, IDW> ar_data;
         wait(SC_ZERO_TIME);
-        // arready follows the model's receive and offers a held beat, as
-        // rdy_vld_src_bfm does with rdy.
-        bool offered = false;
-        hdl_if_p->arready = m_chnl->m_addr_out->get_rdy();
-        while (true) {
-            wait(clk.posedge_event() | m_chnl->m_addr_out->readEnteredEvent());
-            if (!clk.posedge()) {
-                hdl_if_p->arready = m_chnl->m_addr_out->get_rdy();
-                continue;
+        m_ar->run([this](arT &ar_data) {
+            {
+                std::lock_guard<std::mutex> lock(m_pending_mutex);
+                m_pending_r_beats = static_cast<int>(ar_data.arlen) + 1;
             }
-            if (!rst_n.read()) {
-                hdl_if_p->arready = 0;
-                while (!rst_n.read()) {
-                    wait(clk.posedge_event());
-                }
-                offered = false;
-                hdl_if_p->arready = m_chnl->m_addr_out->get_rdy();
-                continue;
-            }
-            bool take = hdl_if_p->arvalid && hdl_if_p->arready;
-            if (hdl_if_p->arvalid && (take || !offered)) {
-                ar_data.arid = (ID) hdl_if_p->arid.read().to_uint();
-                ar_data.araddr.sc_unpack(hdl_if_p->araddr);
-                ar_data.arlen = (uint8_t) hdl_if_p->arlen.read().to_uint();
-                ar_data.arsize = (_axiSizeT) hdl_if_p->arsize.read().to_uint();
-                ar_data.arburst = (_axiBurstT) hdl_if_p->arburst.read().to_uint();
-                if constexpr (hasOptionalPayload<ARU>) { ar_data.user.sc_unpack(hdl_if_p->aruser); }
-                if (take) {
-                    {
-                        std::lock_guard<std::mutex> lock(m_pending_mutex);
-                        m_pending_r_beats = static_cast<int>(ar_data.arlen) + 1;
-                    }
-                    // Hold arready low while a delayed send blocks.
-                    hdl_if_p->arready = 0;
-                    if_p->sendAddr(ar_data);
-                } else {
-                    m_chnl->m_addr_out->offer(ar_data);
-                }
-                offered = !take;
-            }
-            hdl_if_p->arready = m_chnl->m_addr_out->get_rdy();
-        }
+            if_p->sendAddr(ar_data);
+        }, [this] {
+            m_ar->waitOutReset();
+            return true;
+        });
+    }
+
+    void sample_edges() {
+        m_ar->sampleEdge();
     }
 
     void bfm_driver_r_thread() {
@@ -175,7 +159,10 @@ private:
         }
     }
 
+    using arT = axiReadAddressSt<ADDR_T, ARU, ID, IDW>;
+
     axi_read_channel<ADDR_T, DATA_T, ARU, RU, ID, IDW> * m_chnl;
+    std::optional<rdyVldSrcDriver<arT>> m_ar;
     std::mutex m_pending_mutex;
     int m_pending_r_beats = 0;
 
@@ -199,11 +186,21 @@ public:
     axi_read_dst_bfm(sc_module_name modulename) {
         SC_THREAD(bfm_driver_ar_thread);
         SC_THREAD(bfm_driver_r_thread);
+        SC_METHOD(sample_edges);
+        sensitive << clk.pos();
+        dont_initialize();
     }
 
     virtual void end_of_elaboration() {
         m_chnl = dynamic_cast<axi_read_channel<ADDR_T, DATA_T, ARU, RU, ID, IDW> *>(if_p.get_interface());
         if_p->setCycleTransaction(PORTTYPE_IN);
+        m_r.emplace(m_chnl->m_data_out, clk, rst_n, hdl_if_p->rvalid, hdl_if_p->rready, [this](rT &r_data) {
+            r_data.rid = (ID) hdl_if_p->rid.read().to_uint();
+            r_data.rdata.sc_unpack(hdl_if_p->rdata);
+            r_data.rresp = (_axiResponseT) hdl_if_p->rresp.read().to_uint();
+            r_data.rlast = (bool) hdl_if_p->rlast.read();
+            if constexpr (hasOptionalPayload<RU>) { r_data.user.sc_unpack(hdl_if_p->ruser); }
+        });
     }
 
     void bfm_driver_ar_thread() {
@@ -234,41 +231,20 @@ public:
     }
 
     void bfm_driver_r_thread() {
-        axiReadRespSt<DATA_T, RU, ID, IDW> r_data;
         wait(SC_ZERO_TIME);
-        // rready follows the model's receive and offers a held beat, as
-        // rdy_vld_src_bfm does with rdy.
-        bool offered = false;
-        hdl_if_p->rready = m_chnl->m_data_out->get_rdy();
-        while (true) {
-            wait(clk.posedge_event() | m_chnl->m_data_out->readEnteredEvent());
-            if (!clk.posedge()) {
-                hdl_if_p->rready = m_chnl->m_data_out->get_rdy();
-                continue;
-            }
-            bool take = hdl_if_p->rvalid && hdl_if_p->rready;
-            if (hdl_if_p->rvalid && (take || !offered)) {
-                r_data.rid = (ID) hdl_if_p->rid.read().to_uint();
-                r_data.rdata.sc_unpack(hdl_if_p->rdata);
-                r_data.rresp = (_axiResponseT) hdl_if_p->rresp.read().to_uint();
-                r_data.rlast = (bool) hdl_if_p->rlast.read();
-                if constexpr (hasOptionalPayload<RU>) { r_data.user.sc_unpack(hdl_if_p->ruser); }
-                if (take) {
-                    // Hold rready low while a delayed send blocks.
-                    hdl_if_p->rready = 0;
-                    if_p->sendDataCycle(r_data);
-                } else {
-                    m_chnl->m_data_out->offer(r_data);
-                }
-                offered = !take;
-            }
-            hdl_if_p->rready = m_chnl->m_data_out->get_rdy();
-        }
+        m_r->run([this](rT &r_data) { if_p->sendDataCycle(r_data); }, [] { return false; });
+    }
+
+    void sample_edges() {
+        m_r->sampleEdge();
     }
 
 private:
 
+    using rT = axiReadRespSt<DATA_T, RU, ID, IDW>;
+
     axi_read_channel<ADDR_T, DATA_T, ARU, RU, ID, IDW> * m_chnl;
+    std::optional<rdyVldSrcDriver<rT>> m_r;
 
 };
 

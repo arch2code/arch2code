@@ -4,7 +4,9 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include <optional>
 #include "rdy_vld_channel.h"
+#include "rdy_vld_src_driver.h"
 #include "bfmContractCheck.h"
 
 template<typename VL_DATA_T>
@@ -39,6 +41,8 @@ public:
     virtual void end_of_elaboration() {
         m_noBackpressure = bfmNoBackpressure(if_p.get_interface(), name());
         if_p->setCycleTransaction();
+        m_driver.emplace(if_p, clk, rst_n, hdl_if_p->vld, hdl_if_p->rdy,
+                         [this](DATA_T &data) { data.sc_unpack(hdl_if_p->data); });
     }
 
     virtual void end_of_simulation() {
@@ -48,45 +52,23 @@ public:
     }
 
     void bfm_driver_thread() {
-        DATA_T data;
         wait(SC_ZERO_TIME);
         do { wait(clk.posedge_event()); } while (!rst_n);
-        // rdy is high only while the model waits in read(). A beat the RTL
-        // holds with rdy low is offered, so a model that reads only an active
-        // port sees it.
-        bool offered = false;
-        hdl_if_p->rdy = if_p->get_rdy();
-        while (true) {
-            wait(clk.posedge_event() | if_p->readEnteredEvent());
-            if (!clk.posedge()) {
-                hdl_if_p->rdy = if_p->get_rdy();
-                continue;
+        m_driver->run([this](DATA_T &data) {
+            // A beat sampled in reset is still delivered, but the monitor
+            // counts only transfers out of reset.
+            if (rst_n) {
+                m_sampledBeats++;
+                m_lastSampleTime = sc_time_stamp();
             }
-            bool take = hdl_if_p->vld && hdl_if_p->rdy;
-            if (hdl_if_p->vld && (take || !offered)) {
-                data.sc_unpack(hdl_if_p->data);
-                if (take) {
-                    // A beat sampled in reset is still delivered, but the
-                    // monitor counts only transfers out of reset.
-                    if (rst_n) {
-                        m_sampledBeats++;
-                        m_lastSampleTime = sc_time_stamp();
-                    }
-                    // The HDL must not transfer while a delayed write blocks.
-                    hdl_if_p->rdy = false;
-                    if_p->writeClocked(data);
-                } else {
-                    if_p->offer(data);
-                }
-                offered = !take;
-            }
-            hdl_if_p->rdy = if_p->get_rdy();
-        }
+            if_p->writeClocked(data);
+        }, [] { return false; });
     }
 
     // The driver wakes on the same edge in either order, so this checks the
     // beats sampled up to the previous edge before counting this edge.
     void transfer_monitor() {
+        m_driver->sampleEdge();
         checkLostBeats(m_sampledBeats - (m_lastSampleTime == sc_time_stamp() ? 1 : 0));
         m_lastEdge = sc_time_stamp();
         if (!rst_n || !hdl_if_p->vld) {
@@ -107,6 +89,7 @@ private:
         }
     }
 
+    std::optional<rdyVldSrcDriver<DATA_T>> m_driver;
     bool m_noBackpressure = false;
     uint64_t m_hdlBeats = 0;
     uint64_t m_sampledBeats = 0;

@@ -4,7 +4,9 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include <optional>
 #include "axi4_stream_channel.h"
+#include "rdy_vld_src_driver.h"
 #include "bfmContractCheck.h"
 #include "optionalPayload.h"
 
@@ -56,6 +58,15 @@ public:
         m_chnl = dynamic_cast<axi4_stream_channel<TDATA_T, TID_T, TDEST_T, TUSER_T> *>(if_p.get_interface());
         m_noBackpressure = bfmNoBackpressure(m_chnl->m_tx_out.get_interface(), name());
         if_p->setCycleTransaction(PORTTYPE_OUT);
+        m_driver.emplace(m_chnl->m_tx_out, clk, rst_n, hdl_if_p->tvalid, hdl_if_p->tready, [this](infoT &tinfo) {
+            tinfo.tdata.sc_unpack(hdl_if_p->tdata);
+            tinfo.tstrb.sc_unpack(hdl_if_p->tstrb);
+            tinfo.tkeep.sc_unpack(hdl_if_p->tkeep);
+            tinfo.tlast = (bool) hdl_if_p->tlast.read();
+            tinfo.tid.sc_unpack(hdl_if_p->tid);
+            tinfo.tdest.sc_unpack(hdl_if_p->tdest);
+            if constexpr (hasOptionalPayload<TUSER_T>) { tinfo.tuser.sc_unpack(hdl_if_p->tuser); }
+        });
     }
 
     virtual void end_of_simulation() {
@@ -65,51 +76,23 @@ public:
     }
 
     void bfm_driver_thread() {
-        axi4StreamInfoSt<TDATA_T, TID_T, TDEST_T, TUSER_T> tinfo;
         wait(SC_ZERO_TIME);
         do { wait(clk.posedge_event()); } while (!rst_n);
-        // tready is high only while the model waits to receive. A beat the
-        // RTL holds with tready low is offered, so a model that receives only
-        // from an active port sees it.
-        bool offered = false;
-        hdl_if_p->tready = m_chnl->m_tx_out->get_rdy();
-        while (true) {
-            wait(clk.posedge_event() | m_chnl->m_tx_out->readEnteredEvent());
-            if (!clk.posedge()) {
-                hdl_if_p->tready = m_chnl->m_tx_out->get_rdy();
-                continue;
+        m_driver->run([this](infoT &tinfo) {
+            // A beat sampled in reset is still delivered, but the monitor
+            // counts only transfers out of reset.
+            if (rst_n) {
+                m_sampledBeats++;
+                m_lastSampleTime = sc_time_stamp();
             }
-            bool take = hdl_if_p->tvalid && hdl_if_p->tready;
-            if (hdl_if_p->tvalid && (take || !offered)) {
-                tinfo.tdata.sc_unpack(hdl_if_p->tdata);
-                tinfo.tstrb.sc_unpack(hdl_if_p->tstrb);
-                tinfo.tkeep.sc_unpack(hdl_if_p->tkeep);
-                tinfo.tlast = (bool) hdl_if_p->tlast.read();;
-                tinfo.tid.sc_unpack(hdl_if_p->tid);
-                tinfo.tdest.sc_unpack(hdl_if_p->tdest);
-                if constexpr (hasOptionalPayload<TUSER_T>) { tinfo.tuser.sc_unpack(hdl_if_p->tuser); }
-                if (take) {
-                    // A beat sampled in reset is still delivered, but the
-                    // monitor counts only transfers out of reset.
-                    if (rst_n) {
-                        m_sampledBeats++;
-                        m_lastSampleTime = sc_time_stamp();
-                    }
-                    // The HDL must not transfer while a delayed send blocks.
-                    hdl_if_p->tready = false;
-                    if_p->sendInfo(tinfo);
-                } else {
-                    m_chnl->m_tx_out->offer(tinfo);
-                }
-                offered = !take;
-            }
-            hdl_if_p->tready = m_chnl->m_tx_out->get_rdy();
-        }
+            if_p->sendInfo(tinfo);
+        }, [] { return false; });
     }
 
     // The driver wakes on the same edge in either order, so this checks the
     // beats sampled up to the previous edge before counting this edge.
     void transfer_monitor() {
+        m_driver->sampleEdge();
         checkLostBeats(m_sampledBeats - (m_lastSampleTime == sc_time_stamp() ? 1 : 0));
         m_lastEdge = sc_time_stamp();
         if (!rst_n || !hdl_if_p->tvalid) {
@@ -130,7 +113,10 @@ private:
         }
     }
 
+    using infoT = axi4StreamInfoSt<TDATA_T, TID_T, TDEST_T, TUSER_T>;
+
     axi4_stream_channel<TDATA_T, TID_T, TDEST_T, TUSER_T> * m_chnl;
+    std::optional<rdyVldSrcDriver<infoT>> m_driver;
     bool m_noBackpressure = false;
     uint64_t m_hdlBeats = 0;
     uint64_t m_sampledBeats = 0;
