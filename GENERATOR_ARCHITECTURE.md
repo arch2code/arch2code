@@ -853,7 +853,7 @@ Each entry declares:
   PARAM-line mode table.
 - **`basePath`** — a *segment key* into `dirs:` / `hierarchicalDirs:`, never a
   literal path. Segments map to toolchain groups via `buildGroups`
-  (`sc` / `sv` / `vl`).
+  (`sc` / `sv` / `vl` / `uvm`).
 - **`cond`** (OR) / **`condAnd`** (AND) — a predicate over the block's flags
   (`hasMdl`, `hasRtl`, `hasVl`, `hasTb`, `isParameterizable`, `hasOwnParams`,
   `smartInclude`). The registrar and Config-module entries key on
@@ -1013,6 +1013,13 @@ own `--Mdir`. A separate generator mode, `arch2code.py --vlBoundary`
 whole, with no user region. `make gen` runs it only for the VCS and Xcelium
 flows. See `specs/spec-verilated-wrappers.md` and
 `specs/SIMULATOR_INTEGRATION.md`.
+
+A `hasUvm` block's UVM testbench files sit in the `uvm` segment, whose
+buildGroup no compile list reads. Only the harness owner's blocks list theirs.
+`A2C_UVM_TOPS` names each testbench top from `UVMNAMES`, and
+`A2C_UVM_PKG_SV_<top>`, `A2C_UVM_TB_SV_<top>` and `A2C_UVM_PORTMAP_<top>` name
+its variant package, its module file and its VCS port map. `A2C_UVM_SRC_DIRS`
+lists the segment directories.
 
 ### Runtime registration and the registrar segment
 

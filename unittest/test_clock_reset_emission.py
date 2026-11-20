@@ -1297,7 +1297,9 @@ def check_wrapper_keeps_per_line_style(emitted):
 
 
 def check_wrapper_dut_bindings(emitted):
-    """The wrapper binds every clock and reset it declares, in the same order."""
+    """The wrapper binds every clock and reset it declares, in the same order.
+    The X/Z checkers bind only their port's own domain, so their lines are
+    left out."""
     expected = {'slowProd': ['.clkSlow(clkSlow)', '.rstSlow_n(rstSlow_n)'],
                 'fastProd': ['.clk(clk)', '.clkSlow(clkSlow)', '.clkPico(clkPico)',
                              '.rst_n(rst_n)', '.rstSlow_n(rstSlow_n)',
@@ -1305,7 +1307,8 @@ def check_wrapper_dut_bindings(emitted):
                 'cons': ['.clk(clk)', '.clkSlow(clkSlow)', '.rst_n(rst_n)',
                          '.rstSlow_n(rstSlow_n)']}
     for block, binds in expected.items():
-        text = emitted[SV_WRAPPER[block]]
+        text = '\n'.join(line for line in emitted[SV_WRAPPER[block]].splitlines()
+                         if '_xcheck ' not in line)
         found = [b for b in re.findall(r'\.\w+\(\w+\)', text)
                  if b in set(binds)]
         if found != binds:

@@ -1,0 +1,65 @@
+# The SystemC harness of uvmReuseLeaf: the instance its register bus is served
+# through, so the project can be generated on its own. The project runs no
+# SystemC test; the leaf's UVM bench takes uvmReuseLeaf alone as its DUT.
+
+include:
+    - uvmReuseLeaf.yaml
+
+blocks:
+    uvmReuseLeaf_tb:
+        desc: "Testbench container for uvmReuseLeaf (root container)"
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false
+    uvmReuseLeafCpu:
+        desc: "Register bus master"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            apbReg: { interface: apbReg, direction: src }
+    uvmReuseLeafRouter:
+        desc: "Register decoder of the harness"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        addressBlock:
+            addressGroup: leaf
+            addressIncrement: 0x1000
+            maxAddressSpaces: 2
+            varType: addr_id_uvm_reuse_leaf
+            enumPrefix: ADDR_ID_UVM_REUSE_LEAF_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    uvmReuseLeafSrc:
+        desc: "Stream source"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            out: { interface: uvmReuseStreamIf, direction: src }
+    uvmReuseLeafSink:
+        desc: "Stream sink"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            in: { interface: uvmReuseStreamIf, direction: dst }
+
+instances:
+    uvmReuseLeaf_tb: { container: uvmReuseLeaf_tb, instanceType: uvmReuseLeaf_tb, instGroup: top }
+    u_uvmReuseLeaf: { container: uvmReuseLeaf_tb, instanceType: uvmReuseLeaf, instGroup: top, addressGroup: leaf, variant: w4 }
+    uCpu: { container: uvmReuseLeaf_tb, instanceType: uvmReuseLeafCpu, instGroup: top }
+    uRouter: { container: uvmReuseLeaf_tb, instanceType: uvmReuseLeafRouter, instGroup: top }
+    uSrc: { container: uvmReuseLeaf_tb, instanceType: uvmReuseLeafSrc, instGroup: top }
+    uSink: { container: uvmReuseLeaf_tb, instanceType: uvmReuseLeafSink, instGroup: top }
+
+connections:
+    - { interface: apbReg, src: uCpu, srcport: apbReg, dst: uRouter, dstport: apbReg }
+    - { interface: uvmReuseStreamIf, src: uSrc, srcport: out, dst: u_uvmReuseLeaf, dstport: in }
+    - { interface: uvmReuseStreamIf, src: u_uvmReuseLeaf, srcport: out, dst: uSink, dstport: in }

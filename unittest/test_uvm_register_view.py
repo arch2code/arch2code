@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+"""The UVM view gives each port its clock domain and backpressure, and the
+register model its rows, at every variant.
+
+The generated environment picks each agent's clock interface and its
+backpressure setting from the port entries. It builds the register model from
+the registers and memories entries, and drives it through the register-bus
+port's agent and adapter class, which the registerBus entry names. A register
+model whose offsets or fields disagree with the RTL decoder reads the wrong
+bits. Each offset must be the one fw/<block>RegAddresses.h defines and the
+address map allocates, each memory must step by the decoder's row stride, and
+each field must sit at its packed position: the first declared member is the
+most significant, as in an SV `typedef struct packed`. The decoder flops a
+padding member that alignment adds like any other, so it is a field too. Each
+field carries its share of the register's defaultValue as its reset, and each
+memory its row width at the variant and the decoder's row stride. A
+parameter can size a field or a memory depth, so widths and depths are checked
+at each variant.
+
+The view also carries the UVM spelling of each row's access: an ro register
+is RO and volatile, an rw register RW and not volatile, and a memory's
+uvm_mem access is RO or RW with its map rights as declared. None of these
+memories is write-only, so none is kept off a built-in memory test.
+
+A copy of `fixtures/uvm-blocks` gains params UB_W and UB_D on ubDut and two
+variants that bind them differently. ubDut gets a register whose low field is
+UB_W wide, a 40-bit register, a register over a specialStructures entry whose
+second member is aligned to bit 16, a regType memory register, a memory UB_D
+deep with regAccess: ro, and one without regAccess, which the view leaves out.
+The expected values, offsets included, are worked out here from the edited YAML
+and the fixture's address policy: memories first, sized by their worst-case
+rows, then registers in 8-byte slots.
+"""
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
+from pysrc.processYaml import projectOpen
+
+
+FIXTURE = os.path.join(test_dir, 'fixtures', 'uvm-blocks')
+ARCH = os.path.join('yaml', 'uvmBlocks.yaml')
+PROJECT = os.path.join('prj', 'yaml', 'uvmBlocksProject.yaml')
+DB = 'uvmBlocks.db'
+
+EDITS = [
+    ('\ntypes:\n',
+     '\nipParameters:\n'
+     '    constants:\n'
+     '        UB_W: { value: 4, maxValue: 16, desc: "Field width knob" }\n'
+     '        UB_D: { value: 16, maxValue: 64, desc: "Memory depth knob" }\n\n'
+     'types:\n'
+     '    ubPT: { width: UB_W, desc: "Parameter-width field" }\n'
+     '    ubIdxT: { width: 6, desc: "Table index" }\n'),
+    ('\nstructures:\n',
+     '\nstructures:\n'
+     '    ubPSt:\n'
+     '        hi: { varType: ubDataT, desc: "Fixed high field" }\n'
+     '        lo: { varType: ubPT, desc: "Parameter-width low field" }\n'
+     '    ubWideSt:\n'
+     '        word: { varType: ubWordT, desc: "Low word" }\n'
+     '        tag: { varType: ubDataT, desc: "Tag above the word" }\n'
+     '    ubIdxSt:\n'
+     '        idx: { varType: ubIdxT, desc: "Table index" }\n'
+     '    ubAlignBaseSt:\n'
+     '        a: { varType: ubDataT, desc: "First member" }\n'
+     '        b: { varType: ubDataT, align: 16, desc: "Member aligned to bit 16" }\n'),
+    ('\ninterfaces:\n',
+     '\nspecialStructures:\n'
+     '    ubAlignSt: { baseStruct: ubAlignBaseSt }\n\n'
+     'constants:\n'
+     '    UB_MTS: { value: 64, desc: "Read burst limit" }\n\n'
+     'interfaces:\n'
+     '    ubRd:\n'
+     '        desc: "AXI read"\n'
+     '        interfaceType: axi_read\n'
+     '        maxTransferSize: UB_MTS\n'
+     '        structures:\n'
+     '            - { structure: ubAddrSt, structureType: addr_t }\n'
+     '            - { structure: ubWordSt, structureType: data_t }\n'
+     '    ubRdP:\n'
+     '        desc: "AXI read limited by a block parameter"\n'
+     '        interfaceType: axi_read\n'
+     '        maxTransferSize: UB_W\n'
+     '        structures:\n'
+     '            - { structure: ubAddrSt, structureType: addr_t }\n'
+     '            - { structure: ubWordSt, structureType: data_t }\n'
+     '            - { structure: ubDataT, structureType: id_t }\n'),
+    ('        hasUvm: true\n', '        hasUvm: true\n        params: [UB_W, UB_D]\n'),
+    ('            out: { interface: ubStream, direction: src }\n',
+     '            out: { interface: ubStream, direction: src }\n'
+     '            rdM: { interface: ubRd, direction: src }\n'
+     '            rdS: { interface: ubRdP, direction: dst }\n'),
+    ('instanceType: ubDut,    instGroup: top, addressGroup: top }',
+     'instanceType: ubDut,    instGroup: top, addressGroup: top, variant: v0 }'),
+    ('\nconnections:\n',
+     '\nparameters:\n'
+     '    ubDut:\n'
+     '        v0: { UB_W: 4, UB_D: 16 }\n'
+     '        v1: { UB_W: 12, UB_D: 32 }\n\n'
+     'connections:\n'),
+    ('    - { interface: ubStream, src: uDut, srcport: out, dst: uSink, dstport: in, name: outLink }\n',
+     '    - { interface: ubStream, src: uDut, srcport: out, dst: uSink, dstport: in, name: outLink }\n'
+     '    - { interface: ubRd, src: uDut, srcport: rdM, dst: uSink, dstport: rdIn, name: rdOut, maxTransferSize: 32 }\n'
+     '    - { interface: ubRdP, src: uSrc, srcport: rdOut, dst: uDut, dstport: rdS, name: rdIn }\n'),
+    ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+     '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
+     '    - { register: cfg, regType: rw, block: ubDut, structure: ubPSt, defaultValue: 5, desc: "Config" }\n'
+     '    - { register: wide, regType: ro, block: ubDut, structure: ubWideSt, desc: "Wide status" }\n'
+     '    - { register: aligned, regType: rw, block: ubDut, structure: ubAlignSt, desc: "Padded" }\n'
+     '    - { register: lut, regType: memory, block: ubDut, structure: ubSt, addressStruct: ubIdxSt, '
+     'wordLines: 8, desc: "Register memory" }\n\n'
+     'memories:\n'
+     '    - { memory: tbl, block: ubDut, structure: ubPSt, wordLines: UB_D, addressStruct: ubIdxSt, '
+     'regAccess: ro, desc: "Table" }\n'
+     '    - { memory: hidden, block: ubDut, structure: ubSt, wordLines: 4, addressStruct: ubIdxSt, '
+     'desc: "Not on the bus" }\n'),
+]
+
+PKG = {'v0': 'ubDut_v0_uvm_pkg', 'v1': 'ubDut_v1_uvm_pkg'}
+UB_W = {'v0': 4, 'v1': 12}
+UB_D = {'v0': 16, 'v1': 32}
+
+# backpressureOverridable says whether the port's agent config has a
+# no_backpressure knob, and counter names the env's transaction counter for the
+# port's output, if it has one. maxTransferBytes is set per variant on the
+# ports of a type that declares uvmMaxTransferBytes, the AXI types here. rdM's
+# interface names the constant UB_MTS, and its connection, which reaches uDut
+# at v0 only, overrides it with 32; v1 has no connection, so it takes 64. rdS's
+# interface names the block parameter UB_W, so each variant takes its binding.
+# Every port has a digest, <port>_digest.
+# idUnbound is True on an AXI port whose interface binds no id_t: rdM's leaves
+# it unbound, rdS's binds it.
+PORTS = [
+    {'name': 'in', 'agent': 'in_agent', 'interfaceType': 'rdy_vld', 'role': 'dst', 'clock': 'clk',
+     'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
+     'backpressureOverridable': True, 'counter': None, 'digest': 'in_digest', 'maxTransferBytes': None, 'idUnbound': False},
+    {'name': 'out', 'agent': 'out_agent', 'interfaceType': 'rdy_vld', 'role': 'src', 'clock': 'clk',
+     'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
+     'backpressureOverridable': True, 'counter': 'out_counter', 'digest': 'out_digest', 'maxTransferBytes': None, 'idUnbound': False},
+    {'name': 'rdM', 'agent': 'rdM_agent', 'interfaceType': 'axi_read', 'role': 'src', 'clock': 'clk',
+     'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
+     'backpressureOverridable': False, 'counter': 'rdM_counter', 'digest': 'rdM_digest', 'maxTransferBytes': {'v0': 32, 'v1': 64},
+     'idUnbound': True},
+    {'name': 'rdS', 'agent': 'rdS_agent', 'interfaceType': 'axi_read', 'role': 'dst', 'clock': 'clk',
+     'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
+     'backpressureOverridable': False, 'counter': None, 'digest': 'rdS_digest', 'maxTransferBytes': UB_W, 'idUnbound': False},
+    {'name': 'ubRegs', 'agent': 'ubRegs_agent', 'interfaceType': 'apb', 'role': 'dst', 'clock': 'clk',
+     'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
+     'backpressureOverridable': False, 'counter': None, 'digest': 'ubRegs_digest', 'maxTransferBytes': None, 'idUnbound': False},
+]
+REGISTER_BUS = {'port': 'ubRegs', 'agent': 'ubRegs_agent', 'adapterClass': 'apb_reg_adapter'}
+CLASSES = {'envClass': 'ubDut_env', 'regBlockClass': 'ubDut_reg_block'}
+
+
+def each(value):
+    return {variant: value(variant) for variant in PKG}
+
+
+def field(name, width, lsb, reset=0):
+    return {'name': name, 'width': width, 'lsb': lsb, 'reset': reset}
+
+
+def expected_registers():
+    return [
+        {'name': 'ctrl', 'className': 'ubDut_reg_ctrl', 'offset': 0x120,
+         'uvmAccess': 'RW', 'volatile': False,
+         'width': each(lambda v: 8), 'fields': each(lambda v: [field('data', 8, 0)])},
+        {'name': 'cfg', 'className': 'ubDut_reg_cfg', 'offset': 0x128,
+         'uvmAccess': 'RW', 'volatile': False,
+         'width': each(lambda v: 8 + UB_W[v]),
+         'fields': each(lambda v: [field('hi', 8, UB_W[v]), field('lo', UB_W[v], 0, reset=5)])},
+        {'name': 'wide', 'className': 'ubDut_reg_wide', 'offset': 0x130,
+         'uvmAccess': 'RO', 'volatile': True,
+         'width': each(lambda v: 40), 'fields': each(lambda v: [field('word', 32, 8), field('tag', 8, 0)])},
+        {'name': 'aligned', 'className': 'ubDut_reg_aligned', 'offset': 0x138,
+         'uvmAccess': 'RW', 'volatile': False,
+         'width': each(lambda v: 24),
+         'fields': each(lambda v: [field('a', 8, 16), field('reserved0', 8, 8), field('b', 8, 0)])},
+    ]
+
+
+def expected_memories():
+    # tbl's worst-case row is 8 + 16 bits, so 4 bytes, and its 64 worst-case
+    # rows fill 0x0-0xff; lut follows at 0x100 with 8 rows of 4 bytes.
+    return [
+        {'name': 'lut', 'offset': 0x100, 'rowBytes': 4, 'uvmAccess': 'RW', 'mapRights': 'RW',
+         'count': each(lambda v: 8), 'width': each(lambda v: 8), 'excludeTests': []},
+        {'name': 'tbl', 'offset': 0x0, 'rowBytes': 4, 'uvmAccess': 'RO', 'mapRights': 'RO',
+         'count': each(lambda v: UB_D[v]), 'width': each(lambda v: 8 + UB_W[v]), 'excludeTests': []},
+    ]
+
+
+def make_db(project):
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    cmd = ['make', '-C', project, f'REPO_ROOT={project}', f'A2C_ROOT={base_dir}',
+           f'A2C_PRJ_YAML={os.path.join(project, PROJECT)}', 'db']
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=600, env=env)
+
+
+def edit_fixture(project):
+    path = os.path.join(project, ARCH)
+    with open(path) as f:
+        text = f.read()
+    for old, new in EDITS:
+        if text.count(old) != 1:
+            raise RuntimeError(f"fixture no longer carries the single anchor {old!r}")
+        text = text.replace(old, new)
+    with open(path, 'w') as f:
+        f.write(text)
+
+
+def reg_addresses(prj):
+    """The REG_UBDUT_* defines fw/<block>RegAddresses.h would carry, read
+    through the includes template the header is rendered by."""
+    from templates.systemc.includes import includeRegAddresses
+    text = includeRegAddresses(None, prj, None)
+    return {m.group(1).lower(): int(m.group(2), 16)
+            for m in re.finditer(r'#define REG_UBDUT_(\w+)\s+0x([0-9a-f]+)', text)}
+
+
+def compare(what, actual, expected):
+    if actual == expected:
+        return []
+    return [f"{what} is\n    {actual}\n  expected\n    {expected}"]
+
+
+def check(project):
+    prj = projectOpen(os.path.join(project, DB))
+    (qualBlock,) = [key for key, row in prj.data['blocks'].items() if row['block'] == 'ubDut']
+    uvm = prj.getBlockData(qualBlock)['uvm']
+    problems = []
+    keys = PORTS[0].keys()
+    problems += compare('ports', [{k: port[k] for k in keys} for port in uvm['ports']], PORTS)
+    problems += compare('registerBus', uvm['registerBus'], REGISTER_BUS)
+    problems += compare('class names', {key: uvm[key] for key in CLASSES}, CLASSES)
+
+    # A leaf top's model is its root register block alone.
+    (root,) = uvm['registerBlocks']
+    offsets = reg_addresses(prj)
+    for row in root['registers'] + root['memories']:
+        if row['offset'] != offsets.get(row['name'].lower()):
+            problems.append(f"{row['name']} is at offset {row['offset']:#x}, the firmware header "
+                            f"says {offsets.get(row['name'].lower())}")
+    problems += compare('registers', root['registers'], expected_registers())
+    problems += compare('memories', root['memories'], expected_memories())
+    if 'hidden' in offsets or any(mem['name'] == 'hidden' for mem in root['memories']):
+        problems.append("the memory without regAccess reached the firmware header or the view")
+    return problems
+
+
+def run_all_tests():
+    tmp = tempfile.mkdtemp(prefix='uvm_register_view_', dir=test_dir)
+    try:
+        project = os.path.join(tmp, 'prj')
+        shutil.copytree(FIXTURE, project)
+        edit_fixture(project)
+        result = make_db(project)
+        if result.returncode != 0:
+            print(f"FAIL: make db rejected the fixture (rc={result.returncode})")
+            print(result.stdout + result.stderr)
+            return 1
+        problems = check(project)
+    finally:
+        remove_tree(tmp)
+    if problems:
+        for problem in problems:
+            print(f"  FAIL: {problem}")
+        print("\nFAIL: the UVM view disagrees with the block's ports or address rows")
+        return 1
+    print("  PASS: ports carry their clock, reset, backpressure and AXI burst limit")
+    print("  PASS: registers and memories sit at the allocated offsets and strides, with the packed fields at v0 and v1")
+    print("\nPASS: the UVM view carries port domains and the register model")
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(run_all_tests())
+    except Exception as e:
+        print(f"\nERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

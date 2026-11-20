@@ -111,9 +111,19 @@ module apbDecode_hdl_sv_wrapper
     );
 
     `ifdef VCS_DEBUG
+    // Module scope, so %m names this module and not the initial block.
+    string a2c_waves_scope;
     initial if ($test$plusargs("fsdbTrace")) begin
-        $fsdbDumpvars($sformatf("%m"), "+all");
+        if (!$value$plusargs("a2c_waves_scope=%s", a2c_waves_scope)) a2c_waves_scope = $sformatf("%m");
+        $fsdbDumpvars(0, "instance=", a2c_waves_scope, "+all");
     end
+    `endif
+
+    `ifndef VERILATOR
+    apb_xcheck apbReg_uBridge_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uBridge));
+    apb_xcheck apbReg_uIp0_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uIp0));
+    apb_xcheck apbReg_uIp1_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uIp1));
+    apb_xcheck cpu_main_xcheck (.clk(clk), .rst_n(rst_n), .intf(cpu_main));
     `endif
 
 endmodule : apbDecode_hdl_sv_wrapper

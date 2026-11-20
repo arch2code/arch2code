@@ -5,6 +5,7 @@
 
 #include "systemc.h"
 #include "req_ack_channel.h"
+#include "bfmContractCheck.h"
 
 template<typename VL_DATA_T, typename VL_RDATA_T>
 struct req_ack_hdl_if: public sc_interface {
@@ -27,10 +28,24 @@ public:
 
     SC_HAS_PROCESS (req_ack_src_bfm);
 
-    req_ack_src_bfm(sc_module_name modulename) {
+    req_ack_src_bfm(sc_module_name modulename) : m_held(name()) {
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(request_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
+    virtual void end_of_simulation() {
+        m_held.check_.report();
+    }
+
+    // The BFM takes each request in its first clock on the pins, so a
+    // model that answers in zero time completes it on the next edge, as a
+    // destination whose ack follows req combinationally does.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
         DATA_T data;
@@ -38,16 +53,40 @@ public:
         while (true) {
             hdl_if_p->ack = false;
             hdl_if_p->rdata = VL_RDATA_T(0);
-            do {
+            if (!m_clock.waitSamplePoint(clk) || !hdl_if_p->req) {
                 wait(clk.posedge_event());
-            } while (!hdl_if_p->req);
+                continue;
+            }
             data.sc_unpack(hdl_if_p->data);
+            m_held.take(hdl_if_p->data.read());
+            m_held.inCall_ = true;
             if_p->req(data, rdata);
+            m_held.inCall_ = false;
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->ack = true;
             hdl_if_p->rdata = rdata.sc_pack();
             wait(clk.posedge_event());
+            if (rst_n) {
+                m_held.check(hdl_if_p->req, hdl_if_p->data.read());
+            }
         }
     }
+
+    void request_monitor() {
+        m_clock.rose();
+        if (rst_n) {
+            m_held.monitor(hdl_if_p->req, hdl_if_p->data.read());
+        }
+    }
+
+    void clock_fall() {
+        m_clock.fell();
+    }
+
+private:
+
+    bfmSameClockAnswer m_clock;
+    bfmHeldRequest<VL_DATA_T> m_held;
 
 };
 
@@ -64,28 +103,77 @@ public:
 
     SC_HAS_PROCESS (req_ack_dst_bfm);
 
-    req_ack_dst_bfm(sc_module_name modulename) {
+    req_ack_dst_bfm(sc_module_name modulename) :
+        m_lowered(name()),
+        m_rdataChanged(name()),
+        m_complete([this] { if_p->ack(m_rdata); }) {
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(edge_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
+    virtual void end_of_simulation() {
+        m_lowered.report();
+        m_rdataChanged.report();
+    }
+
+    // The model's req() blocks until ack(), which the BFM calls with rdata at
+    // the sample point of the clock whose closing edge takes the request
+    // (bfmSameClockAnswer::waitTaken()), so the BFM holds no request of its
+    // own.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
+        m_clock.rose();
+        auto ready = [this] { return hdl_if_p->ack.read(); };
         while (true) {
             DATA_T data;
-            RDATA_T rdata;
             if_p->reqReceive(data);
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->req = true;
             hdl_if_p->data = data.sc_pack();
-            do {
-                wait(clk.posedge_event());
-            } while (!hdl_if_p->ack);
-            rdata.sc_unpack(hdl_if_p->rdata);
-            // Drop req before a delayed ack() blocks, as push_ack_dst_bfm drops push.
+            const bool certain = m_clock.waitTaken(clk, ready, [] {});
+            m_rdata.sc_unpack(hdl_if_p->rdata);
+            m_rdataChanged.sample(hdl_if_p->rdata.read());
+            m_complete.start();
+            if (certain) {
+                if (m_clock.waitTakenEdge(clk, rst_n, ready, m_lowered)) {
+                    if (rst_n.read()) {
+                        m_rdataChanged.check(&m_clock, hdl_if_p->rdata.read());
+                    }
+                } else {
+                    do {
+                        wait(clk.posedge_event());
+                        m_clock.rose();
+                    } while (!ready());
+                }
+            }
             hdl_if_p->req = false;
-            if_p->ack(rdata);
+            m_complete.waitDone();
             wait(clk.posedge_event());
+            m_clock.rose();
         }
     }
+
+    void edge_monitor() {
+        m_clock.rose();
+    }
+
+    void clock_fall() {
+        m_clock.fell();
+    }
+
+private:
+
+    RDATA_T m_rdata;
+    bfmSameClockAnswer m_clock;
+    bfmReadyLowered m_lowered;
+    bfmReadDataChanged<VL_RDATA_T> m_rdataChanged;
+    bfmCompleter m_complete;
 
 };
 

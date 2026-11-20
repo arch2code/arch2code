@@ -33,6 +33,88 @@ CURRENT_YAML_FORMAT = 2
 # to match.
 REG_BUS_WIDTH_BYTES = 4
 
+# uvm_reg_data_t's width in a default UVM build, the widest register or
+# memory row a UVM register model holds.
+UVM_REG_DATA_WIDTH = 64
+
+# DRIVE_SKEW of common/systemVerilog/uvm/a2c_clk_if.sv. A UVM agent drives
+# this long after a rising edge and samples at the falling edge, so the skew
+# must end before the falling edge.
+UVM_DRIVE_SKEW_PS = 100
+PS_PER_TIME_UNIT = {'ps': 1, 'ns': 1000, 'us': 1000000}
+
+# Names a register, memory or field of the generated register model cannot
+# take. A field is a member of its uvm_reg subclass, and a register or memory a
+# member of the uvm_reg_block subclass, so each would hide the base class
+# member of the same name. Both classes are uvm_objects, and the generated
+# class adds build() and the utils macro's type_id and type_name.
+UVM_OBJECT_MEMBER_NAMES = frozenset((
+    'build', 'type_id', 'type_name', 'get_name', 'set_name', 'get_full_name', 'get_inst_id',
+    'get_inst_count', 'get_type', 'get_object_type', 'get_type_name', 'create', 'clone',
+    'print', 'sprint', 'convert2string', 'record', 'copy', 'compare', 'pack', 'pack_bytes',
+    'pack_ints', 'unpack', 'unpack_bytes', 'unpack_ints', 'do_print', 'do_record', 'do_copy',
+    'do_compare', 'do_pack', 'do_unpack', 'set_int_local', 'set_string_local',
+    'set_object_local', 'reseed', 'get_uvm_seeding', 'set_uvm_seeding', 'randomize',
+    'srandom', 'get_randstate', 'set_randstate', 'pre_randomize', 'post_randomize',
+    'rand_mode', 'constraint_mode'))
+UVM_REG_MEMBER_NAMES = UVM_OBJECT_MEMBER_NAMES | frozenset((
+    'configure', 'set_offset', 'set_parent', 'add_field', 'add_map', 'get_parent', 'get_regfile',
+    'get_block', 'get_n_maps', 'is_in_map', 'get_maps', 'get_local_map', 'get_default_map',
+    'get_rights', 'get_access', 'get_n_bits', 'get_n_bytes', 'get_max_size', 'get_fields',
+    'get_field_by_name', 'get_offset', 'get_address', 'get_addresses', 'set_frontdoor',
+    'get_frontdoor', 'set_backdoor', 'get_backdoor', 'clear_hdl_path', 'add_hdl_path',
+    'add_hdl_path_slice', 'has_hdl_path', 'get_hdl_path', 'get_hdl_path_kinds',
+    'get_full_hdl_path', 'backdoor_read', 'backdoor_write', 'backdoor_read_func',
+    'backdoor_watch', 'set', 'get', 'get_mirrored_value', 'needs_update', 'reset', 'get_reset',
+    'has_reset', 'set_reset', 'write', 'read', 'poke', 'peek', 'update', 'mirror', 'predict',
+    'do_predict', 'is_busy', 'include_coverage', 'build_coverage', 'add_coverage',
+    'has_coverage', 'set_coverage', 'get_coverage', 'sample', 'sample_values', 'pre_write',
+    'post_write', 'pre_read', 'post_read', 'do_write', 'do_read'))
+UVM_REG_BLOCK_MEMBER_NAMES = UVM_OBJECT_MEMBER_NAMES | frozenset((
+    'configure', 'create_map', 'set_default_map', 'get_default_map', 'default_map',
+    'default_path', 'lock_model', 'is_locked', 'get_parent', 'get_root_blocks', 'find_blocks',
+    'find_block', 'get_blocks', 'get_maps', 'get_registers', 'get_fields', 'get_memories',
+    'get_virtual_registers', 'get_virtual_fields', 'get_block_by_name', 'get_map_by_name',
+    'get_reg_by_name', 'get_field_by_name', 'get_mem_by_name', 'get_vreg_by_name',
+    'get_vfield_by_name', 'include_coverage', 'build_coverage', 'add_coverage', 'has_coverage',
+    'set_coverage', 'get_coverage', 'sample', 'sample_values', 'get_default_path', 'reset',
+    'needs_update', 'update', 'mirror', 'write_reg_by_name', 'read_reg_by_name',
+    'write_mem_by_name', 'read_mem_by_name', 'readmemh', 'writememh', 'set_backdoor',
+    'get_backdoor', 'clear_hdl_path', 'add_hdl_path', 'has_hdl_path', 'get_hdl_path',
+    'get_full_hdl_path', 'set_default_hdl_path', 'get_default_hdl_path', 'set_hdl_path_root',
+    'is_hdl_path_root', 'set_lock', 'add_block', 'add_reg', 'add_vreg', 'add_mem', 'add_map',
+    # The generated build()'s map variable.
+    'a2c_map'))
+
+def uvmModelNames(flatData, blockKey):
+    """The registers, fields and memories a block's register model declares,
+    as (kind, name, register) in declaration order. A memory's structure
+    members become no fields."""
+    names = list()
+    for row in flatData['registers'].values():
+        if row['blockKey'] != blockKey:
+            continue
+        if row['regType'] == 'memory':
+            names.append(('memory', row['register'], None))
+            continue
+        names.append(('register', row['register'], None))
+        names += [('field', name, row['register'])
+                  for name in flatData['structures'][row['structureKey']]['vars']]
+    names += [('memory', row['memory'], None) for row in flatData['memories'].values()
+              if row['blockKey'] == blockKey and row['regAccess']]
+    return names
+
+def uvmRegisterTreeLeaves(node):
+    """The nodes of a UVM register tree that own register rows."""
+    if node['registerWidths']:
+        yield node
+    for child in node['children']:
+        yield from uvmRegisterTreeLeaves(child)
+
+def describeUvmTreeNode(node):
+    variant = f", variant '{node['variant']}'" if node['variant'] else ''
+    return f"instance '{'.'.join(node['path'])}' (block '{node['block']}'{variant})"
+
 def worstCaseBitwidth(width, maxBitwidth, isParameterizable):
     """Firmware reaches a register or memory row of every variant through one
     address range, so the range is sized for the widest variant."""
@@ -42,6 +124,16 @@ def rowFootprintBytes(bitwidth):
     """Address stride between the rows of a memory whose rows are `bitwidth`
     bits wide, as the address map allocates it."""
     return roundup_pow2min4((bitwidth + 7) >> 3)
+
+def memoryRowBytes(struct):
+    """The decoder's stride between the rows of a memory of structure
+    `struct`, which the RTL, the model and the UVM register model share."""
+    return rowFootprintBytes(worstCaseBitwidth(struct['width'], struct['maxBitwidth'], struct['isParameterizable']))
+
+def registerBytes(struct):
+    """The bytes a register of structure `struct` spans at its default
+    width, not its worst-case span."""
+    return (struct['width'] + 7) >> 3
 
 # yaml = YAML(typ='safe', pure=True)
 yaml = YAMLRAW.YAML(typ='rt')
@@ -585,6 +677,8 @@ class projectOpen:
         self.blockModuleName = self.config.getConfig('BLOCKMODULENAME')
         self.blockSvModuleName = self.config.getConfig('BLOCKSVMODULENAME')
         self.svWrapperNames = self.config.getConfig('SVWRAPPERNAMES')
+        self.uvmNames = self.config.getConfig('UVMNAMES')
+        self.portTransferSizes = self.config.getConfig('PORTTRANSFERSIZES')
         self.filemap = self.config.getConfig('FILEMAP')
         global dirMacros
         dirMacros = self.config.getConfig('DIRS')
@@ -1495,6 +1589,9 @@ class projectOpen:
         self.getBDInstances(qualBlock, ret, trimRegLeafInstance, excludeInstances)
         # get all the register and memory information
         self.getBDRegistersMemories(qualBlock, ret)
+        # getBDUvm models the block's own register rows, which the register
+        # connections below clear from ret['registers'].
+        ret['temp']['blockRegisters'] = ret['registers']
         # based on memories and registers, do we need address decoding etc
         self.getBDAddressDecode(ret)
         # address bus info
@@ -1545,6 +1642,7 @@ class projectOpen:
         self.getBDAddressBlockView(ret)
         # Verilated SV wrapper design-unit names, single-sourced from the fileMap.
         self.getBDSvWrapperNames(ret)
+        self.getBDUvm(ret)
         ret.pop('temp') # remove temp data
 
         return ret
@@ -1757,6 +1855,284 @@ class projectOpen:
             'xceliumDutHeader': f'{bodyModule}_xcelium.h',
             'variantXceliumDutHeaders': {v: f'{t}_xcelium.h' for v, t in variantTops.items()},
         }
+
+    def getBDUvm(self, ret):
+        # The UVM testbench of a hasUvm block, None for any other block: the
+        # names projectCreate.deriveUvmNames gives it, with its tops keyed by
+        # variant, one agent per boundary port in port order, and the register
+        # model rows. Each agent class is parameterized by its interface's
+        # payload parameters, by name.
+        import pysrc.intf_gen_utils as intf_gen_utils
+        if ret['qualBlock'] not in self.uvmNames:
+            ret['uvm'] = None
+            return
+        tops = self.uvmNames[ret['qualBlock']]['tops']
+        # A port's reset, like a clock's, is None when it is not a port of
+        # the block.
+        resetPorts = {row['reset'] for row in ret['resets']}
+        # One a2c_clk_if per clock, released by the clock's selected reset
+        # when that reset is a port of the block, else never held in reset.
+        clocks = [{'clock': row['clock'], 'vif': f"{row['clock']}_vif",
+                   'reset': row['selectedReset'] if row['selectedReset'] in resetPorts else None}
+                  for row in ret['clocks']]
+        clockVifs = {clock['clock']: clock['vif'] for clock in clocks}
+        ports = list()
+        for portGroup in ret['ports'].values():
+            for portData in portGroup.values():
+                intfData = intf_gen_utils.get_intf_data(portData['connection'], self)
+                intfType = intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)
+                intfDef = ret['interface_defs'][intfType]
+                paramBindings = self.getIntfParamBindings(intfDef, intfData['structures'])
+                elastic = intfDef['timing'] == 'elastic'
+                isOutput = portData['direction'] == 'src'
+                maxTransferBytes = None
+                if intfDef['uvmMaxTransferBytes']:
+                    sizes = self.portTransferSizes[(ret['qualBlock'], portData['name'])]['bytes']
+                    maxTransferBytes = {variant: sizes[variant] for variant in tops}
+                ports.append({
+                    'name': portData['name'],
+                    'agent': f"{portData['name']}_agent",
+                    'interfaceType': intfType,
+                    'role': portData['direction'],
+                    'clock': portData['domainClock'],
+                    'clockVif': clockVifs[portData['domainClock']],
+                    'reset': portData['domainReset'] if portData['domainReset'] in resetPorts else None,
+                    'backpressure': portData['effectiveBackpressure'],
+                    # The agent config carries a no_backpressure knob when a
+                    # port may lower the default.
+                    'backpressureOverridable': elastic and intfDef['backpressure']['overridable'],
+                    # A DUT data output with a handshake delivers a countable
+                    # number of transactions, so the env counts them.
+                    'counter': f"{portData['name']}_counter"
+                               if isOutput and elastic and not intfDef['addressBus'] else None,
+                    # Every port's monitors feed a transaction digest.
+                    'digest': f"{portData['name']}_digest",
+                    'maxTransferBytes': maxTransferBytes,
+                    # A DUT src port of a type with no handshake, on a block
+                    # with a model: its responder's model lane waits on the
+                    # port's credit pins in paired mode. validateUvmBlocks
+                    # reserves the pin names under the same hasMdl rule.
+                    'modelCredit': (bool(intfDef['uvmModelCredit']) and portData['direction'] == 'src'
+                                    and bool(ret['blockInfo']['hasMdl'])),
+                    # A DUT src port whose BFM, the model's dst BFM, keeps
+                    # the model's program order across ports.
+                    'writeOrder': bool(intfDef['bfmWriteOrder']) and portData['direction'] == 'src',
+                    # A port that binds no ID parameter carries no ID in the
+                    # design, so its agent sends every burst with ID 0.
+                    'idUnbound': bool(intfDef['uvmIdParam']) and any(
+                        b['isNull'] for b in paramBindings if b['structureType'] == intfDef['uvmIdParam']),
+                    'paramBindings': paramBindings,
+                    # Per variant, the bound payloads with their declaring
+                    # packages, for package-scoped references.
+                    'paramTypes': {variant: [{'param': b['structureType'],
+                                              'type': self.uvmTypeRef(b['kind'], b['structureKey'], top['pkgName'])}
+                                             for b in paramBindings if not b['isNull']]
+                                   for variant, top in tops.items()},
+                })
+        internalMonitors, unmonitored = self.getUvmInternalMonitors(ret, clocks, {port['name'] for port in ports})
+        names = self.uvmNames[ret['qualBlock']]
+        block = ret['blockInfo']['block']
+        registers, memories = self.getUvmRegisterModel(
+            ret['qualBlock'], {variant: top['registerWidths'] for variant, top in tops.items()}, block)
+        # The register model's bus: the block's register-bus port, whose
+        # interface package ships the <type>_reg_adapter. For a register tree
+        # it is the port projectCreate chose for the tree.
+        registerBlocks = [{'className': names['regBlockClass'], 'registers': registers, 'memories': memories,
+                           'children': [], 'a2cMap': bool(memories), 'isRoot': True}]
+        busPortName = ret['registerBusPort']
+        hasTree = any(top['registerTree'] for top in tops.values())
+        if hasTree:
+            registerBlocks = self.getUvmRegisterTree(tops, block, names['regBlockClass'])
+            busPortName = names['registerTreeBusPort']
+        registerBus = None
+        if registers or memories or hasTree:
+            (busPort,) = [port for port in ports if port['name'] == busPortName]
+            registerBus = {'port': busPort['name'], 'agent': busPort['agent'],
+                           'adapterClass': f"{busPort['interfaceType']}_reg_adapter"}
+        # The fail test expects more transactions than the first counted
+        # output delivers, so a block with none has no fail test, and no
+        # rt-fire test, whose real-time checkers judge a counted output. The
+        # model mismatch test injects on that port's comparator, so it also
+        # needs the both DUT.
+        counted = [port for port in ports if port['counter']]
+        failTest = None
+        rtFireTest = None
+        modelMismatchTest = None
+        if counted:
+            failTest = {'className': names['failTestClass'], 'counter': counted[0]['counter']}
+            rtFireTest = {'className': names['rtFireTestClass']}
+            if 'both' in names['duts']:
+                modelMismatchTest = {'className': names['modelMismatchTestClass'], 'agent': counted[0]['agent']}
+        ret['uvm'] = {**names, 'ports': ports, 'clocks': clocks,
+                      'agentPackages': list(dict.fromkeys(f"{port['interfaceType']}_uvm_pkg"
+                                                          for port in ports + internalMonitors)),
+                      'registerBlocks': registerBlocks,
+                      'registerBus': registerBus,
+                      'internalMonitors': internalMonitors, 'unmonitored': unmonitored,
+                      'failTest': failTest, 'rtFireTest': rtFireTest, 'modelMismatchTest': modelMismatchTest}
+
+    def getUvmInternalMonitors(self, ret, clocks, portNames):
+        """The connections between a block's children that its env watches
+        with a passive agent on the RTL's own interface instance, named as
+        the RTL names it. A connection is watched when its type has a UVM
+        agent and is not a register bus, which the register model covers.
+        Returns the watched ones and, with a reason, the ones it cannot
+        watch: a payload local to the block's module, which no package
+        declares, a clock that is not one of the block's clock ports, or a
+        name a boundary port already takes. A connection's clock is its
+        clock:, else its source port's clock as the source instance binds it.
+        """
+        import pysrc.intf_gen_utils as intf_gen_utils
+        monitors = list()
+        unmonitored = list()
+        clockVifs = {clock['clock']: clock['vif'] for clock in clocks}
+
+        def connectionClock(connVal):
+            # The block's clock a connection runs on: its clock:, else the
+            # source port's own clock bound through the source instance.
+            if connVal['clock']:
+                return connVal['clock']
+            childKey = self.data['instances'][connVal['srcKey']]['instanceTypeKey']
+            childClock = self.portDomainClock(childKey, connVal['srcport'])
+            binds = {bind['port']: bind['signal'] for bind in self.getBDInstanceClockResetBinds(connVal['srcKey'])}
+            return binds.get(childClock)
+
+        for connVal in ret['connectDouble']['connections'].values():
+            intfData = intf_gen_utils.get_intf_data(connVal, self)
+            intfType = intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)
+            intfDef = ret['interface_defs'][intfType]
+            if not intfDef['uvmAgent'] or intfDef['addressBus']:
+                continue
+            name = intf_gen_utils.get_channel_name(connVal)
+            paramBindings = self.getIntfParamBindings(intfDef, intfData['structures'])
+            reason = None
+            clock = connectionClock(connVal)
+            if any(self.datatypeRef(b['kind'], b['structureKey'])['isParameterizable']
+                   for b in paramBindings if not b['isNull']):
+                reason = 'its payload is local to the module'
+            elif clock not in clockVifs:
+                reason = 'its clock is not a clock port of the block'
+            elif name in portNames:
+                reason = 'a boundary port has its name'
+            if reason:
+                unmonitored.append({'name': name, 'reason': reason})
+                continue
+            monitors.append({
+                'name': name, 'agent': f"{name}_agent", 'interfaceType': intfType,
+                'clockVif': clockVifs[clock], 'digest': f"{name}_digest",
+                'paramBindings': paramBindings,
+            })
+        return monitors, unmonitored
+
+    def getUvmRegisterModel(self, blockKey, widths, classPrefix):
+        """A block's firmware-visible registers and memories at the
+        addresses fw/<block>RegAddresses.h gives them, for the register model.
+
+        registers: one per registers: row other than regType memory, with its
+        structure's members as fields, the first declared member most
+        significant. The decoder flops the padding members alignment adds
+        like any other, so they are fields too. Each field carries its share
+        of defaultValue as reset. memories: one per memories: row with
+        regAccess, and one rw memory per regType memory register. width is
+        the row's n_bits and rowBytes the decoder's stride between rows, which
+        is sized for the widest variant's row. widths are keyed by testbench
+        variant, and so are the rows' widths and depths. Each register's class
+        is <classPrefix>_reg_<register>.
+
+        uvm_mem takes only RW or RO, so a wo memory is RW with WO map rights,
+        which UVM reports as RW when there is one map. excludeTests keeps the
+        built-in memory sequences off it.
+        """
+        def width(section, key):
+            return {variant: sum(member['width'] for member in layout[section][key]['fields'])
+                    for variant, layout in widths.items()}
+
+        def fields(key, defaultValue):
+            perVariant = dict()
+            for variant, layout in widths.items():
+                members = layout['registers'][key]['fields']
+                lsb = sum(member['width'] for member in members)
+                perVariant[variant] = list()
+                for member in members:
+                    lsb -= member['width']
+                    reset = (defaultValue >> lsb) & ((1 << member['width']) - 1)
+                    perVariant[variant].append({**member, 'lsb': lsb, 'reset': reset})
+            return perVariant
+
+        def memory(section, key, row, name, access):
+            return {'name': name, 'offset': int(row['offset']),
+                    'uvmAccess': 'RO' if access == 'ro' else 'RW', 'mapRights': access.upper(),
+                    'rowBytes': memoryRowBytes(self.data['structures'][row['structureKey']]),
+                    'count': {variant: layout[section][key]['wordLines'] for variant, layout in widths.items()},
+                    'width': width(section, key), 'excludeTests': ['NO_MEM_TESTS'] if access == 'wo' else []}
+
+        registers = list()
+        memories = list()
+        for key, row in self.data['registers'].items():
+            if row['blockKey'] != blockKey:
+                continue
+            if row['regType'] == 'memory':
+                memories.append(memory('registers', key, row, row['register'], 'rw'))
+                continue
+            defaultValue = self.getConst(row['defaultValue'], require_int=True,
+                                         context_msg="a register defaultValue")
+            registers.append({'name': row['register'], 'className': f"{classPrefix}_reg_{row['register']}",
+                              'offset': int(row['offset']),
+                              'uvmAccess': 'RO' if row['regType'] == 'ro' else 'RW',
+                              # The design drives an ro or ext register.
+                              'volatile': row['regType'] != 'rw',
+                              'width': width('registers', key),
+                              'fields': fields(key, defaultValue)})
+        for key, row in self.data['memories'].items():
+            if row['blockKey'] == blockKey and row['regAccess']:
+                memories.append(memory('memories', key, row, row['memory'], row['regAccess']))
+        return registers, memories
+
+    def getUvmRegisterTree(self, tops, block, rootClass):
+        """The register blocks of a model that reaches its registers through
+        the instances projectCreate.deriveUvmRegisterTree found, children
+        before their parent so each class precedes its use, the root last.
+        Each block names its child blocks with the offset of each in its own
+        map. A block's map is an a2c_reg_map when a memory sits in it or below
+        it, because an a2c_reg_map may only be a submap of another one. An
+        instance that reuses its block's UVM package is named by that
+        package's register block class, and its subtree emits no class.
+        """
+        trees = {variant: top['registerTree'] for variant, top in tops.items()}
+        blocks = list()
+
+        def visit(nodes, emit):
+            node = next(iter(nodes.values()))
+            prefix = f"{block}_{'_'.join(node['path'])}" if node['path'] else block
+            entry = {'className': f"{prefix}_reg_block" if node['path'] else rootClass,
+                     'registers': [], 'memories': [], 'children': [], 'isRoot': not node['path']}
+            if node['reuse'] is not None:
+                names = self.uvmNames[node['blockKey']]
+                entry['className'] = f"{names['tops'][node['reuse']]['pkgName']}::{names['regBlockClass']}"
+                emit = False
+            if node['registerWidths']:
+                entry['registers'], entry['memories'] = self.getUvmRegisterModel(
+                    node['blockKey'], {variant: n['registerWidths'] for variant, n in nodes.items()}, prefix)
+            childA2c = False
+            for i, child in enumerate(node['children']):
+                childEntry = visit({variant: n['children'][i] for variant, n in nodes.items()}, emit)
+                childA2c |= childEntry['a2cMap']
+                entry['children'].append({'name': child['instance'], 'className': childEntry['className'],
+                                          'offset': child['offset']})
+            entry['a2cMap'] = bool(entry['memories']) or childA2c
+            if emit:
+                blocks.append(entry)
+            return entry
+        visit(trees, True)
+        return blocks
+
+    def uvmTypeRef(self, kind, key, variantPkg):
+        # A type or structure as the UVM testbench names it: the variant
+        # package declares the block's parameterizable types, and the type's
+        # own file package every other one.
+        ref = self.datatypeRef(kind, key)
+        pkg = variantPkg if ref['isParameterizable'] else self.contextSvPackageName[ref['context']]
+        return {'name': ref['name'], 'pkg': pkg}
 
     def getBDConfigInfo(self, ret):
         # View assembly: read persisted truths and derive view-side fields.
@@ -2422,7 +2798,7 @@ class projectOpen:
                     struct = self.data['structures'][objInfo['structureKey']]
                     data[obj]['worstBitwidth'] = worstCaseBitwidth(struct['width'], struct['maxBitwidth'], struct['isParameterizable'])
                     if designObject == 'memories' or objInfo['regType'] == 'memory':
-                        data[obj]['rowBytes'] = rowFootprintBytes(data[obj]['worstBitwidth'])
+                        data[obj]['rowBytes'] = memoryRowBytes(struct)
                     # handle any object specific special cases
                     if (designObject == 'memories'):
                         ret['temp']['consts'][objInfo['wordLinesKey']] = 0
@@ -2444,7 +2820,7 @@ class projectOpen:
                                 data.pop(obj)
 
                     else:  # registers
-                        data[obj]['bytes'] = (struct['width'] + 7) >> 3 # round up to whole byte
+                        data[obj]['bytes'] = registerBytes(struct)
                         # Check if this is a memory register
                         if objInfo.get('regType') == 'memory':
                             if objInfo.get('wordLinesKey'):
@@ -3255,6 +3631,12 @@ class projectOpen:
                 domainClock = self.getBDPortDomain(ret, portRow['name'])
                 self._stampPortDomain(ret, portRow, domainClock)
             ret['ports'][portType['dest']] = dict(newPorts)
+        # The size a connection override gives the port's channel in
+        # <block>Channels, or None to keep the interface's maxTransferSize.
+        for group in ret['ports'].values():
+            for portRow in group.values():
+                sizes = self.portTransferSizes.get((ret['qualBlock'], portRow['name']))
+                portRow['channelTransferSize'] = sizes['channelBytes'] if sizes else None
 
     def _stampPortDomain(self, ret, portRow, domainClock):
         """Stamp a boundary port's domainClock/domainReset. The block's own
@@ -3295,17 +3677,21 @@ class projectOpen:
            no connection and no declaration, or a register/memory accessor
            port.
         """
-        blockRow = self.data['blocks'][ret['qualBlock']]
-        declaredRow = clockTree.declaredPortRow(blockRow, portName)
+        return self.portDomainClock(ret['qualBlock'], portName)
+
+    def portDomainClock(self, blockKey, portName):
+        # getBDPortDomain for any block, outside its own view.
+        declaredRow = clockTree.declaredPortRow(self.data['blocks'][blockKey], portName)
         if declaredRow is not None and declaredRow['clock']:
             return declaredRow['clock']
         # clockTree.build() reports every boundary port it cannot derive, so
         # a boundary port reaching this view always has a row.
         persistedClocks = {row['portName']: row['domainClock']
-                           for row in self.data['portDomains'].get(ret['qualBlock'], [])}
+                           for row in self.data['portDomains'].get(blockKey, [])}
         if portName in persistedClocks:
             return persistedClocks[portName]
-        return ret['defaultClock']
+        return next(row['itemKey'] for row in self.data['blockClocksResets'][blockKey]
+                    if row['kind'] == 'clock' and row['isDefault'])
 
     def getBDPortDomainReset(self, ret, clockName):
         """The selected reset of a boundary port's domain clock.
@@ -3781,7 +4167,8 @@ class projectOpen:
         # Pin list of the block's HDL verification wrapper with every width
         # bound at the given top's parameter values: one pin per interface
         # signal of each port, in port then signal order, then the block's
-        # clocks and resets in declaration order.
+        # clocks and resets in declaration order. A port pin names its port and
+        # signal, and payload is the binding that types it, None otherwise.
         import pysrc.intf_gen_utils as intf_gen_utils
         structWidths = self.vlTops[topModule]['structWidths']
         typeWidths = self.vlTops[topModule]['typeWidths']
@@ -3812,10 +4199,53 @@ class projectOpen:
                                 {binding['structureType']: intfEvalDSL(payloadWidth(binding))})
                     pins.append({'pin': f"{portData['name']}_{row['signal']}",
                                  'direction': row['direction'], 'width': width,
-                                 'vector': row['vector']})
+                                 'vector': row['vector'], 'port': portData['name'],
+                                 'signal': row['signal'],
+                                 'payload': row['binding'] if row['kind'] == 'payload' else None})
         for name, direction in intf_gen_utils.clock_reset_ports(ret):
-            pins.append({'pin': name, 'direction': direction, 'width': 1, 'vector': False})
+            pins.append({'pin': name, 'direction': direction, 'width': 1, 'vector': False,
+                         'port': None, 'signal': None, 'payload': None})
         return pins
+
+    def getUvmTopBoundaryPins(self, ret, hdlTop):
+        # Pin list of the UVM testbench top around the given HDL top. The
+        # testbench drives what the DUT samples and samples what it drives,
+        # while the SystemC side drives the clocks and resets into both. The
+        # credit pins of each port the uvm view marks modelCredit follow, and
+        # the pins the SystemC wrapper watches, the end of the run and the
+        # test's reset request, come last. kind is port, clockReset, credit
+        # or completion. A port pin carries its port's interface type and
+        # DUT-side role, and a pin typed by a payload carries the type as
+        # uvmTypeRef names it.
+        inverse = {'input': 'output', 'output': 'input'}
+        variantPkg = {top['hdlTop']: top['pkgName'] for top in self.uvmNames[ret['qualBlock']]['tops'].values()}[hdlTop]
+        uvmPorts = {port['name']: port for port in ret['uvm']['ports']}
+        pins = list()
+        for pin in self.getVlTopBoundaryPins(ret, hdlTop):
+            pinType = self.uvmTypeRef(pin['payload']['kind'], pin['payload']['structureKey'], variantPkg) \
+                if pin['payload'] else None
+            if pin['port'] is None:
+                pins.append(dict(pin, kind='clockReset', type=pinType))
+                continue
+            port = uvmPorts[pin['port']]
+            pins.append(dict(pin, kind='port', direction=inverse[pin['direction']], type=pinType,
+                             interfaceType=port['interfaceType'], role=port['role']))
+        # A credited port's paired-mode rendezvous pins, toward the model's BFM
+        # (section 9.12 of specs/SIMULATOR_INTEGRATION.md).
+        for port in ret['uvm']['ports']:
+            if not port['modelCredit']:
+                continue
+            credit = {'kind': 'credit', 'port': port['name'], 'signal': None, 'payload': None, 'type': None}
+            pins += [{'pin': f"{port['name']}_model_credit", 'direction': 'output', 'width': 32, 'vector': True, **credit},
+                     {'pin': f"{port['name']}_model_held", 'direction': 'input', 'width': 1, 'vector': False, **credit}]
+        completion = {'kind': 'completion', 'port': None, 'signal': None, 'payload': None, 'type': None}
+        return pins + [
+            {'pin': 'uvm_done', 'direction': 'output', 'width': 1, 'vector': False, **completion},
+            {'pin': 'uvm_errors', 'direction': 'output', 'width': 32, 'vector': True, **completion},
+            {'pin': 'rtl_dut', 'direction': 'output', 'width': 1, 'vector': False, **completion},
+            {'pin': 'model_dut', 'direction': 'output', 'width': 1, 'vector': False, **completion},
+            {'pin': 'uvm_reset_req', 'direction': 'output', 'width': 1, 'vector': False, **completion},
+        ]
 
     def extractContext(self, structs, consts):
         ret = dict()
@@ -4634,14 +5064,19 @@ class projectCreate:
         self.calcConfigModules()
         self.calcVariantConfigDescriptors()
         self.calcVariantSourceBlocks()
+        self.calcPortTransferSizes()
         # reject a testbench on a block whose Config comes from its container
         self.validateContainerSourcedTestbench()
         # reject one variant label declared by two of a block's variant sources
         self.validateVariantSourceLabelCollision()
         # reject a parameterizable socket shell that no registrar would register
         self.validateParameterizedSocketHasModel()
+        # reject a hasUvm block the UVM testbench cannot drive
+        self.validateUvmBlocks(tree)
         self.calcForeignConfigHeaders()
         self.deriveSvWrapperNames()
+        self.deriveUvmNames()
+        self.deriveUvmReuse()
         self.calcRegistrarPairs()
         # reject address-enum identity collisions before the enums are emitted
         self.validateAddressGroupEnumIdentity()
@@ -4698,6 +5133,277 @@ class projectCreate:
         g.db.commit()
         g.db.close()
         printIfDebug("Process Complete")
+
+    def calcPortTransferSizes(self):
+        """The burst size each port's channel and UVM agent take, for the
+        blocks whose generated code builds one of each per port: a hasTb
+        block, whose <block>Testbench instantiates <block>Channels, a hasUvm
+        block, and a block with a fileMap entry that sets buildsChannels, such
+        as Pro's tandem wrapper, which instantiates <block>Channels for its
+        verif and model sides. A connection's maxTransferSize overrides its
+        interface's at every port the connection reaches, through
+        connectionMaps too, and all connections reaching one such port at one
+        variant must agree where the port uses its size: a multi-cycle port's
+        channel, or the agent of a hasUvm block's port whose type sets
+        uvmMaxTransferBytes. Other blocks have a channel per connection, sized
+        by that connection, so their ports take no single size and are not
+        checked.
+
+        An override may name a parameter of the block that holds the
+        connection, whose channel for it reads that block's Config. An end
+        then takes the holder's binding: at its own variant when it inherits
+        the holder's Config, else at each variant the holder is built at.
+
+        Persisted as PORTTRANSFERSIZES: (blockKey, portName) -> {'bytes':
+        {variant: bytes}, 'channelBytes': bytes or None}. 'bytes' covers the
+        block's standalone variants and the variants its instances are
+        reached at. 'channelBytes' is the size <block>Channels takes when an
+        override changes it, else None, and the channel keeps the interface's
+        own maxTransferSize, a constant name included.
+        """
+        reachable = self.config.getConfig('REACHABLEINSTANCES')
+        instances = self.flatData['instances']
+        blocks = self.flatData['blocks']
+        interfaces = self.flatData['interfaces']
+        constants = self.flatData['constants']
+        resolver = ValueResolver(self)
+        paramsByBlock = dict()
+        for row in self.flatData['blocksparams'].values():
+            paramsByBlock.setdefault(row['blockKey'], set()).add(row['paramSourceKey'])
+        defaultDescriptors = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
+        # Why each in-scope block's ports take one size. A fileMap entry with
+        # buildsChannels, such as Pro's tandem wrapper, puts the blocks it is
+        # made for in scope.
+        blocksWithParams = set(paramsByBlock)
+        oneChannelPerPort = dict()
+        for blockKey, blockRow in blocks.items():
+            fileMap = self.projectLayout[self.contextOwningProject[blockRow['_context']]]['fileMap']
+            condRow = artifactPaths.blockCondRow(blockRow, blocksWithParams)
+            builders = sorted(name for name, fileDef in fileMap.items()
+                              if fileDef.get('buildsChannels') and artifactPaths.fileMapCondMatch(fileDef, condRow))
+            if blockRow['hasTb'] or blockRow['hasUvm']:
+                flag = 'hasTb' if blockRow['hasTb'] else 'hasUvm'
+                oneChannelPerPort[blockKey] = (f"has {flag}, so its testbench builds one channel and one "
+                                               f"agent for the port")
+            elif builders:
+                oneChannelPerPort[blockKey] = (f"gets fileMap entry '{builders[0]}', which sets buildsChannels, so "
+                                               f"its generated code builds one channel for the port")
+        standaloneMemo = dict()
+
+        def standaloneOf(blockKey):
+            if blockKey not in standaloneMemo:
+                standaloneMemo[blockKey] = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+            return standaloneMemo[blockKey]
+        standalone = {blockKey: standaloneOf(blockKey) for blockKey in oneChannelPerPort}
+        # A label the block does not declare standalone, such as a foreign
+        # one, has its own descriptor; the owner's wins a clash.
+        ownValues = dict()
+        for blockKey, descriptors in self.variantConfigDescriptors.items():
+            for descriptor in sorted(descriptors, key=lambda d: d['isForeign'], reverse=True):
+                ownValues.setdefault(blockKey, dict())[descriptor['variant']] = descriptor['values']
+
+        def boundValue(blockKey, variant, sizeKey):
+            if variant in standaloneOf(blockKey):
+                values = standaloneOf(blockKey)[variant]['values']
+            else:
+                values = ownValues.get(blockKey, dict()).get(variant, defaultDescriptors[blockKey]['values'])
+            return values[constants[sizeKey]['constant']]
+
+        def sizeAt(token, sizeKey, blockKey, variant, what):
+            # An optionalConst size: a literal, a constant, or a parameter of
+            # the port's block, which takes the variant's binding.
+            if not sizeKey:
+                try:
+                    return int(str(token), 0)
+                except ValueError:
+                    self.logError(f"{what} sets maxTransferSize '{token}', which is not a whole number of bytes.")
+            if sizeKey in paramsByBlock.get(blockKey, ()):
+                return int(boundValue(blockKey, variant, sizeKey))
+            return int(resolver.lookupNamedRow(sizeKey, 'a maxTransferSize')['value'])
+
+        variantMemo = dict()
+
+        def instanceVariants(instKey):
+            # An inheriting instance is built at each variant of its container.
+            if instKey not in variantMemo:
+                instRow = instances[instKey]
+                if not instRow['inheritContainerParam']:
+                    variantMemo[instKey] = {instRow['variant']}
+                else:
+                    variantMemo[instKey] = {variant for key, row in instances.items()
+                                            if key in reachable and row['instanceTypeKey'] == instRow['containerKey']
+                                            for variant in instanceVariants(key)}
+            return variantMemo[instKey]
+
+        def connectionLabel(conn):
+            name = f"'{conn['name']}'" if conn['name'] else f"{conn['interface']} from '{conn['src']}' to '{conn['dst']}'"
+            return f"connection {name} ({self.diagnosticLocation(conn['_context'], conn.get('lc'))})"
+
+        def holderVariants(holderKey):
+            # The variants the block holding a connection is built at.
+            return {variant for key, row in instances.items()
+                    if key in reachable and row['instanceTypeKey'] == holderKey
+                    for variant in instanceVariants(key)} or {''}
+
+        # (blockKey, portName) -> variant -> [(source, interfaceKey, label)].
+        # source is None for the interface's own size, the connection row for
+        # an override in bytes or a constant, or {'bytes', 'maxTransferSize'}
+        # for a holder's parameter already resolved.
+        reached = dict()
+        portIntf = dict()
+        for conn in self.flatData['connections'].values():
+            overridden = bool(conn['maxTransferSizeKey']) or str(conn['maxTransferSize']) != '0'
+            label = connectionLabel(conn)
+            holderKey = next((instances[end['instanceKey']]['containerKey'] for end in conn['ends'].values()), None)
+            holderParam = False
+            # The holder's channel for the connection spells the override in
+            # the holder's scope, so a parameter is one of the holder's.
+            if conn['maxTransferSizeKey'] and \
+                    resolver.lookupNamedRow(conn['maxTransferSizeKey'], 'a maxTransferSize')['isParameterizable']:
+                holderParam = conn['maxTransferSizeKey'] in paramsByBlock.get(holderKey, ())
+                if not holderParam:
+                    holderName = blocks[holderKey]['block'] if holderKey in blocks else holderKey
+                    self.logError(f"The {label} sets maxTransferSize '{conn['maxTransferSize']}', which is a "
+                                  f"parameter that block '{holderName}', which holds the connection, does not "
+                                  f"take. The channel '{holderName}' builds for the connection reads the "
+                                  f"override from its own Config, so an override is a number of bytes, a project "
+                                  f"constant, or a parameter of '{holderName}'. Binding the interface's "
+                                  f"maxTransferSize to a parameter instead sizes every port of interface "
+                                  f"'{conn['interface']}'.")
+                    continue
+            for end in conn['ends'].values():
+                if end['instanceKey'] not in reachable:
+                    continue
+                blockKey = instances[end['instanceKey']]['instanceTypeKey']
+                # An end whose block declares another interface for the port is
+                # bridged by an adapter, so the port keeps its own interface's size.
+                declared = self._declaredPortInterfaceKey(blocks[blockKey], end['portName'])
+                intfKey = declared or conn['interfaceKey']
+                portIntf.setdefault((blockKey, end['portName']), intfKey)
+                source = conn if overridden and intfKey == conn['interfaceKey'] else None
+                inherits = instances[end['instanceKey']]['inheritContainerParam']
+                for variant in instanceVariants(end['instanceKey']):
+                    items = reached.setdefault((blockKey, end['portName']), dict()).setdefault(variant, list())
+                    if source is None or not holderParam:
+                        items.append((source, intfKey, label))
+                        continue
+                    for holderVariant in sorted({variant} if inherits else holderVariants(holderKey)):
+                        bytesAt = int(boundValue(holderKey, holderVariant, conn['maxTransferSizeKey']))
+                        where = f" at variant '{holderVariant}' of block '{blocks[holderKey]['block']}'" \
+                            if holderVariant else ''
+                        items.append(({'bytes': bytesAt, 'maxTransferSize': conn['maxTransferSize']}, intfKey,
+                                      label + where))
+
+        # A connectionMaps entry hands its block's port to a child's port, so
+        # the child port is reached by whatever reaches the block port.
+        mapsByChildPort = dict()
+        for cm in self.flatData['connectionMaps'].values():
+            portIntf.setdefault((cm['blockKey'], cm['portName']),
+                                self._declaredPortInterfaceKey(blocks[cm['blockKey']], cm['portName'])
+                                or cm['interfaceKey'])
+            if cm['instanceKey'] in reachable:
+                childKey = instances[cm['instanceKey']]['instanceTypeKey']
+                mapsByChildPort.setdefault((childKey, cm['instancePortName']), list()).append(cm)
+        resolved = dict()
+
+        def contributions(portKey):
+            if portKey in resolved:
+                return resolved[portKey]
+            ret = {variant: list(items) for variant, items in reached.get(portKey, dict()).items()}
+            for cm in mapsByChildPort.get(portKey, ()):
+                instRow = instances[cm['instanceKey']]
+                declared = self._declaredPortInterfaceKey(blocks[portKey[0]], portKey[1])
+                intfKey = declared or cm['interfaceKey']
+                portIntf.setdefault(portKey, intfKey)
+                where = (f" through connectionMaps entry for port '{cm['portName']}' of block "
+                         f"'{cm['block']}' ({self.diagnosticLocation(cm['_context'], cm.get('lc'))})")
+                for parentVariant, items in contributions((cm['blockKey'], cm['portName'])).items():
+                    variants = {parentVariant} if instRow['inheritContainerParam'] \
+                        else instanceVariants(cm['instanceKey'])
+                    for variant in variants:
+                        ret.setdefault(variant, list()).extend(
+                            (source if intfKey == cm['interfaceKey'] else None, intfKey, label + where)
+                            for source, _intfKey, label in items)
+            resolved[portKey] = ret
+            return ret
+
+        sizes = dict()
+        errors = False
+        for blockKey, why in oneChannelPerPort.items():
+            blockRow = blocks[blockKey]
+            blockName = blockRow['block']
+            portNames = set(blockRow.get('ports', dict())) | set(blockRow.get('registerPorts', dict()))
+            portNames |= {portName for (key, portName) in set(reached) | set(mapsByChildPort) | set(portIntf)
+                          if key == blockKey}
+            for portName in sorted(portNames):
+                portKey = (blockKey, portName)
+                found = contributions(portKey)
+                intf = interfaces[self._declaredPortInterfaceKey(blockRow, portName) or portIntf[portKey]]
+                # The port's single size reaches the channel only on a
+                # multi-cycle interface, and the agent only on a type with
+                # uvmMaxTransferBytes.
+                intfDef = self.flatData['interface_defs'][intf['interfaceTypeKey']]
+                sizeUsed = bool(intf['multiCycleMode']) or bool(blockRow['hasUvm'] and intfDef['uvmMaxTransferBytes'])
+                variants = set(found) | set(standalone[blockKey])
+                if not standalone[blockKey]:
+                    variants.add('')
+                byVariant = dict()
+                overrides = list()
+                for variant in sorted(variants):
+                    interfaceBytes = sizeAt(intf['maxTransferSize'], intf['maxTransferSizeKey'], blockKey, variant,
+                                            f"Interface '{intf['interface']}'")
+                    bySize = dict()
+                    for source, itemIntfKey, label in found.get(variant, ()):
+                        if source is None:
+                            itemIntf = interfaces[itemIntfKey]
+                            bySize.setdefault(sizeAt(itemIntf['maxTransferSize'], itemIntf['maxTransferSizeKey'],
+                                                     blockKey, variant, f"Interface '{itemIntf['interface']}'"),
+                                              list()).append(f"{label}, the interface's maxTransferSize")
+                            continue
+                        if 'bytes' in source:
+                            size = source['bytes']
+                        else:
+                            size = sizeAt(source['maxTransferSize'], source['maxTransferSizeKey'], blockKey, variant,
+                                          f"The {label}")
+                        if size <= 0:
+                            self.logError(f"The {label} sets maxTransferSize '{source['maxTransferSize']}', which is "
+                                          f"{size} bytes at port '{portName}' of block '{blockName}'. An override is "
+                                          f"a positive number of bytes; remove it to keep the interface's size.")
+                            continue
+                        # An override equal to the interface's size changes nothing.
+                        if size != interfaceBytes:
+                            overrides.append((variant, label))
+                        bySize.setdefault(size, list()).append(f"{label}, its maxTransferSize")
+                    variantWords = f" at variant '{variant}'" if variant else ''
+                    if len(bySize) > 1 and sizeUsed:
+                        listed = '; '.join(f"{size} bytes from {', '.join(labels)}"
+                                           for size, labels in sorted(bySize.items()))
+                        printError(f"Port '{portName}' of block '{blockName}'{variantWords} is reached by "
+                                   f"connections that give it different transfer sizes: {listed}. Block "
+                                   f"'{blockName}' {why}, and the port takes one transfer size per variant; "
+                                   f"give these connections the same maxTransferSize, or none.")
+                        errors = True
+                    byVariant[variant] = next(iter(bySize)) if len(bySize) == 1 else interfaceBytes
+                channelBytes = None
+                if overrides and intf['multiCycleMode']:
+                    if len(set(byVariant.values())) > 1:
+                        listed = ', '.join(f"{size} bytes at variant '{variant}'"
+                                           for variant, size in sorted(byVariant.items()))
+                        origins = '; '.join(sorted({f"{label} at variant '{variant}'" for variant, label in overrides}))
+                        printError(f"Port '{portName}' of parameterized block '{blockName}' has transfer "
+                                   f"size {listed}. The override comes from {origins}; a variant reached by "
+                                   f"no override takes the interface's maxTransferSize. {blockName}Channels "
+                                   f"is one class template over Config, so its multi-cycle channel takes one "
+                                   f"size. Remove the override, or replace it by binding the interface's "
+                                   f"maxTransferSize to a parameter of '{blockName}' so each Config carries "
+                                   f"its own size; that binding sizes every port of interface "
+                                   f"'{intf['interface']}'.")
+                        errors = True
+                    channelBytes = next(iter(byVariant.values()))
+                sizes[portKey] = {'bytes': byVariant, 'channelBytes': channelBytes}
+        if errors:
+            exit(warningAndErrorReport())
+        self.config.setConfig('PORTTRANSFERSIZES', sizes, bin=True)
 
     def calcVariantSourceBlocks(self):
         # The blocks whose declared variants supply each block's Config, normally
@@ -5271,6 +5977,525 @@ class projectCreate:
                 f"registered. Set hasMdl: true on '{blockRow['block']}' or clear hasSkt.")
             exit(warningAndErrorReport())
 
+    def validateUvmBlocks(self, tree):
+        """Rejects a hasUvm block whose boundary the UVM testbench cannot drive.
+
+        The testbench instantiates the block's HDL verification wrapper and
+        gives each of its ports an agent of the port's interface type. The
+        wrapper has a port for each ports: row, and also for rows ports: does
+        not list: each connectionMaps boundary row, the registerPorts: bus, and
+        each memoryConnections or registerConnections row naming an instance
+        of the block. The testbench drives every clock and reset, and has one
+        top per standalone variant. tree is the project's clockTree.
+        """
+        blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        self.uvmRegisterWidths = dict()
+        self.uvmRegisterTrees = dict()
+        self.uvmRegisterTreeBusPorts = dict()
+        # The interface definition key of a memory port and of each register
+        # port type alias, reg_<regType>.
+        typeKeys = dict()
+        for key, row in self.flatData['interface_defs'].items():
+            typeKeys[row['interface_type']] = key
+            if 'mappedFrom' in row:
+                typeKeys.update({alias: key for alias in row['mappedFrom']})
+
+        def interfacePort(name, interfaceKey):
+            interfaceRow = self.flatData['interfaces'][interfaceKey]
+            return (interfaceRow['interfaceTypeKey'], f" has interface '{interfaceRow['interface']}' of type",
+                    f"Use an interface type with an agent for '{name}'")
+        # The file that defines each interface type, beside which its agent
+        # package <type>_uvm_pkg.sv sits. A system definition's rows carry
+        # the _a2csystem context, not the file.
+        definitionFiles = {row['interface_type']: row['_context'] for row in self.flatData['interface_defs'].values()}
+        for systemFile in self.systemFiles:
+            definitionFiles.update({intfType: systemFile for intfType in self.yamlRaw[systemFile].get('interface_defs') or {}})
+        failed = False
+        # The env sets these agent config fields, so only a type with an
+        # agent may ask for them.
+        for row in self.flatData['interface_defs'].values():
+            where = f"Interface type '{row['interface_type']}' (file {row['_context']})"
+            for field in ('uvmMaxTransferBytes', 'uvmIdParam', 'uvmModelCredit'):
+                if row[field] and not row['uvmAgent']:
+                    printError(f"{where} sets {field} but not uvmAgent: true. The generated env answers "
+                               f"{field} with a member of the type's agent config, and only a type with an "
+                               f"agent has one; remove {field} or ship the agent.")
+                    failed = True
+            if row['bfmWriteOrder'] and not row['uvmAgent']:
+                printError(f"{where} sets bfmWriteOrder but not uvmAgent: true. Only the UVM SystemC wrapper "
+                           f"uses the write order, on the DUT ports of a block with hasUvm: true, which "
+                           f"need an agent; remove bfmWriteOrder or ship the agent.")
+                failed = True
+            if row['uvmIdParam'] and ('parameters' not in row or row['uvmIdParam'] not in row['parameters']):
+                printError(f"{where} sets uvmIdParam '{row['uvmIdParam']}', which is not one of its "
+                           f"parameters. Name the parameter that carries the transaction ID.")
+                failed = True
+        for blockRow in self.flatData['blocks'].values():
+            if not blockRow['hasUvm']:
+                continue
+            block = blockRow['block']
+            blockKey = blockRow['blockKey']
+            where = f"Block '{block}' (file {blockRow['_context']}) declares hasUvm: true"
+            if not blockRow['hasVl']:
+                printError(
+                    f"{where} but has hasVl: false. The UVM testbench drives the "
+                    f"block's HDL verification wrapper, which only a hasVl block "
+                    f"has. Set hasVl: true on '{block}' or clear hasUvm.")
+                failed = True
+                continue
+            hasTops = blockKey not in blocksWithParams or \
+                bool(variantSelection.standaloneVariantDescriptors(self.config, blockKey))
+            if not hasTops:
+                printError(
+                    f"{where} but has no standalone variant, so it would get no UVM "
+                    f"testbench top. Each of its variants takes its parameter values "
+                    f"from a container or from another project. Declare a variant of "
+                    f"'{block}' under parameters: in its own project, or clear hasUvm.")
+                failed = True
+            if 'ports' not in blockRow:
+                printError(
+                    f"{where} but declares no ports:. The UVM testbench gives every "
+                    f"boundary port an agent, and a hasUvm block declares its boundary "
+                    f"so that make db can check each one. Declare every interface port "
+                    f"of '{block}' in ports:, and its register bus in registerPorts:.")
+                failed = True
+                continue
+            domain = tree.blocks[blockKey]
+            outputs = ([f"clock '{name}'" for name, decl in domain.clocks.items() if decl.direction == 'output']
+                       + [f"reset '{name}'" for name, decl in domain.resets.items() if decl.direction == 'output'])
+            if outputs:
+                printError(
+                    f"{where} but has output {', '.join(outputs)}. The UVM testbench "
+                    f"drives every clock and reset of the block and samples none. "
+                    f"Make them inputs of '{block}', or clear hasUvm.")
+                failed = True
+            for name in [name for name, decl in domain.clocks.items() if decl.direction == 'input']:
+                periodPs = domain.resolvedPeriod[name] * PS_PER_TIME_UNIT[domain.resolvedTimeUnit[name]]
+                if periodPs <= 2 * UVM_DRIVE_SKEW_PS:
+                    printError(
+                        f"{where} but its clock '{name}' has a period of "
+                        f"{domain.resolvedPeriod[name]} {domain.resolvedTimeUnit[name]}. A UVM agent "
+                        f"drives {UVM_DRIVE_SKEW_PS} ps after each rising edge and samples at the "
+                        f"falling edge, so the period must exceed {2 * UVM_DRIVE_SKEW_PS} ps. "
+                        f"Lengthen the period of '{name}', or clear hasUvm.")
+                    failed = True
+            # Each boundary port's interface type key, how the agent check
+            # names where the port comes from, and the fix it offers.
+            boundary = dict()
+            for name, row in blockRow['ports'].items():
+                boundary[name] = interfacePort(name, row['interfaceKey'])
+            for row in self.flatData['connectionMaps'].values():
+                if row['blockKey'] == blockKey:
+                    boundary.setdefault(row['portName'], interfacePort(row['portName'], row['interfaceKey']))
+            for name, row in blockRow.get('registerPorts', {}).items():
+                boundary.setdefault(name, interfacePort(name, row['interfaceKey']))
+            blockInstances = {key: row['instance'] for key, row in self.flatData['instances'].items()
+                              if row['instanceTypeKey'] == blockKey}
+            for row in self.flatData['memoryConnections'].values():
+                if row['instanceKey'] in blockInstances:
+                    boundary.setdefault(row['memory'], (
+                        typeKeys['memory'],
+                        f", which the memoryConnections row giving instance '{blockInstances[row['instanceKey']]}' "
+                        f"access to memory '{row['memory']}' creates, has type",
+                        "Remove that row"))
+            for row in self.flatData['registerConnections'].values():
+                if row['instanceKey'] in blockInstances:
+                    regType = self.flatData['registers'][row['registerBlockKey']]['regType']
+                    boundary.setdefault(row['register'], (
+                        typeKeys[f'reg_{regType}'],
+                        f", which the registerConnections row giving instance '{blockInstances[row['instanceKey']]}' "
+                        f"access to register '{row['register']}' creates, has type",
+                        "Remove that row"))
+            for portName, (typeKey, origin, fix) in boundary.items():
+                typeRow = self.flatData['interface_defs'][typeKey]
+                if not typeRow['uvmAgent']:
+                    printError(
+                        f"{where} but its port '{portName}'{origin} '{typeRow['interface_type']}', "
+                        f"which has no UVM agent: its interface definition does not "
+                        f"declare uvmAgent: true. {fix}, or clear hasUvm.")
+                    failed = True
+            # The testbench module names an interface instance after each
+            # port and a pin after each clock and reset, beside these names.
+            # srv is the report server the initial block declares, where it
+            # would hide a port or the default clock of the same name.
+            tbNames = {'dut': "the DUT instance 'dut'",
+                       'uvm_done': "the completion pin 'uvm_done'",
+                       'uvm_errors': "the completion pin 'uvm_errors'",
+                       'rtl_dut': "the completion pin 'rtl_dut'",
+                       'model_dut': "the completion pin 'model_dut'",
+                       'uvm_reset_req': "the reset request pin 'uvm_reset_req'",
+                       'srv': "the report server variable 'srv'"}
+            tbNames.update({f"{clock}_if": f"the a2c_clk_if instance '{clock}_if' of clock '{clock}'"
+                            for clock in domain.clocks})
+            for portName, (typeKey, _origin, _fix) in boundary.items():
+                tbNames.update({f"{portName}_{signal}": f"the pin '{portName}_{signal}' of port '{portName}'"
+                                for signal in self.flatData['interface_defs'][typeKey]['signals']})
+                if blockRow['hasMdl']:
+                    tbNames[f"{portName}_model"] = \
+                        f"the model DUT's interface instance '{portName}_model' of port '{portName}'"
+                    # Reserved whatever the direction, since the ports that
+                    # memoryConnections and registerConnections rows give
+                    # carry none; only a src port uses them.
+                    if self.flatData['interface_defs'][typeKey]['uvmModelCredit']:
+                        tbNames.update({f"{portName}_{suffix}": f"the paired-mode {what} '{portName}_{suffix}' of port '{portName}'"
+                                        for suffix, what in (('model_credit', 'credit pin'), ('model_held', 'held pin'),
+                                                             ('credit', 'a2c_credit_if instance'))})
+            named = ([('port', name) for name in boundary]
+                     + [('clock', name) for name in domain.clocks]
+                     + [('reset', name) for name in domain.resets])
+            for kind, name in named:
+                if name in tbNames:
+                    printError(
+                        f"{where} but its {kind} '{name}' has the name of {tbNames[name]} "
+                        f"in its UVM testbench module, so the simulator rejects the "
+                        f"testbench. Rename the {kind}, or clear hasUvm.")
+                    failed = True
+            # Names do not vary by variant, so they are checked once per block.
+            for kind, name, register in uvmModelNames(self.flatData, blockKey):
+                # A register's class is <block>_reg_<register>.
+                if kind == 'register' and name == 'block':
+                    printError(
+                        f"{where} but has a register named 'block', whose generated class "
+                        f"would be '{block}_reg_block', the name of the register block class. "
+                        f"Rename the register, or clear hasUvm.")
+                    failed = True
+                if kind == 'field':
+                    if name in UVM_REG_MEMBER_NAMES:
+                        printError(
+                            f"{where} but its register '{register}' field '{name}' has the name of "
+                            f"a member of uvm_reg, which the field would hide in the generated "
+                            f"register class. Rename it, or clear hasUvm.")
+                        failed = True
+                elif name in UVM_REG_BLOCK_MEMBER_NAMES:
+                    printError(
+                        f"{where} but its {kind} '{name}' has the name of a member of "
+                        f"uvm_reg_block, which the {kind} would hide in the generated register "
+                        f"block. Rename it, or clear hasUvm.")
+                    failed = True
+            # One resolution per testbench top: each standalone variant, or the
+            # parameter defaults for a block without params.
+            descriptors = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+            variantValues = {variant: {d['paramSourceKeys'][name]: value for name, value in d['values'].items()}
+                             for variant, d in descriptors.items()} or {'': {}}
+            self.uvmRegisterWidths[blockKey] = dict()
+            for variant, values in variantValues.items():
+                widths = self.resolveUvmRegisterWidths(
+                    blockKey, ValueResolver(self, values=values, context=blockRow['_context']))
+                self.uvmRegisterWidths[blockKey][variant] = widths
+                atVariant = f" at variant '{variant}'" if variant else ''
+                for section, kind, nameField in (('registers', 'register', 'register'),
+                                                 ('memories', 'memory', 'memory')):
+                    for key, entry in widths[section].items():
+                        width = sum(member['width'] for member in entry['fields'])
+                        if width <= UVM_REG_DATA_WIDTH:
+                            continue
+                        objRow = self.flatData[section][key]
+                        printError(
+                            f"{where} but its {kind} '{objRow[nameField]}' is {width} bits wide{atVariant}. "
+                            f"A UVM register model holds at most {UVM_REG_DATA_WIDTH} bits (UVM_REG_DATA_WIDTH) "
+                            f"in a register or memory row. Narrow its structure, or clear hasUvm.")
+                        failed = True
+            # Without a testbench top the tree has no values to resolve at.
+            if hasTops:
+                failed |= self.deriveUvmRegisterTrees(blockRow, where, descriptors)
+                # The register model's bus, as getBDUvm picks it: the
+                # block's own register bus when it owns rows, else the tree's.
+                busPort = self.uvmRegisterTreeBusPorts[blockKey]
+                if any(w['registers'] or w['memories'] for w in self.uvmRegisterWidths[blockKey].values()):
+                    busPort = domain.registerBusPort
+                if busPort is not None:
+                    typeRow = self.flatData['interface_defs'][boundary[busPort][0]]
+                    busType = typeRow['interface_type']
+                    pkg = os.path.join(os.path.dirname(definitionFiles[busType]), f"{busType}_uvm_pkg.sv")
+                    if not (os.path.isfile(pkg) and
+                            re.search(rf'^\s*class\s+{busType}_reg_adapter\b', open(pkg).read(), re.MULTILINE)):
+                        printError(
+                            f"{where} but its register model's bus '{busPort}' has type '{busType}', whose "
+                            f"agent package {pkg} declares no {busType}_reg_adapter. The generated env "
+                            f"drives the register model through {busType}_reg_adapter, so the testbench "
+                            f"would not compile. Give the register bus a type with an adapter, such as apb, "
+                            f"or clear hasUvm.")
+                        failed = True
+        if failed:
+            exit(warningAndErrorReport())
+
+    def deriveUvmRegisterTrees(self, blockRow, where, descriptors):
+        """A hasUvm block that owns no registers can still reach some through
+        a router it hosts or a container it passes the register bus through.
+        Its register model then has one child block per instance on the way,
+        so the model mirrors the design's instance hierarchy. Per testbench
+        top, the tree of those instances, each leaf's rows resolved at that
+        instance's own variant. Returns whether a rule failed.
+        """
+        blockKey = blockRow['blockKey']
+        block = blockRow['block']
+        ownsRows = {row['blockKey'] for row in self.flatData['registers'].values()} | \
+                   {row['blockKey'] for row in self.flatData['memories'].values() if row['regAccess']}
+        topValues = {variant: d['values'] for variant, d in descriptors.items()} or {'': {}}
+        self.uvmRegisterTreeBusPorts[blockKey] = None
+        if blockKey in ownsRows:
+            self.uvmRegisterTrees[blockKey] = {variant: None for variant in topValues}
+            return False
+        self.uvmRegisterTrees[blockKey] = {variant: self.deriveUvmRegisterTree(blockKey, values, ownsRows)
+                                           for variant, values in topValues.items()}
+
+        # Each variant package declares the same register block classes, so an
+        # instance reuses a package only when every variant reuses the same one.
+        def agreeOnReuse(nodes):
+            if len({node['reuse'] for node in nodes}) > 1:
+                print(f"Info: the register model of {blockRow['block']} generates its own classes for "
+                      f"instance {'.'.join(nodes[0]['path'])}, because its variants reuse different packages "
+                      f"of {nodes[0]['block']} or none.")
+                for node in nodes:
+                    node['reuse'] = None
+            for children in zip(*(node['children'] for node in nodes)):
+                agreeOnReuse(children)
+        if all(self.uvmRegisterTrees[blockKey].values()):
+            agreeOnReuse(list(self.uvmRegisterTrees[blockKey].values()))
+        failed = False
+        if any(self.uvmRegisterTrees[blockKey].values()):
+            self.uvmRegisterTreeBusPorts[blockKey] = self.uvmRegisterTreeBusPort(blockRow, where)
+            failed = self.uvmRegisterTreeBusPorts[blockKey] is None
+        for variant, tree in self.uvmRegisterTrees[blockKey].items():
+            if tree is None:
+                continue
+            atVariant = f" in the testbench top of variant '{variant}'" if variant else ''
+            for node in uvmRegisterTreeLeaves(tree):
+                for section, kind, nameField in (('registers', 'register', 'register'),
+                                                 ('memories', 'memory', 'memory')):
+                    for key, entry in node['registerWidths'][section].items():
+                        width = sum(member['width'] for member in entry['fields'])
+                        if width <= UVM_REG_DATA_WIDTH:
+                            continue
+                        printError(
+                            f"{where} but {kind} '{self.flatData[section][key][nameField]}' of "
+                            f"{describeUvmTreeNode(node)}, which its register model reaches, is {width} bits "
+                            f"wide{atVariant}. A UVM register model holds at most {UVM_REG_DATA_WIDTH} bits "
+                            f"(UVM_REG_DATA_WIDTH) in a register or memory row. Narrow its structure, or "
+                            f"clear hasUvm.")
+                        failed = True
+        # Names and classes follow the instance tree, which no variant changes.
+        tree = next(iter(self.uvmRegisterTrees[blockKey].values()))
+        if tree is None:
+            return failed
+        classes = {f"{block}_reg_block": "the root register block class"}
+
+        def claim(className, owner):
+            nonlocal failed
+            if className in classes:
+                printError(
+                    f"{where} but its register model would give {classes[className]} and {owner} the "
+                    f"same class name '{className}': a class name joins the instance path with '_'. "
+                    f"Rename an instance or a register, or clear hasUvm.")
+                failed = True
+            classes[className] = owner
+
+        def visit(node):
+            nonlocal failed
+            described = describeUvmTreeNode(node)
+            prefix = f"{block}_{'_'.join(node['path'])}"
+            if node['instance'] in UVM_REG_BLOCK_MEMBER_NAMES:
+                printError(
+                    f"{where} but its register model holds {described}, whose name is a member of "
+                    f"uvm_reg_block, which the instance's register block would hide in the generated "
+                    f"register block of its container. Rename the instance, or clear hasUvm.")
+                failed = True
+            # A reused register block's classes are in its own package.
+            if node['reuse'] is not None:
+                return
+            claim(f"{prefix}_reg_block", f"the register block class of {described}")
+            for kind, name, register in uvmModelNames(self.flatData, node['blockKey']) \
+                    if node['registerWidths'] else ():
+                if kind == 'register':
+                    claim(f"{prefix}_reg_{name}", f"the class of register '{name}' of {described}")
+                if kind == 'field':
+                    if name in UVM_REG_MEMBER_NAMES:
+                        printError(
+                            f"{where} but register '{register}' of {described} has a field '{name}' "
+                            f"with the name of a member of uvm_reg, which the field would hide in the "
+                            f"generated register class. Rename it, or clear hasUvm.")
+                        failed = True
+                elif name in UVM_REG_BLOCK_MEMBER_NAMES:
+                    printError(
+                        f"{where} but {kind} '{name}' of {described} has the name of a member of "
+                        f"uvm_reg_block, which the {kind} would hide in the generated register block "
+                        f"of that instance. Rename it, or clear hasUvm.")
+                    failed = True
+            for child in node['children']:
+                visit(child)
+        for child in tree['children']:
+            visit(child)
+        return failed
+
+    def uvmRegisterTreeBusPort(self, blockRow, where):
+        """The boundary port a register tree's model drives, or None after an
+        error: the block's registerPorts: port, else the one port the block
+        maps onto its router. The router's only boundary-fed port is its
+        upstream port, whatever name the map gives it. A passthrough top
+        always has registerPorts:, which a served block that declares ports:
+        must carry.
+        """
+        blockKey = blockRow['blockKey']
+        if blockRow.get('registerPorts'):
+            (port,) = blockRow['registerPorts']
+            return port
+        blocks = self.flatData['blocks']
+        (router,) = [inst for inst in self.flatData['instances'].values()
+                     if inst['containerKey'] == blockKey and blocks[inst['instanceTypeKey']].get('addressBlock')]
+        ports = sorted({row['portName'] for row in self.flatData['connectionMaps'].values()
+                        if row['blockKey'] == blockKey and row['instanceKey'] == router['instanceKey']})
+        if len(ports) == 1:
+            return ports[0]
+        mapped = "maps ports '" + "', '".join(ports) + "'" if ports else "maps no port"
+        printError(
+            f"{where} and its register model reaches registers through router instance "
+            f"'{router['instance']}', but '{blockRow['block']}' declares no registerPorts: and {mapped} "
+            f"onto that router in connectionMaps:, so the model has no single bus to drive. Declare the "
+            f"bus under registerPorts:, or map exactly one boundary port onto router instance "
+            f"'{router['instance']}'.")
+        return None
+
+    def deriveUvmRegisterTree(self, topKey, topValues, ownsRows):
+        """The instances between a hasUvm block's register port and the blocks
+        that own the registers behind it, or None when it reaches none. A
+        router host's slots follow the router's address IDs at their slot
+        offsets, and a passthrough container holds its one consumer at offset
+        0. Slots come from the host's own instances, so a child project's
+        standalone harness never enters. Values follow calcRegistrarPairs: an
+        instance takes its variant's values, and a containerSourced parameter
+        or an inheritContainerParam instance its container's.
+        """
+        blocks = self.flatData['blocks']
+        instances = self.flatData['instances']
+        passthroughs = self.config.getConfig('REGAPB_PASSTHROUGH')
+        paramsByBlock, childrenOf, instanceValues = self.uvmInstanceTree()
+
+        def slots(blockKey):
+            routers = [inst for inst in childrenOf.get(blockKey, [])
+                       if blocks[inst['instanceTypeKey']].get('addressBlock')]
+            if routers:
+                (router,) = routers
+                routerRow = blocks[router['instanceTypeKey']]
+                group = (self.contextOwningProject[routerRow['_context']],
+                         routerRow['addressBlock']['addressGroup'])
+                routed = [inst for inst in childrenOf[blockKey] if inst['addressGroup']
+                          and (self.contextOwningProject[inst['_context']], inst['addressGroup']) == group]
+                return [(inst, int(inst['offset'])) for inst in sorted(routed, key=lambda inst: inst['addressID'])]
+            if blockKey in passthroughs:
+                return [(instances[passthroughs[blockKey]['innerInstanceKey']], 0)]
+            return []
+
+        def node(blockKey, values, inst, path, offset):
+            entry = {'instance': inst['instance'] if inst else None, 'path': path, 'blockKey': blockKey,
+                     'block': blocks[blockKey]['block'], 'variant': inst['variant'] if inst else '',
+                     'offset': offset, 'registerWidths': None, 'children': [],
+                     'reuse': self.uvmReusedVariant(blockKey, values) if inst else None}
+            if blockKey in ownsRows:
+                resolver = ValueResolver(self, values={p['paramSourceKey']: values[p['param']]
+                                                       for p in paramsByBlock.get(blockKey, [])},
+                                         context=blocks[blockKey]['_context'])
+                entry['registerWidths'] = self.resolveUvmRegisterWidths(blockKey, resolver)
+                return entry
+            for child, childOffset in slots(blockKey):
+                childNode = node(child['instanceTypeKey'], instanceValues(child, values), child,
+                                 path + (child['instance'],), childOffset)
+                if childNode['registerWidths'] or childNode['children']:
+                    entry['children'].append(childNode)
+            return entry
+
+        tree = node(topKey, topValues, None, (), 0)
+        return tree if tree['children'] else None
+
+    def uvmInstanceTree(self):
+        """The instance tree a UVM testbench top walks with each instance's
+        parameter values, as calcRegistrarPairs resolves them: an instance
+        takes its variant's values, and a containerSourced parameter or an
+        inheritContainerParam instance its container's. Returns the block
+        params, the instances by container, and the value resolver.
+        """
+        descriptors = self.config.getConfig('VARIANTCONFIGDESCRIPTORS')
+        defaults = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
+        declarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
+        paramsByBlock = dict()
+        for row in self.flatData['blocksparams'].values():
+            paramsByBlock.setdefault(row['blockKey'], []).append(row)
+        childrenOf = dict()
+        for row in self.flatData['instances'].values():
+            childrenOf.setdefault(row['containerKey'], []).append(row)
+
+        def instanceValues(inst, containerValues):
+            if inst['inheritContainerParam']:
+                return {p['param']: containerValues[p['param']]
+                        for p in paramsByBlock.get(inst['instanceTypeKey'], [])}
+            # An instance naming no variant takes its block's default Config,
+            # which a block without params does not have.
+            if not inst['variant']:
+                default = defaults.get(inst['instanceTypeKey'])
+                return dict(default['values']) if default else {}
+            (descriptor,) = [d for d in descriptors[inst['instanceTypeKey']]
+                             if d['variant'] == inst['variant']
+                             and d['declaringProject'] == declarers[inst['instanceKey']]]
+            values = dict(descriptor['values'])
+            for childParam, parentParam in descriptor['containerSourced'].items():
+                values[childParam] = containerValues[parentParam]
+            return values
+        return paramsByBlock, childrenOf, instanceValues
+
+    def uvmReusedVariant(self, blockKey, values):
+        """The standalone variant whose UVM package an instance of a hasUvm
+        block reuses, or None. Equal values give identical packages up to
+        their names, so the first equal variant serves. A block without
+        params has one variantless package, which every instance reuses.
+        """
+        if not self.flatData['blocks'][blockKey]['hasUvm']:
+            return None
+        variants = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+        if not variants:
+            return ''
+        for variant in sorted(variants):
+            if variants[variant]['values'] == values:
+                return variant
+        return None
+
+    def deriveUvmReuse(self):
+        # Per UVM testbench top, the hasUvm instances below its block whose
+        # values match a standalone variant (uvmReusedVariant), each (block,
+        # variant) once and below-first, so a package follows those its own
+        # code names. The test package is one per block, and its code may name
+        # what any of the block's tops reuses, so every top compiles the
+        # union, each top's list in variant order. Below-first holds in the
+        # union because a package's own reuse is listed before it in every
+        # top that reuses it.
+        paramsByBlock, childrenOf, instanceValues = self.uvmInstanceTree()
+        for blockKey, names in self.uvmNames.items():
+            descriptors = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+            union = list()
+            unmatched = list()
+            for variant, top in sorted(names['tops'].items()):
+
+                def walk(containerKey, values, path):
+                    for inst in childrenOf.get(containerKey, []):
+                        childKey = inst['instanceTypeKey']
+                        childValues = instanceValues(inst, values)
+                        walk(childKey, childValues, path + (inst['instance'],))
+                        reused = self.uvmReusedVariant(childKey, childValues)
+                        if reused is None:
+                            if self.flatData['blocks'][childKey]['hasUvm']:
+                                unmatched.append((top['stem'], '.'.join(path + (inst['instance'],)),
+                                                  self.flatData['blocks'][childKey]['block']))
+                            continue
+                        entry = {'blockKey': childKey, 'variant': reused,
+                                 'pkgName': self.uvmNames[childKey]['tops'][reused]['pkgName']}
+                        if entry not in union:
+                            union.append(entry)
+                walk(blockKey, descriptors[variant]['values'] if variant else {}, ())
+            for top in names['tops'].values():
+                top['reuse'] = union
+            for stem, path, child in unmatched:
+                print(f"Info: UVM top {stem} reuses nothing of instance {path}: its parameter values match "
+                      f"none of {child}'s standalone variants, so its library cannot be named there.")
+        self.config.setConfig('UVMNAMES', self.uvmNames, bin=True)
+
     def deriveModuleIdentities(self):
         # Two identities per context and per block. The C++ one (module and
         # namespace names) is project-qualified so same-named blocks and contexts
@@ -5345,6 +6570,104 @@ class projectCreate:
                 for v in entry['vlVariants']}
         self.config.setConfig('SVWRAPPERNAMES', self.svWrapperNames, bin=True)
 
+    def deriveUvmNames(self):
+        # The UVM testbench tops of every hasUvm block, named like the files
+        # that hold them: one per standalone variant, or one variantless top
+        # for a block without params (validateUvmBlocks rejects a block with
+        # params and no standalone variant). Each top's port map and Xcelium
+        # shell are written under this build's .gen/vl, and VCS names its
+        # shell header after the top. The SystemC wrapper, its run state, the
+        # testbench name, the test package, the env and test classes, and the
+        # DUTs a top's snapshots can hold are one per block. The first DUT is
+        # the default.
+        blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        genVlDir = os.path.join(self.config.getConfig('DIRS')['root'], '.gen', 'vl')
+        self.uvmNames = dict()
+        for row in self.flatData['blocks'].values():
+            layout = self.projectLayout[self.contextOwningProject[row['_context']]]
+            fileMap = layout['fileMap']
+            condRow = artifactPaths.blockCondRow(row, blocksWithParams)
+            if not artifactPaths.fileMapCondMatch(fileMap['uvmTb'], condRow):
+                continue
+            wrapperNames = self.svWrapperNames[row['blockKey']]
+            variants = sorted(variantSelection.standaloneVariantDescriptors(self.config, row['blockKey']))
+            # rtlScope is the block's RTL module under the testbench's dut
+            # instance: a variant top wraps the wrapper body as u_wrapper.
+            if variants:
+                stems = [(v, f"{row['block']}_{v}", wrapperNames['variantTops'][v], 'dut.u_wrapper.dut')
+                         for v in variants]
+            else:
+                stems = [('', row['block'], wrapperNames['bodyModule'], 'dut.dut')]
+            tops = dict()
+            for variant, stem, hdlTop, rtlScope in stems:
+                tbModule = artifactPaths.fileStem(fileMap['uvmTb'], stem, layout)
+                xceliumShellHeader = tbModule + '_xcelium.h'
+                tops[variant] = {
+                    # UVM_TOP and --uvmTop name the top by its stem.
+                    'stem':         stem,
+                    'tbModule':     tbModule,
+                    'pkgName':      artifactPaths.fileStem(fileMap['uvmPkg'], stem, layout),
+                    'hdlTop':       hdlTop,
+                    'rtlScope':     rtlScope,
+                    'portmap':      os.path.join(genVlDir, tbModule + '.portmap'),
+                    'xceliumShell':       os.path.join(genVlDir, xceliumShellHeader),
+                    'xceliumShellHeader': xceliumShellHeader,
+                    'vcsShellHeader':     tbModule + '.h',
+                    'registerWidths':     self.uvmRegisterWidths[row['blockKey']][variant],
+                    # None when the block's own rows are its whole register
+                    # model, or when the block reaches no rows at this variant.
+                    'registerTree':       self.uvmRegisterTrees[row['blockKey']][variant],
+                }
+            scWrapper = artifactPaths.fileStem(fileMap['uvmScWrap'], row['block'], layout)
+            testPkg = artifactPaths.fileStem(fileMap['uvmTest'], row['block'], layout)
+            block = row['block']
+            self.uvmNames[row['blockKey']] = {
+                'scWrapperClass':  scWrapper,
+                'scWrapperHeader': f"{scWrapper}.{fileMap['uvmScWrap']['ext']['hdr']}",
+                'runClass':        f"{block}_uvm_run",
+                'testbenchName':   f"{block}_uvm",
+                'tops':            tops,
+                'duts':            ['model', 'rtl', 'both'] if row['hasMdl'] else ['rtl'],
+                'envClass':        f"{block}_env",
+                'regBlockClass':   f"{block}_reg_block",
+                'registerTreeBusPort': self.uvmRegisterTreeBusPorts[row['blockKey']],
+                'testPkgName':     testPkg,
+                'testPkgGuard':    f"{testPkg.upper()}_SV",
+                'tbEnvClass':      f"{block}_tb_env",
+                'baseTestClass':   f"{block}_base_test",
+                'smokeTestClass':  f"{block}_smoke_test",
+                'failTestClass':   f"{block}_fail_test",
+                'rtFireTestClass': f"{block}_rt_fire_test",
+                'modelMismatchTestClass': f"{block}_model_mismatch_test",
+            }
+        self.config.setConfig('UVMNAMES', self.uvmNames, bin=True)
+
+    def resolveUvmRegisterWidths(self, blockKey, resolver):
+        # A parameter can size a register field or a memory depth, and only
+        # the create-time resolver evaluates one at a variant's values. Per
+        # register and per memory with regAccess, by qualified key: each
+        # structure member in declaration order, and the depth of a memory or
+        # regType memory register. Members come from flatData, which holds
+        # the padding a specialStructures entry adds beside the members it
+        # copies from its base structure.
+        widths = {'registers': dict(), 'memories': dict()}
+        for section, rows in widths.items():
+            for key, objRow in self.flatData[section].items():
+                if objRow['blockKey'] != blockKey or (section == 'memories' and not objRow['regAccess']):
+                    continue
+                structVars = self.flatData['structures'][objRow['structureKey']]['vars']
+                # A bare block param name resolves through the block's own
+                # include chain, which is where its backing constant lives.
+                isMemory = section == 'memories' or objRow['regType'] == 'memory'
+                fields = [{'name': name, 'width': resolver.varWidth(varRow, field_name=name)}
+                          for name, varRow in structVars.items()]
+                rows[key] = {
+                    'fields': fields,
+                    'wordLines': resolver.value(objRow['wordLinesKey'] or objRow['wordLines'],
+                                                label=f"wordLines of '{key}'") if isMemory else None,
+                }
+        return widths
+
     def validateSvDesignUnitNames(self):
         # Every SV module and package a build emits. Verilator keeps modules
         # and packages in one namespace, and each name is also its file's stem,
@@ -5385,6 +6708,12 @@ class projectCreate:
                     for context in self.includeValid
                     if self.contextFileEmitted(projectFileMap(self.contextOwningProject[context])['package'],
                                                context)}
+        uvmPackages = dict()
+        for blockKey, names in self.uvmNames.items():
+            for v, top in names['tops'].items():
+                modules[('uvmTb', blockKey, v)] = top['tbModule']
+                uvmPackages[('uvmPkg', blockKey, v)] = top['pkgName']
+            uvmPackages[('uvmTest', blockKey)] = names['testPkgName']
 
         def describeBlock(blockKey):
             row = blockByKey[blockKey]
@@ -5399,8 +6728,16 @@ class projectCreate:
             if key[0] == 'foreignTop':
                 return (f"the variant '{key[3]}' Verilated top project '{key[1]}' declares "
                         f"of {describeBlock(key[2])}")
+            if key[0] == 'uvmTb':
+                return f"the {describeUvmVariant(key)} UVM testbench of {describeBlock(key[1])}"
             return (f"the variant '{key[3]}' pair top of {describeBlock(key[1])} "
                     f"containing {describeBlock(key[2])}")
+        def describeUvmVariant(key):
+            return f"variant '{key[2]}'" if key[2] else "default"
+        def describeUvmPackage(key):
+            if key[0] == 'uvmTest':
+                return f"the UVM test package of {describeBlock(key[1])}"
+            return f"the {describeUvmVariant(key)} UVM package of {describeBlock(key[1])}"
         def describeContextFile(key):
             owner = self.contextOwningProject[key[1]]
             prefix = self.projectLayout[owner]['filePrefix']['sv']
@@ -5410,12 +6747,16 @@ class projectCreate:
             if key[0] == 'package':
                 return (f"the package of context '{key[1]}' "
                         f"(project '{self.contextOwningProject[key[1]]}')")
+            if key[0] in ('uvmPkg', 'uvmTest'):
+                return describeUvmPackage(key)
             return f"the module of {describeModule(key)}"
         rejectIllegalSvName(modules, "module", describeModule,
                             "rename the block or change its project's svFilePrefix")
         rejectIllegalSvName(packages, "package", describeContextFile,
                             "set includeName in that file or rename the file")
-        rejectSharedName(modules | packages, "SystemVerilog module or package name",
+        rejectIllegalSvName(uvmPackages, "package", describeUvmPackage,
+                            "rename the block or change its project's svFilePrefix")
+        rejectSharedName(modules | packages | uvmPackages, "SystemVerilog module or package name",
                          "design units", describe,
                          "rename one block, give one context a distinct includeName, or "
                          "give one project a distinct svFilePrefix")
@@ -5492,6 +6833,12 @@ class projectCreate:
     # (see artifactPaths.fileNamePrefix).
     FILE_PREFIX_KEYS = {'sv': 'svFilePrefix', 'sc': 'scFilePrefix', 'fw': 'fwFilePrefix'}
 
+    # The keys a fileMap entry may set. The generators read each with .get(),
+    # so a misspelled key would otherwise turn its flag off without a word.
+    FILE_MAP_ENTRY_KEYS = ('basePath', 'blockDir', 'buildsChannels', 'cond', 'condAnd', 'desc', 'dutVariant',
+                           'ext', 'langDomain', 'mode', 'name', 'ownerQualified', 'pairVlTop',
+                           'requiresRegistrations', 'variant')
+
     def _filePrefixes(self, proj, projectLabel):
         # An omitted key means no prefix. The SV names a prefix produces are
         # checked as identifiers once they exist (deriveModuleIdentities,
@@ -5525,6 +6872,12 @@ class projectCreate:
                     f"'{key}'")
         langDomains = ', '.join(self.FILE_PREFIX_KEYS)
         for fileType, fileDef in fileGeneration['fileMap'].items():
+            for key in fileDef:
+                if key not in self.FILE_MAP_ENTRY_KEYS:
+                    self.logError(
+                        f"fileGeneration.fileMap entry '{fileType}' in project '{projectLabel}' "
+                        f"sets '{key}', which is not a fileMap key; the keys are "
+                        f"{', '.join(self.FILE_MAP_ENTRY_KEYS)}")
             if 'langDomain' not in fileDef:
                 problem = "has no langDomain"
             elif fileDef['langDomain'] not in self.FILE_PREFIX_KEYS:
@@ -7304,13 +8657,6 @@ class projectCreate:
         # key, so constants are already keyed by constantKey.
         constants = self.flatData['constants']
 
-        # connectionsends is a nested ('multiple') table, not flat - gather the
-        # endpoints per connection from self.data, keyed by connectionKey.
-        connEnds = dict()
-        for fileRows in self.data.get('connectionsends', dict()).values():
-            for end in fileRows.values():
-                connEnds.setdefault(end['connectionKey'], list()).append(end)
-
         def checkEndpoint(intf, needed, instRow, portName, whereWords):
             blockKey = instRow['instanceTypeKey']
             childIfaceKey = self._declaredPortInterfaceKey(blocks[blockKey], portName)
@@ -7358,7 +8704,7 @@ class projectCreate:
                     needed |= info['paramDeps']
             if not needed:
                 continue
-            for end in connEnds.get(conn['connectionKey'], list()):
+            for end in conn['ends'].values():
                 whereWords = (f"on the connection '{conn['src']}' -> '{conn['dst']}' connects "
                               f"endpoint instance '{end['instance']}' (block '{end['instanceType']}')")
                 if checkEndpoint(intf, needed, end, end['portName'], whereWords):
@@ -10324,7 +11670,6 @@ class projectCreate:
         # twice (avoid list_append duplication), otherwise duplicate
         # rows would accumulate here.
         self.data['connections'].setdefault(yamlFile, dict())
-        self.data['connectionsends'].setdefault(yamlFile, dict())
         # loop through the items in the section
         for item in data:
 
@@ -10370,8 +11715,7 @@ class projectCreate:
 
                 # An end is keyed by portId (instanceType + portName), so both
                 # ends of ONE connection collide when they are instances of the
-                # same block on the same port name. Collision across connections
-                # in the per-file dict below is the intended dedup of one fact.
+                # same block on the same port name.
                 if endRow['portId'] in entry['ends']:
                     printError(
                         f"Connection '{myKey}' in file {yamlFile} names both ends "
@@ -10384,7 +11728,6 @@ class projectCreate:
                         f"dstport: entries.")
                     exit(warningAndErrorReport())
                 entry['ends'][endRow['portId']]=endRow
-                self.data['connectionsends'][yamlFile][endRow['portId']]=endRow
 
             self.data['connections'][yamlFile][myKey] = entry
             self.addFlatRecord('connections', entry)

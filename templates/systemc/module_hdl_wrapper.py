@@ -13,6 +13,62 @@ def resetDriverName(resetRow):
     # One driver thread per reset, so the method name carries the reset it drives.
     return f"reset_driver_{resetRow['reset']}"
 
+def sec_clock_decl(args, prj, data):
+    # A gated sc_signal, not an sc_clock: under socket lockstep every clock
+    # must stop while the Python partner holds the quantum, and an sc_clock
+    # cannot be paused.
+    return '\n'.join(f"sc_signal<bool> {row['clock']};" for row in data['clocks'])
+
+def sec_clock_ctor_init(args, prj, data):
+    return ',\n'.join(f'{row["clock"]}("{row["clock"]}")' for row in data['clocks'])
+
+def sec_clock_half_decl(args, prj, data):
+    # An `output` block clock is produced by the DUT and observed, not
+    # generated: it needs no half-period to toggle on.
+    return '\n'.join(f"sc_time {row['clock']}_half_;"
+                     for row in data['clocks'] if row['direction'] == 'input')
+
+def sec_clock_half_ctor_init(args, prj, data):
+    # Each clock runs at its own declared period; the half period is what the
+    # generator toggles on.
+    return ',\n'.join(f'{row["clock"]}_half_(sc_time({row["period"]}, '
+                      f'{SC_TIME_UNIT[row["timeUnit"]]}) / 2)'
+                      for row in data['clocks'] if row['direction'] == 'input')
+
+def sec_clock_start(args, prj, data):
+    return '\n'.join(f"{row['clock']}.write(true);"
+                     for row in data['clocks'] if row['direction'] == 'input')
+
+def sec_clock_threads(args, prj, data):
+    return '\n'.join(f"SC_THREAD(clock_gen_{row['clock']});"
+                     for row in data['clocks'] if row['direction'] == 'input')
+
+def sec_clock_gens(args, prj, data):
+    return '\n'.join(f"void clock_gen_{row['clock']}() {{ clock_gen({row['clock']}, {row['clock']}_half_); }}"
+                     for row in data['clocks'] if row['direction'] == 'input')
+
+def sec_reset_decl(args, prj, data):
+    return '\n'.join(f"sc_signal<bool> {row['reset']};" for row in data['resets'])
+
+def sec_reset_ctor_init(args, prj, data):
+    # Born released: the driver's first write(false) is then a real negedge,
+    # which Verilator's async-reset processes need to see.
+    return ',\n'.join(f'{row["reset"]}("{row["reset"]}", true)' for row in data['resets'])
+
+def sec_reset_threads(args, prj, data):
+    # An `output` block reset is produced by the DUT and observed, not
+    # driven: it gets no driver thread.
+    return '\n'.join(f"SC_THREAD({resetDriverName(row)});"
+                     for row in data['resets'] if row['direction'] == 'input')
+
+def sec_reset_drivers(args, prj, data):
+    # One thunk per reset, counting edges of THAT reset's own clock: two
+    # resets in domains of different periods must not be released together.
+    return '\n'.join(f'void {resetDriverName(row)}() {{ reset_driver({row["reset"]}, '
+                     f'{row["clock"]}, {row["releaseCycles"]}); }}'
+                     for row in data['resets'] if row['direction'] == 'input')
+
+
 # args from generator line
 # prj object
 # data set dict
@@ -61,9 +117,7 @@ def render_sc(args, prj, data):
         # types unqualified, so re-emit the block's interface-context imports
         # (and their using-directives) at the top of the wrapper's generated
         # region (global scope).
-        for context in data['includeContext']:
-            if context in data['includeFiles'].get('include_cppm', {}):
-                s.extend(intf_gen_utils.cpp_context_include_lines(prj, context))
+        s.extend(intf_gen_utils.cpp_block_context_include_lines(prj, data))
         s.extend(intf_gen_utils.cpp_own_config_import(data))
         block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'], data)
         for intf_type in sorted(block_intf_set):
@@ -92,61 +146,6 @@ def render_sc(args, prj, data):
                     continue
                 s.append(mp_sig[port]['bfm_ctor_init'])
         return ',\n'.join(s)
-
-    def sec_clock_decl(args, prj, data):
-        # A gated sc_signal, not an sc_clock: under socket lockstep every clock
-        # must stop while the Python partner holds the quantum, and an sc_clock
-        # cannot be paused.
-        return '\n'.join(f"sc_signal<bool> {row['clock']};" for row in data['clocks'])
-
-    def sec_clock_ctor_init(args, prj, data):
-        return ',\n'.join(f'{row["clock"]}("{row["clock"]}")' for row in data['clocks'])
-
-    def sec_clock_half_decl(args, prj, data):
-        # An `output` block clock is produced by the DUT and observed, not
-        # generated: it needs no half-period to toggle on.
-        return '\n'.join(f"sc_time {row['clock']}_half_;"
-                         for row in data['clocks'] if row['direction'] == 'input')
-
-    def sec_clock_half_ctor_init(args, prj, data):
-        # Each clock runs at its own declared period; the half period is what the
-        # generator toggles on.
-        return ',\n'.join(f'{row["clock"]}_half_(sc_time({row["period"]}, '
-                          f'{SC_TIME_UNIT[row["timeUnit"]]}) / 2)'
-                          for row in data['clocks'] if row['direction'] == 'input')
-
-    def sec_clock_start(args, prj, data):
-        return '\n'.join(f"{row['clock']}.write(true);"
-                         for row in data['clocks'] if row['direction'] == 'input')
-
-    def sec_clock_threads(args, prj, data):
-        return '\n'.join(f"SC_THREAD(clock_gen_{row['clock']});"
-                         for row in data['clocks'] if row['direction'] == 'input')
-
-    def sec_clock_gens(args, prj, data):
-        return '\n'.join(f"void clock_gen_{row['clock']}() {{ clock_gen({row['clock']}, {row['clock']}_half_); }}"
-                         for row in data['clocks'] if row['direction'] == 'input')
-
-    def sec_reset_decl(args, prj, data):
-        return '\n'.join(f"sc_signal<bool> {row['reset']};" for row in data['resets'])
-
-    def sec_reset_ctor_init(args, prj, data):
-        # Born released: the driver's first write(false) is then a real negedge,
-        # which Verilator's async-reset processes need to see.
-        return ',\n'.join(f'{row["reset"]}("{row["reset"]}", true)' for row in data['resets'])
-
-    def sec_reset_threads(args, prj, data):
-        # An `output` block reset is produced by the DUT and observed, not
-        # driven: it gets no driver thread.
-        return '\n'.join(f"SC_THREAD({resetDriverName(row)});"
-                         for row in data['resets'] if row['direction'] == 'input')
-
-    def sec_reset_drivers(args, prj, data):
-        # One thunk per reset, counting edges of THAT reset's own clock: two
-        # resets in domains of different periods must not be released together.
-        return '\n'.join(f'void {resetDriverName(row)}() {{ reset_driver({row["reset"]}, '
-                         f'{row["clock"]}, {row["releaseCycles"]}); }}'
-                         for row in data['resets'] if row['direction'] == 'input')
 
     def sec_edge_track_decl(args, prj, data):
         # End-of-run report: one edge counter per OUTPUT clock this

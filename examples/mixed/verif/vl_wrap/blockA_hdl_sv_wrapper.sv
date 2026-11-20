@@ -96,9 +96,20 @@ module blockA_hdl_sv_wrapper
     );
 
     `ifdef VCS_DEBUG
+    // Module scope, so %m names this module and not the initial block.
+    string a2c_waves_scope;
     initial if ($test$plusargs("fsdbTrace")) begin
-        $fsdbDumpvars($sformatf("%m"), "+all");
+        if (!$value$plusargs("a2c_waves_scope=%s", a2c_waves_scope)) a2c_waves_scope = $sformatf("%m");
+        $fsdbDumpvars(0, "instance=", a2c_waves_scope, "+all");
     end
+    `endif
+
+    `ifndef VERILATOR
+    req_ack_xcheck aStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(aStuffIf));
+    rdy_vld_xcheck cStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(cStuffIf));
+    notify_ack_xcheck startDone_xcheck (.clk(clk), .rst_n(rst_n), .intf(startDone));
+    rdy_vld_xcheck dupIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(dupIf));
+    apb_xcheck apbReg_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg));
     `endif
 
 endmodule : blockA_hdl_sv_wrapper
