@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "notify_ack_channel.h"
 
 // note : use dummy template argument <class T = bool>, for consistency with other interfaces
@@ -24,10 +25,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (notify_ack_src_bfm);
 
     notify_ack_src_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -44,6 +47,7 @@ public:
                 wait(clk.posedge_event() | clk.negedge_event());
             } while (!hdl_if_p->notify || !rst_n);
             if_p->notify();
+            m_edge.settle();
             hdl_if_p->ack = true;
             wait(clk.posedge_event());
         }
@@ -61,10 +65,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (notify_ack_dst_bfm);
 
     notify_ack_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -73,6 +79,7 @@ public:
         while (true) {
             hdl_if_p->notify = false;
             if_p->waitNotify();
+            m_edge.settle();
             do {
                 hdl_if_p->notify = true;
                 wait(clk.posedge_event());

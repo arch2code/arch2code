@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "push_ack_channel.h"
 
 template<typename VL_DATA_T>
@@ -23,10 +24,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (push_ack_src_bfm);
 
     push_ack_src_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -47,6 +50,7 @@ public:
             } while (!hdl_if_p->push || !rst_n);
             data.sc_unpack(hdl_if_p->data);
             if_p->push(data);
+            m_edge.settle();
             hdl_if_p->ack = true;
             wait(clk.posedge_event());
         }
@@ -64,10 +68,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (push_ack_dst_bfm);
 
     push_ack_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -78,6 +84,7 @@ public:
             hdl_if_p->push = false;
             hdl_if_p->data = (VL_DATA_T) (0);
             if_p->pushReceive(data);
+            m_edge.settle();
             do {
                 hdl_if_p->push = true;
                 hdl_if_p->data = data.sc_pack();

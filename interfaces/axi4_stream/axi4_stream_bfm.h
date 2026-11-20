@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include <optional>
 #include "axi4_stream_channel.h"
 #include "rdy_vld_src_driver.h"
@@ -42,12 +43,14 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (axi4_stream_src_bfm);
 
     axi4_stream_src_bfm(sc_module_name modulename) :
         m_lostBeats(name(), "HDL transferred a beat the BFM did not sample", "beats"),
         m_scStalls(name(), "SystemC stalled a backpressure: false producer", "clock edges") {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(transfer_monitor);
         sensitive << clk.pos();
@@ -61,7 +64,7 @@ public:
         m_chnl = dynamic_cast<axi4_stream_channel<TDATA_T, TID_T, TDEST_T, TUSER_T> *>(if_p.get_interface());
         m_noBackpressure = bfmNoBackpressure(m_chnl->m_tx_out.get_interface(), name());
         if_p->setCycleTransaction(PORTTYPE_OUT);
-        m_driver.emplace(m_chnl->m_tx_out, clk, rst_n, hdl_if_p->tvalid, hdl_if_p->tready, [this](infoT &tinfo) {
+        m_driver.emplace(m_chnl->m_tx_out, clk, m_edge, rst_n, hdl_if_p->tvalid, hdl_if_p->tready, [this](infoT &tinfo) {
             tinfo.tdata.sc_unpack(hdl_if_p->tdata);
             tinfo.tstrb.sc_unpack(hdl_if_p->tstrb);
             tinfo.tkeep.sc_unpack(hdl_if_p->tkeep);
@@ -145,11 +148,13 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (axi4_stream_dst_bfm);
 
     axi4_stream_dst_bfm(sc_module_name modulename) :
         m_stalls(name(), "HDL stalled a backpressure: false interface", "clock edges") {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -177,6 +182,7 @@ public:
             hdl_if_p->tdest = VL_TDEST_T(0);
             if constexpr (hasOptionalPayload<TUSER_T>) { hdl_if_p->tuser = VL_TUSER_T(0); }
             m_chnl->m_tx_in->peek(tinfo);
+            m_edge.settle();
             hdl_if_p->tvalid = 1;
             hdl_if_p->tdata = tinfo.tdata.sc_pack();
             hdl_if_p->tstrb = tinfo.tstrb.sc_pack();

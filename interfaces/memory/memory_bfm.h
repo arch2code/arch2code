@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "memory_channel.h"
 
 template<typename VL_ADDR_T, typename VL_DATA_T>
@@ -25,10 +26,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (memory_src_bfm);
 
     memory_src_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -53,14 +56,12 @@ public:
                 }
                 if_p->request(is_write, addr, data);
                 if (!is_write) {
-                    // The model's completion wakes the BFM in its own delta,
-                    // which can be the delta in which a rising edge changes
-                    // the clock. Driving a delta later keeps the RTL from
-                    // seeing the data at that edge on any simulator.
-                    wait(SC_ZERO_TIME);
+                    // Data the model completes in an edge's timestep reaches
+                    // the RTL at the next edge.
+                    const bool waited = m_edge.settle();
                     hdl_if_p->read_data = VL_DATA_T(data.sc_pack());
-                    if (clk.posedge()) {
-                        // That edge has fired in this delta. Sample it.
+                    if (waited && clk.posedge()) {
+                        // settle() waited for this edge. Sample it.
                         continue;
                     }
                 }
@@ -81,10 +82,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (memory_dst_bfm);
 
     memory_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -95,11 +98,8 @@ public:
             DATA_T data;
             bool is_write;
             if_p->reqReceive(is_write, addr, data);
-            // A request wakes the BFM in the request's delta, which can be the
-            // delta in which a rising edge changes the clock. Driving a delta
-            // later keeps the RTL from seeing the request at that edge on any
-            // simulator.
-            wait(SC_ZERO_TIME);
+            // A request in an edge's timestep reaches the RTL at the next edge.
+            m_edge.settle();
             hdl_if_p->enable = true;
             hdl_if_p->addr = addr.sc_pack();
             if (is_write) {

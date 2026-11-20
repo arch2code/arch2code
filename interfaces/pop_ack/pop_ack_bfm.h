@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "pop_ack_channel.h"
 
 template<typename VL_RDATA_T>
@@ -23,10 +24,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (pop_ack_src_bfm);
 
     pop_ack_src_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -45,6 +48,7 @@ public:
                 wait(clk.posedge_event() | clk.negedge_event());
             } while (!hdl_if_p->pop || !rst_n);
             if_p->pop(rdata);
+            m_edge.settle();
             hdl_if_p->ack = true;
             hdl_if_p->rdata = rdata.sc_pack();
             wait(clk.posedge_event());
@@ -63,6 +67,7 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (pop_ack_dst_bfm);
 
@@ -70,6 +75,7 @@ public:
     // runs wait(event) as wait(event) then wait() (sc_wait.cpp), so each
     // wait below would take two edges and miss a one-cycle ack.
     pop_ack_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -78,6 +84,7 @@ public:
         while (true) {
             RDATA_T rdata;
             if_p->popReceive();
+            m_edge.settle();
             hdl_if_p->pop = true;
             do {
                 wait(clk.posedge_event());

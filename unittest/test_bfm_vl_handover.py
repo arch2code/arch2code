@@ -29,7 +29,9 @@ send, the hold read and the pause 3 or 2 ns earlier, onto a clock edge. A
 model call in the timestep of an edge reaches the RTL at the next edge, on
 every simulator, so the same checks hold: the RTL takes the first beat at the
 first edge after the send, and no beat is lost or doubled. The check names
-carry " on edge".
+carry " on edge". These runs use the wrapper's free-running clock, which
+changes in the first delta of its timestep. test_bfm_handover.py runs the
+rule on a clock that changes a delta later, as the gated lockstep clock does.
 
 Where today's BFM breaks the rule, EXPECTED_FAILURES names the check, how it
 fails and the BFM line. A marked check that passes, or fails another way than

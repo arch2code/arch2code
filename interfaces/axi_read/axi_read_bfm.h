@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "axi_read_channel.h"
 #include "rdy_vld_src_driver.h"
 #include "optionalPayload.h"
@@ -61,10 +62,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (axi_read_src_bfm);
 
     axi_read_src_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_ar_thread);
         SC_THREAD(bfm_driver_r_thread);
         SC_METHOD(sample_edges);
@@ -75,7 +78,7 @@ public:
     virtual void end_of_elaboration() {
         m_chnl = dynamic_cast<axi_read_channel<ADDR_T, DATA_T, ARU, RU, ID, IDW> *>(if_p.get_interface());
         if_p->setCycleTransaction(PORTTYPE_OUT);
-        m_ar.emplace(m_chnl->m_addr_out, clk, rst_n, hdl_if_p->arvalid, hdl_if_p->arready, [this](arT &ar_data) {
+        m_ar.emplace(m_chnl->m_addr_out, clk, m_edge, rst_n, hdl_if_p->arvalid, hdl_if_p->arready, [this](arT &ar_data) {
             ar_data.arid = (ID) hdl_if_p->arid.read().to_uint();
             ar_data.araddr.sc_unpack(hdl_if_p->araddr);
             ar_data.arlen = (uint8_t) hdl_if_p->arlen.read().to_uint();
@@ -114,6 +117,7 @@ public:
             hdl_if_p->rlast = 0;
             if constexpr (hasOptionalPayload<RU>) { hdl_if_p->ruser = VL_RUSER_T(0); }
             m_chnl->m_data_in->peek(r_data);
+            m_edge.settle();
             // During ARESETn the port_socket drains outstanding AR with dummy
             // beats. Still drive them onto the wire (DUT ignores while reset)
             // so channel beat counts stay aligned; drop RVALID if reset.
@@ -180,10 +184,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (axi_read_dst_bfm);
 
     axi_read_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_ar_thread);
         SC_THREAD(bfm_driver_r_thread);
         SC_METHOD(sample_edges);
@@ -194,7 +200,7 @@ public:
     virtual void end_of_elaboration() {
         m_chnl = dynamic_cast<axi_read_channel<ADDR_T, DATA_T, ARU, RU, ID, IDW> *>(if_p.get_interface());
         if_p->setCycleTransaction(PORTTYPE_IN);
-        m_r.emplace(m_chnl->m_data_out, clk, rst_n, hdl_if_p->rvalid, hdl_if_p->rready, [this](rT &r_data) {
+        m_r.emplace(m_chnl->m_data_out, clk, m_edge, rst_n, hdl_if_p->rvalid, hdl_if_p->rready, [this](rT &r_data) {
             r_data.rid = (ID) hdl_if_p->rid.read().to_uint();
             r_data.rdata.sc_unpack(hdl_if_p->rdata);
             r_data.rresp = (_axiResponseT) hdl_if_p->rresp.read().to_uint();
@@ -215,6 +221,7 @@ public:
             hdl_if_p->arburst = 0;
             if constexpr (hasOptionalPayload<ARU>) { hdl_if_p->aruser = VL_ARUSER_T(0); }
             m_chnl->m_addr_in->peek(ar_data);
+            m_edge.settle();
             hdl_if_p->arvalid = 1;
             hdl_if_p->arid = ar_data.arid;
             hdl_if_p->araddr = ar_data.araddr.sc_pack();

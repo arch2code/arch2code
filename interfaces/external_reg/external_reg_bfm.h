@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "external_reg_channel.h"
 #include <deque>
 
@@ -25,10 +26,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (external_reg_src_bfm);
 
     external_reg_src_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
         SC_THREAD(mirror_watch_thread);
     }
@@ -44,6 +47,12 @@ public:
         bool live = false;
         while (true) {
             wait(clk.posedge_event() | mirror_changed);
+            if (!clk.posedge()) {
+                // A mirror change in an edge's timestep reaches the RTL at
+                // the next edge. settle() may wake at a rising edge, which is
+                // then handled here.
+                m_edge.settle();
+            }
             if (clk.posedge()) {
                 live = rst_n;
                 if (!live) {
@@ -92,10 +101,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (external_reg_dst_bfm);
 
     external_reg_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(write_reader_thread);
         SC_THREAD(write_driver_thread);
         SC_THREAD(rdata_monitor_thread);
@@ -134,6 +145,7 @@ public:
             if (pending.empty()) {
                 hdl_if_p->write = 0;
                 wait(pending_event);
+                m_edge.settle();
                 continue;
             }
             DATA_T data = pending.front();

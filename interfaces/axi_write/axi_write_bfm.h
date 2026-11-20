@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "axi_write_channel.h"
 #include "rdy_vld_src_driver.h"
 #include "optionalPayload.h"
@@ -67,10 +68,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (axi_write_src_bfm);
 
     axi_write_src_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_aw_thread);
         SC_THREAD(bfm_driver_w_thread);
         SC_THREAD(bfm_driver_b_thread);
@@ -82,7 +85,7 @@ public:
     virtual void end_of_elaboration() {
         m_chnl = dynamic_cast<axi_write_channel<ADDR_T, DATA_T, STRB_T, AWU, WU, BU, ID, IDW> *>(if_p.get_interface());
         if_p->setCycleTransaction(PORTTYPE_OUT);
-        m_aw.emplace(m_chnl->m_addr_out, clk, rst_n, hdl_if_p->awvalid, hdl_if_p->awready, [this](awT &aw_data) {
+        m_aw.emplace(m_chnl->m_addr_out, clk, m_edge, rst_n, hdl_if_p->awvalid, hdl_if_p->awready, [this](awT &aw_data) {
             aw_data.awid = (ID) hdl_if_p->awid.read().to_uint();
             aw_data.awaddr.sc_unpack(hdl_if_p->awaddr);
             aw_data.awlen = (uint8_t) hdl_if_p->awlen.read().to_uint();
@@ -90,7 +93,7 @@ public:
             aw_data.awburst = (_axiBurstT) hdl_if_p->awburst.read().to_uint();
             if constexpr (hasOptionalPayload<AWU>) { aw_data.user.sc_unpack(hdl_if_p->awuser); }
         });
-        m_w.emplace(m_chnl->m_data_out, clk, rst_n, hdl_if_p->wvalid, hdl_if_p->wready, [this](wT &w_data) {
+        m_w.emplace(m_chnl->m_data_out, clk, m_edge, rst_n, hdl_if_p->wvalid, hdl_if_p->wready, [this](wT &w_data) {
             w_data.wid = (ID) hdl_if_p->wid.read().to_uint();
             w_data.wdata.sc_unpack(hdl_if_p->wdata);
             w_data.wstrb.sc_unpack(hdl_if_p->wstrb);
@@ -160,6 +163,7 @@ public:
             hdl_if_p->bresp = 0;
             if constexpr (hasOptionalPayload<BU>) { hdl_if_p->buser = VL_BUSER_T(0); }
             m_chnl->m_resp_in->peek(b_data);
+            m_edge.settle();
             if (!rst_n.read()) {
                 if_p->receiveRespCycle(b_data);
                 while (!rst_n.read()) {
@@ -211,10 +215,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (axi_write_dst_bfm);
 
     axi_write_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_aw_thread);
         SC_THREAD(bfm_driver_w_thread);
         SC_THREAD(bfm_driver_b_thread);
@@ -226,7 +232,7 @@ public:
     virtual void end_of_elaboration() {
         m_chnl = dynamic_cast<axi_write_channel<ADDR_T, DATA_T, STRB_T, AWU, WU, BU, ID, IDW> *>(if_p.get_interface());
         if_p->setCycleTransaction(PORTTYPE_IN);
-        m_b.emplace(m_chnl->m_resp_out, clk, rst_n, hdl_if_p->bvalid, hdl_if_p->bready, [this](bT &b_data) {
+        m_b.emplace(m_chnl->m_resp_out, clk, m_edge, rst_n, hdl_if_p->bvalid, hdl_if_p->bready, [this](bT &b_data) {
             b_data.bid = (ID) hdl_if_p->bid.read().to_uint();
             b_data.bresp = (_axiResponseT) hdl_if_p->bresp.read().to_uint();
             if constexpr (hasOptionalPayload<BU>) { b_data.user.sc_unpack(hdl_if_p->buser); }
@@ -245,6 +251,7 @@ public:
             hdl_if_p->awburst = 0;
             if constexpr (hasOptionalPayload<AWU>) { hdl_if_p->awuser = VL_AWUSER_T(0); }
             m_chnl->m_addr_in->peek(aw_data);
+            m_edge.settle();
             hdl_if_p->awvalid = 1;
             hdl_if_p->awid = aw_data.awid;
             hdl_if_p->awaddr = aw_data.awaddr.sc_pack();
@@ -271,6 +278,7 @@ public:
             hdl_if_p->wlast = 0;
             if constexpr (hasOptionalPayload<WU>) { hdl_if_p->wuser = VL_WUSER_T(0); }
             m_chnl->m_data_in->peek(w_data);
+            m_edge.settle();
             hdl_if_p->wvalid = 1;
             hdl_if_p->wid = w_data.wid;
             hdl_if_p->wdata = w_data.wdata.sc_pack();

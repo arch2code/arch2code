@@ -486,8 +486,11 @@ void runProbe( int delayNs, const std::string &mode )
 //           a src offer comes three or more edges after the last
 //           handshake), random (seeded), comb (rdy follows vld, or vld
 //           follows rdy), edge (always, with the model's first send at
-//           40 ns, or its first read 10 ns after vld rises, both in the
-//           timestep of a rising edge), reset (high, with reset asserted
+//           40 ns, or at the first rising edge after its setup, or its first
+//           read 10 ns after vld rises, all in the timestep of a rising edge
+//           and ahead of the clock), edgegated (edge, on a clock that
+//           changes a delta after its timed wake, as the gated lockstep
+//           clock_gen does), reset (high, with reset asserted
 //           again from 45 to 65 ns after the lane's start; 65 to 85 ns in
 //           delayed rv, axis
 //           and ar src runs; 55 to 75 ns in delayed aw and w src runs; 25 to
@@ -510,8 +513,11 @@ void runProbe( int delayNs, const std::string &mode )
 //           reset, slow (the RTL completer adds two wait states, or the
 //           RTL master two idle edges), error (apb and ahb: operations 1
 //           and 2 end in an error response; the dst model posts write 2
-//           and waits for the response to the others), and for src parked
-//           (the model asks 15 ns after the first request). A level runs
+//           and waits for the response to the others), edge and edgegated
+//           (dst: the model's first request at 40 ns; src: the model
+//           completes each operation it answers at the next rising edge,
+//           and a memory RTL master waits two edges for read data), and for
+//           src parked (the model asks 15 ns after the first request). A level runs
 //           values 1 to 8: always, reset, and for src every3 (the RTL
 //           steps the level every third edge)
 //   busy    ns the src model spends after each read
@@ -540,6 +546,7 @@ void runProbe( int delayNs, const std::string &mode )
 //   rcall, rcv a src bus model asks for a request, and gets it
 //   drv, smp   a level RTL drives this value, or samples a new one
 //   pin        a level dst BFM puts this value on the wire
+//   smp        (also) a memory RTL master in an edge run sees new read data
 //   mir, pub   external_reg: the model's mirror changes (dst), or the
 //              model publishes this value (src)
 // After the run it prints "probe done", then "probe assert <message>" if a
@@ -562,6 +569,9 @@ void logEv( const char *kind, std::uint64_t value )
 }
 
 bool pastNs( int ns ) { return sc_time_stamp() >= sc_time( ns, SC_NS ); }
+
+// Wakes by time in the timestep of the next rising edge, ahead of the clock.
+void waitNextEdge() { sc_core::wait( sc_time( double( 10000 - sc_time_stamp().value() % 10000 ), SC_PS ) ); }
 
 // One handshake lane on the wire: its vld and rdy, the beat it carries, how
 // an RTL sender puts beat n on it, and how an RTL receiver drives the data
@@ -631,7 +641,11 @@ struct handoverBase : sc_module
             // An edge run sends first in the timestep of a rising edge, after
             // the BFM is out of reset and waits for a send.
             wait( cfg.rtl == "edge" ? 40 : 33, SC_NS );
-            if (setup) { setup(); }
+            if (setup) {
+                setup();
+                // setup returns a delta after an edge, so wait for the next.
+                if (cfg.rtl == "edge") { waitNextEdge(); }
+            }
             startLane();
             for (int k = 0; k < BEATS; k++) {
                 logEv( "call", k );
@@ -816,11 +830,12 @@ struct handoverBase : sc_module
         }
     }
 
-    // A model that makes OPS requests from 33 ns; op returns the value it got.
+    // A model that makes OPS requests from 33 ns, or from 40 ns in an edge
+    // run; op returns the value it got.
     void modelRequests( std::function<std::uint64_t( int )> op )
     {
         sc_spawn( [this, op] {
-            wait( 33, SC_NS );
+            wait( cfg.rtl == "edge" ? 40 : 33, SC_NS );
             startLane();
             for (int k = 0; k < OPS; k++) {
                 logEv( "call", k );
@@ -1547,6 +1562,7 @@ struct busServer {
     void receive( IN &in ) { in->reqReceive( isWrite, a, d ); }
     void complete( IN &in, const runCfg &c, int k )
     {
+        if (c.rtl == "edge") { waitNextEdge(); }
         if (isWrite) { mem[a.w] = d.w; } else { d.w = mem[a.w]; }
         in->complete( d, errorOp( c, k ) );
     }
@@ -1794,6 +1810,7 @@ struct memSrc : handoverBase
             } else {
                 wordSt d;
                 d.w = mem[pending.addr];
+                if (cfg.rtl == "edge") { waitNextEdge(); }
                 in->complete( d );
             }
         } );
@@ -1804,21 +1821,30 @@ struct memSrc : handoverBase
 
     // Drives an access, and reads the data of a read access on the edge
     // after the one that sampled it. A slow master idles two edges between
-    // accesses.
+    // accesses. In an edge run the model completes a read an edge late, so
+    // the master reads its data two edges after the one that sampled it,
+    // idles until then, and logs the edge it first sees the data.
     SC_HAS_PROCESS( memSrc );
     void manager()
     {
-        int k = 0, sampled = -1, idle = 0, logged = -1;
+        int k = 0, sampled = -1, idle = 0, logged = -1, due = 0;
+        std::uint64_t seen = 0;
         while (true) {
             waitEdge();
+            if (cfg.rtl == "edge" && hdl.read_data.read().to_uint64() != seen) {
+                seen = hdl.read_data.read().to_uint64();
+                logEv( "smp", seen );
+            }
             if (!rst_n) { hdl.enable = false; continue; }
-            if (sampled >= 0) {
+            if (sampled >= 0 && --due <= 0) {
                 logEv( "ack", opWrites( sampled ) ? 0 : hdl.read_data.read().to_uint64() );
                 sampled = -1;
             }
             if (hdl.enable) {
                 sampled = k++;
-                idle = cfg.rtl == "slow" ? 2 : 0;
+                bool lateRead = cfg.rtl == "edge" && !opWrites( sampled );
+                due = lateRead ? 2 : 1;
+                idle = cfg.rtl == "slow" || lateRead ? 2 : 0;
             }
             bool drive = k < OPS && idle-- <= 0;
             if (drive && k != logged) { masterRequests( logged = k ); }
@@ -2071,22 +2097,47 @@ int resetAfterNs( const runCfg &c )
     return delayedSrc && (c.family == "aw" || c.family == "w") ? 55 : 45;
 }
 
+// An edgegated run is an edge run on gatedClk.
+runCfg dutCfg( runCfg c )
+{
+    if (c.rtl == "edgegated") { c.rtl = "edge"; }
+    return c;
+}
+
 template <class DUT>
 struct handoverTop : sc_module
 {
     sc_clock clk;
+    sc_signal<bool> gatedClk;
     sc_signal<bool> rst_n;
     DUT dut;
     bool midReset;
 
     SC_HAS_PROCESS( handoverTop );
     handoverTop( sc_module_name n, const runCfg &c ) :
-        sc_module( n ), clk( "clk", 10, SC_NS ), dut( "dut", c ),
+        sc_module( n ), clk( "clk", 10, SC_NS ), dut( "dut", dutCfg( c ) ),
         midReset( c.rtl == "reset" || c.rtl == "resetlate" || c.rtl == "arbreset" )
     {
-        dut.clk( clk ); dut.rst_n( rst_n );
+        if (c.rtl == "edgegated") {
+            dut.clk( gatedClk );
+            SC_THREAD( gatedClock );
+        } else {
+            dut.clk( clk );
+        }
+        dut.rst_n( rst_n );
         SC_THREAD( run );
         SC_THREAD( resetEdges );
+    }
+
+    // In phase with clk, but each change comes a delta after the timed wake,
+    // as in the gated lockstep clock_gen.
+    void gatedClock()
+    {
+        while (true) {
+            wait( SC_ZERO_TIME );
+            gatedClk = !gatedClk.read();
+            wait( 5, SC_NS );
+        }
     }
 
     void run()
@@ -2108,7 +2159,7 @@ struct handoverTop : sc_module
     void resetEdges()
     {
         while (true) {
-            wait( clk.posedge_event() );
+            wait( dut.clk.posedge_event() );
             if (!rst_n && pastNs( 30 )) { logEv( "rst", 0 ); }
         }
     }

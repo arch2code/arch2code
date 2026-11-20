@@ -37,7 +37,9 @@ posted write at its call, a src completes on the edge after the model, and
 first-write and first-read latency and throughput meet the protocol minimum.
 The mid-run reset meets an operation in flight. In error runs an apb PSLVERR
 or ahb HRESP ERROR reaches the model, or the RTL, on its own transfer and not
-the next, and an ahb error takes two cycles.
+the next, and an ahb error takes two cycles. In edge runs a dst model's first
+request, or a src model's completion, comes in the timestep of a rising edge,
+and the RTL sees it, and a memory RTL the read data, at the next edge.
 
 status, raw and external_reg drive a level through values 1 to 8. The far
 side sees every value that stays on the wire across an edge out of reset,
@@ -93,8 +95,11 @@ RTL_MODES = ('always', 'hold', 'every3', 'random', 'comb', 'reset')
 # (always), is already in read() when vld rises (waiting), or first reads
 # 15 ns after vld rises, so beat 0 sits on the wire across an edge (parked).
 # In edge runs the model's first send, or first read, starts in the timestep
-# of a rising edge. The RTL must not see it at that edge, on any simulator.
-FULL_RATE = ('always', 'waiting', 'parked', 'edge')
+# of a rising edge, ahead of the clock. The RTL must not see it at that edge,
+# on any simulator. edgegated runs the same on a clock that changes a delta
+# after its timed wake, as the gated lockstep clock_gen does.
+EDGE = ('edge', 'edgegated')
+FULL_RATE = ('always', 'waiting', 'parked') + EDGE
 # (rtl, busy ns) for src runs: each RTL mode with a model that reads back to
 # back, and slow models against an always-valid or random RTL.
 SRC_RUNS = ([(m, 0) for m in RTL_MODES] + [('waiting', 0), ('parked', 0)]
@@ -107,7 +112,7 @@ CASES = [Case(f, 'dst', m, 0, 'allowed', d) for f in HANDSHAKE for m in RTL_MODE
 CASES += [Case(f, 'src', m, b, 'allowed', d) for f in HANDSHAKE for m, b in SRC_RUNS for d in DELAYS
           if not (f in TWO_PHASE and m == 'comb')]
 CASES += [Case('rvmulti', dr, 'always', 0, 'allowed', d) for dr in ('dst', 'src') for d in DELAYS]
-CASES += [Case(f, dr, 'edge', 0, 'allowed', 0) for f in HANDSHAKE for dr in ('dst', 'src')]
+CASES += [Case(f, dr, m, 0, 'allowed', 0) for f in HANDSHAKE for dr in ('dst', 'src') for m in EDGE]
 CASES += [Case('wfirst', 'src', 'always', 0, 'allowed', d) for d in DELAYS]
 # A delayed aw or w src run moves a beat every other edge. Its reset, 55 ns
 # after the lane starts, lands while a delayed model call blocks. resetlate
@@ -133,6 +138,9 @@ CASES += [Case(f, 'src', 'arbdroplate', 25, 'allowed', 0) for f in ('rv', 'axis'
 CASES += [Case(f, dr, m, 0, 'allowed', d) for f in BUS for dr in BUS_MODES for m in BUS_MODES[dr] for d in DELAYS
           if not (m == 'error' and f == 'mem') and not (m == 'slow' and f == 'mem' and dr == 'dst')
           and not (f in UNTIMED and d > 0)]
+# A dst model's first request, or a src model's completion, in the timestep of
+# a rising edge.
+CASES += [Case(f, dr, m, 0, 'allowed', 0) for f in BUS for dr in ('dst', 'src') for m in EDGE]
 LEVEL_MODES = {'dst': ('always', 'reset'), 'src': ('always', 'every3', 'reset')}
 CASES += [Case(f, dr, m, 0, 'allowed', 0) for f in LEVEL for dr in LEVEL_MODES for m in LEVEL_MODES[dr]]
 
@@ -424,7 +432,8 @@ def handshakeChecks(case, ev, output):
                   f"acks={[t for _, t in rets]} hs={hsTimes}", 'count' if len(rets) != len(hs) else 'edge')
     elif judged:
         # A read that starts in an edge's timestep reaches the RTL at the next
-        # edge, on every simulator, so its handshake comes after that timestep.
+        # edge, on every simulator and with a clock that changes in any delta
+        # of its timestep, so its handshake comes after that timestep.
         unwaited = [i for i, t in enumerate(hsTimes) if i >= len(calls) or calls[i][1] >= t]
         check(case, SRC_RULE_1, not unwaited,
               f"handshakes with no read waiting: {unwaited}, reads={[t for _, t in calls]} hs={hsTimes}",
@@ -563,7 +572,7 @@ def busChecks(case, ev):
         else:
             check(case, 'dst call returns no earlier than its completion', all(rets[k][1] >= ack[k][1] for k in waits),
                   f"model returns {[rets[k][1] for k in waits]}, RTL completion edges {[ack[k][1] for k in waits]}")
-        if case.rtl == 'always' and case.delay == 0:
+        if (case.rtl == 'always' or case.rtl in EDGE) and case.delay == 0:
             check(case, 'dst latency', req[0][1] == nextEdge(calls[0][1]),
                   f"call {calls[0][1]}, RTL sees it {req[0][1]}", f"{(req[0][1] - nextEdge(calls[0][1])) // PERIOD:+d} clock")
             gap = req[1][1] - req[0][1]
@@ -584,6 +593,13 @@ def busChecks(case, ev):
         check(case, 'src completes on the edge after the model', [t for _, t in ack] == want,
               f"model completes {[t for _, t in rets]}, RTL completion edges {[t for _, t in ack]}, expected {want}",
               f"{lag // PERIOD:+d} clock")
+    if case.family == 'mem' and case.rtl in EDGE:
+        # The model completes each read in the timestep of a rising edge, and
+        # the RTL sees the data at the next edge.
+        smp = ev.get('smp', [])
+        want = [(SRC_VALUES[k], nextEdge(rets[k][1])) for k in range(OPS) if k % 2]
+        check(case, 'read data the model completes on an edge reaches the RTL at the next edge', smp == want,
+              f"model completes {[t for _, t in rets]}, RTL sees read data {smp}, expected {want}")
     if case.rtl in ('always', 'parked') and case.delay == 0:
         # Operation 0 is the first write, and operation 1 the first read. An ahb write's HWDATA goes on the
         # wire in the data phase, after the edge that takes the address phase, so the BFM reads it at the

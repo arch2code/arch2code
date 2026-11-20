@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "req_ack_channel.h"
 
 template<typename VL_DATA_T, typename VL_RDATA_T>
@@ -24,10 +25,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (req_ack_src_bfm);
 
     req_ack_src_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -48,6 +51,7 @@ public:
             } while (!hdl_if_p->req || !rst_n);
             data.sc_unpack(hdl_if_p->data);
             if_p->req(data, rdata);
+            m_edge.settle();
             hdl_if_p->ack = true;
             hdl_if_p->rdata = rdata.sc_pack();
             wait(clk.posedge_event());
@@ -66,10 +70,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (req_ack_dst_bfm);
 
     req_ack_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -79,6 +85,7 @@ public:
             DATA_T data;
             RDATA_T rdata;
             if_p->reqReceive(data);
+            m_edge.settle();
             hdl_if_p->req = true;
             hdl_if_p->data = data.sc_pack();
             do {

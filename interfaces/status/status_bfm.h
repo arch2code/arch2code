@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "status_channel.h"
 
 template<typename VL_DATA_T>
@@ -49,10 +50,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (status_dst_bfm);
 
     status_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -62,6 +65,10 @@ public:
         while (true) {
             DATA_T data;
             if_p->read(data);
+            // A change in an edge's timestep reaches the RTL at the next edge.
+            // Take the value after the wait, in case it changed again.
+            m_edge.settle();
+            if_p->readNonBlocking(data);
             hdl_if_p->data = data.sc_pack();
         }
     }

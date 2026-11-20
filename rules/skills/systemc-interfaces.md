@@ -39,7 +39,7 @@ Pick the right port call for each interface family in a SystemC model.
 Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **systemc-patterns**.
 
 ### A send returns at the handshake
-A `rdy_vld`, `axi4_stream` or AXI send (`write`, `sendInfo`, `sendAddr`, `sendData`, `sendResp` and their `Cycle` forms) blocks until the receiver takes the value. When the receiver is RTL, the BFM returns it at the clock edge where the RTL takes the beat. A burst sent with `writeClocked` returns when the RTL takes the burst's first beat. A send or read the model makes in the timestep of a rising clock edge reaches the RTL at the next edge, on every simulator.
+A `rdy_vld`, `axi4_stream` or AXI send (`write`, `sendInfo`, `sendAddr`, `sendData`, `sendResp` and their `Cycle` forms) blocks until the receiver takes the value. When the receiver is RTL, the BFM returns it at the clock edge where the RTL takes the beat. A burst sent with `writeClocked` returns when the RTL takes the burst's first beat. A send, read or other call the model makes in the timestep of a clock edge reaches the RTL at the next edge, on every simulator, with the free-running or the gated lockstep clock.
 
 A model that reads a port only while `isActive()` is true moves as fast against RTL as one that waits in `read()`, with or without a `--delay`. The BFM shows it a beat at the falling edge after the RTL raises `vld`, so its `read()` raises `rdy` in time for the next rising edge. The `_ack` src BFMs also read the request at the falling edge, and fall back to the rising edge. The `ahb` src BFM reads a write's HWDATA at the falling edge, with no fallback.
 

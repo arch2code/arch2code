@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "apb_channel.h"
 #include "socketObserve.h"
 
@@ -32,10 +33,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (apb_src_bfm);
 
     apb_src_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -61,6 +64,7 @@ public:
                 data.sc_unpack(hdl_if_p->pwdata);
             }
             slverr = if_p->requestWithResponse(is_write, addr, data);
+            m_edge.settle();
             hdl_if_p->pready = true;
             hdl_if_p->pslverr = slverr;
             if( !is_write ) {
@@ -82,6 +86,7 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     // When set (e.g. "cpu_apb_reg"), emit pin-accurate RESP observe with wait_cycles.
     std::string observe_ifc;
@@ -89,6 +94,7 @@ public:
     SC_HAS_PROCESS (apb_dst_bfm);
 
     apb_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -100,6 +106,7 @@ public:
             bool is_write;
             bool slverr = false;
             if_p->reqReceive(is_write, addr, data);
+            m_edge.settle();
             hdl_if_p->psel = true;
             hdl_if_p->paddr = addr.sc_pack();
             if ( is_write ) {

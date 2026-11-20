@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include <optional>
 #include "rdy_vld_channel.h"
 #include "rdy_vld_src_driver.h"
@@ -26,12 +27,14 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (rdy_vld_src_bfm);
 
     rdy_vld_src_bfm(sc_module_name modulename) :
         m_lostBeats(name(), "HDL transferred a beat the BFM did not sample", "beats"),
         m_scStalls(name(), "SystemC stalled a backpressure: false producer", "clock edges") {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(transfer_monitor);
         sensitive << clk.pos();
@@ -44,7 +47,7 @@ public:
     virtual void end_of_elaboration() {
         m_noBackpressure = bfmNoBackpressure(if_p.get_interface(), name());
         if_p->setCycleTransaction();
-        m_driver.emplace(if_p, clk, rst_n, hdl_if_p->vld, hdl_if_p->rdy,
+        m_driver.emplace(if_p, clk, m_edge, rst_n, hdl_if_p->vld, hdl_if_p->rdy,
                          [this](DATA_T &data) { data.sc_unpack(hdl_if_p->data); });
     }
 
@@ -116,11 +119,13 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (rdy_vld_dst_bfm);
 
     rdy_vld_dst_bfm(sc_module_name modulename) :
         m_stalls(name(), "HDL stalled a backpressure: false interface", "clock edges") {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -141,6 +146,7 @@ public:
             hdl_if_p->vld = 0;
             hdl_if_p->data = VL_DATA_T(0);
             if_p->peek(data);
+            m_edge.settle();
             hdl_if_p->vld = 1;
             hdl_if_p->data = data.sc_pack();
             do {

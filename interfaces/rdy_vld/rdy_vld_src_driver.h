@@ -6,6 +6,7 @@
 #include <functional>
 #include "systemc.h"
 #include "rdy_vld_channel.h"
+#include "bfmClockEdge.h"
 
 // One rdy/vld lane a src BFM receives from the RTL. Ready is high only while
 // the model waits in read(). A beat the RTL holds with ready low is offered,
@@ -16,11 +17,9 @@
 // settled half a clock later, and the protocol holds vld and the data until
 // the handshake.
 //
-// A read() wakes the driver in the read's delta, which can be the delta in
-// which a rising edge changes the clock. Ready driven in that delta reaches
-// Verilator at that edge, but Xcelium and VCS sample the edge first. So the
-// driver raises ready a delta later, after the edge's processes have run,
-// and the RTL sees it at the next edge on every simulator.
+// A read() in the timestep of a clock edge raises ready in the delta where
+// the RTL samples that edge, so ready changes after it and the RTL sees it at
+// the next edge on every simulator. bfmClockEdge finds that delta.
 //
 // The falling-edge offer assumes vld and the data come from flops on this
 // clock's rising edge. An output with a combinational path from an input
@@ -33,9 +32,9 @@ class rdyVldSrcDriver {
 
 public:
 
-    rdyVldSrcDriver(sc_port<rdy_vld_out_if<T>> &ch, sc_in<bool> &clk, sc_in<bool> &rst_n,
+    rdyVldSrcDriver(sc_port<rdy_vld_out_if<T>> &ch, sc_in<bool> &clk, bfmClockEdge &edge, sc_in<bool> &rst_n,
                     sc_signal<bool> &vld, sc_signal<bool> &rdy, std::function<void(T &)> unpack) :
-        m_ch(ch), m_clk(clk), m_rst_n(rst_n), m_vld(vld), m_rdy(rdy), m_unpack(unpack) {}
+        m_ch(ch), m_clk(clk), m_edge(edge), m_rst_n(rst_n), m_vld(vld), m_rdy(rdy), m_unpack(unpack) {}
 
     // The BFM calls this from a method on both clock edges. An edge with vld
     // high and ready low leaves the beat with the RTL. It only reads the
@@ -64,9 +63,9 @@ public:
         while (true) {
             wait(m_clk.posedge_event() | m_clk.negedge_event() | m_ch->readEnteredEvent());
             if (!m_clk.event()) {
-                // A read() woke the driver. An edge in this timestep has run
-                // its processes by the next delta, and is handled below.
-                wait(SC_ZERO_TIME);
+                // A read() woke the driver. An edge due in this timestep goes
+                // first, and is handled below.
+                m_edge.settle();
             }
             if (m_clk.negedge()) {
                 if (m_rst_n && m_vld && !m_rdy && !offered) {
@@ -131,6 +130,7 @@ private:
 
     sc_port<rdy_vld_out_if<T>> &m_ch;
     sc_in<bool> &m_clk;
+    bfmClockEdge &m_edge;
     sc_in<bool> &m_rst_n;
     sc_signal<bool> &m_vld;
     sc_signal<bool> &m_rdy;

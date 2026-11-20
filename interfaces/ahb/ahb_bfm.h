@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmClockEdge.h"
 #include "ahb_channel.h"
 #include "q_assert.h"
 
@@ -48,10 +49,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (ahb_src_bfm);
 
     ahb_src_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -86,6 +89,7 @@ public:
                     data.sc_unpack(hdl_if_p->hwdata);
                 }
                 const bool error = if_p->requestWithResponse(is_write, addr, data);
+                m_edge.settle();
                 if (error) {
                     hdl_if_p->hresp = true;
                     wait(clk.posedge_event());
@@ -120,10 +124,12 @@ public:
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
+    bfmClockEdge m_edge{"clk_edge"};
 
     SC_HAS_PROCESS (ahb_dst_bfm);
 
     ahb_dst_bfm(sc_module_name modulename) {
+        m_edge.clk(clk);
         SC_THREAD(address_thread);
         SC_THREAD(data_thread);
     }
@@ -148,6 +154,7 @@ public:
             bool is_write;
             if_p->reqReceive(is_write, addr, data);
             const bool posted = is_write && !if_p->receivedWantsResponse();
+            m_edge.settle();
             hdl_if_p->hsel = true;
             hdl_if_p->htrans = sc_bv<2>(AHB_HTRANS_NONSEQ);
             hdl_if_p->haddr = addr.sc_pack();
