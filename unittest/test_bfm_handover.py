@@ -136,7 +136,7 @@ B_DROP = ("axi_write_bfm.h:163-168 takes the model's B on a reset edge and drops
 DUMMY_W = ("axi_write_bfm.h:127-145 drains the burst of the last AW at reset: it sends the model a zero W beat, "
            "with that AW's ID, for each beat left. The model reads them as data. That is how the drain works, not "
            "a fault in this run")
-TAKE_IN_RESET = f"rdy_vld_src_driver.h:63-67 {RESET_SRC}"
+TAKE_IN_RESET = f"rdy_vld_src_driver.h:64-68 {RESET_SRC}"
 R_TAKE_IN_RESET = f"axi_read_bfm.h:235 adds no reset handling, and {TAKE_IN_RESET}"
 B_TAKE_IN_RESET = f"axi_write_bfm.h:290 adds no reset handling, and {TAKE_IN_RESET}"
 DST_RULE_1 = ('dst write returns never run ahead of handshakes', 'dst write returns at its handshake edge')

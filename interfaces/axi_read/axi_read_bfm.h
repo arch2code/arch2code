@@ -232,7 +232,7 @@ public:
 
     void bfm_driver_r_thread() {
         wait(SC_ZERO_TIME);
-        m_r->run([this](rT &r_data) { if_p->sendDataCycle(r_data); }, [] { return false; });
+        m_r->run([this](rT &r_data) { if_p->sendDataCycle(r_data); }, nullptr);
     }
 
     void sample_edges() {

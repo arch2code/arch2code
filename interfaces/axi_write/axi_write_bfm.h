@@ -287,7 +287,7 @@ public:
 
     void bfm_driver_b_thread() {
         wait(SC_ZERO_TIME);
-        m_b->run([this](bT &b_data) { if_p->sendRespCycle(b_data); }, [] { return false; });
+        m_b->run([this](bT &b_data) { if_p->sendRespCycle(b_data); }, nullptr);
     }
 
     void sample_edges() {

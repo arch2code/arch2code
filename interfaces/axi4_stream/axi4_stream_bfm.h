@@ -86,7 +86,7 @@ public:
                 m_lastSampleTime = sc_time_stamp();
             }
             if_p->sendInfo(tinfo);
-        }, [] { return false; });
+        }, nullptr);
     }
 
     // The driver wakes on the same edge in either order, so this checks the

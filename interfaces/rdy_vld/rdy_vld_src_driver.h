@@ -21,7 +21,8 @@ public:
         m_ch(ch), m_clk(clk), m_rst_n(rst_n), m_vld(vld), m_rdy(rdy), m_unpack(unpack) {}
 
     // The BFM calls this from a method on clk.pos(). An edge with vld high and
-    // ready low leaves the beat with the RTL.
+    // ready low leaves the beat with the RTL. It only reads the wires, so a
+    // second call in the same delta changes nothing.
     void sampleEdge() {
         m_held = m_rst_n.read() && m_vld.read() && !m_rdy.read();
         if (m_held) {
@@ -37,8 +38,8 @@ public:
     }
 
     // take() sends a beat the RTL handed over to the model. inReset() runs on
-    // an edge in reset and returns true once it has waited the reset out, or
-    // false to go on with the edge, where only a handshake moves a beat.
+    // an edge in reset and returns true once it has waited the reset out. An
+    // empty inReset goes on with the edge, where only a handshake moves a beat.
     void run(std::function<void(T &)> take, std::function<bool()> inReset) {
         T data;
         bool offered = false;
@@ -55,7 +56,7 @@ public:
                     m_ch->withdraw();
                     offered = false;
                 }
-                if (inReset()) {
+                if (inReset && inReset()) {
                     m_rdy = m_ch->get_rdy();
                     continue;
                 }
@@ -65,6 +66,12 @@ public:
                 // The RTL must not transfer while a delayed send blocks.
                 m_rdy = false;
                 take(data);
+                // A send that returns in an edge's posedge delta may run
+                // before the method samples that edge. The wires still show
+                // the values the edge sampled, so sample it here.
+                if (m_clk.posedge()) {
+                    sampleEdge();
+                }
                 // An edge that passed while the send blocked left the next
                 // beat with the RTL.
                 offered = m_held;
