@@ -33,10 +33,11 @@ static constexpr unsigned AHB_HSIZE_WORD = 2;
 // request on if_p. HREADYOUT is low while the model works on a request. A
 // read goes to the model on the edge that takes its address phase, so a
 // model that answers in that timestep adds no wait state. A write's HWDATA
-// goes on the wire after that edge. The RTL drives it from rising-edge flops
-// and holds it through the data phase, so the BFM reads it at the falling
-// edge, and a model that answers there adds no wait state. An address phase
-// in the last cycle of a data phase is taken as the next transfer.
+// goes on the wire after that edge, and the BFM reads it at the falling edge,
+// so a model that answers there adds no wait state. This assumes the RTL
+// drives HWDATA from rising-edge flops, so it has settled by then; AHB holds
+// it through the data phase. An address phase in the last cycle of a data
+// phase is taken as the next transfer.
 template<typename ADDR_T, typename DATA_T, typename VL_ADDR_T, typename VL_DATA_T>
 class ahb_src_bfm: public sc_module {
 

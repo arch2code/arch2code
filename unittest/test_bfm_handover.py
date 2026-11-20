@@ -253,9 +253,9 @@ EXPECTED_FAILURES += [
     XFail(('apb',), 'src', ('served once',), resetDelayed, 'RTL 4/3, model 4', APB_SRC_RESET),
     XFail(('apb',), 'src', ('values',), resetDelayed, None, APB_SRC_RESET),
     XFail(('apb',), 'src', ('an error reaches the RTL on its own transfer',), resetDelayed, '[0, 0, 0]', APB_SRC_RESET),
-    XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:139-189 {BUS_RESET}"),
+    XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:140-190 {BUS_RESET}"),
     XFail(('ahb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'), inReset, None,
-          f"ahb_bfm.h:75-101 {BUS_RESET}; line 99 takes an address phase on a reset edge and sends it to the model"),
+          f"ahb_bfm.h:76-102 {BUS_RESET}; line 100 takes an address phase on a reset edge and sends it to the model"),
     XFail(('mem',), 'dst', ('served once',), inReset, 'RTL 2/2, model 4',
           f"memory_bfm.h:83 {MEM_RESET}: 89-97 drive operations 2 and 3 on reset edges, where the RTL takes "
           "neither, and the model's calls return"),
