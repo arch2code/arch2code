@@ -11,9 +11,8 @@ Rule 2, no lost throughput and no added clock. With the RTL always ready, or
 the model reading back to back, there is one handshake per clock. dst drives
 vld in the timestep of the model's send and the RTL takes the first beat at
 the next edge. src hands the first beat over at the first edge after the
-model calls read() with vld up. A read that starts in an edge's own timestep,
-woken by time, runs ahead of that edge's processes, so the RTL takes the beat
-at that edge.
+model calls read() with vld up. A read that starts in an edge's own timestep
+reaches the RTL at the next edge, so the RTL takes the beat there.
 
 A src model that waits on setExternalEvent() and reads only an active port
 (rtl=arb) must not deadlock, and moves as fast as a model that waits in
@@ -146,16 +145,16 @@ CASES += [Case(f, dr, m, 0, 'allowed', 0) for f in LEVEL for dr in LEVEL_MODES f
 
 RESET_DST = "ends the beat on an edge with ready high whether or not reset is low"
 RESET_SRC = "delivers a beat it samples on a reset edge, and the RTL sends that beat again after reset"
-R_DRAIN = ("axi_read_bfm.h:120-148 drops the R beat on the wire at reset and returns the model's remaining "
+R_DRAIN = ("axi_read_bfm.h:124-152 drops the R beat on the wire at reset and returns the model's remaining "
            "sendDataCycle() calls with no handshake, to drain the burst")
-B_DROP = ("axi_write_bfm.h:163-168 takes the model's B on a reset edge and drops it, and 176-183 drops the B "
+B_DROP = ("axi_write_bfm.h:167-172 takes the model's B on a reset edge and drops it, and 180-187 drops the B "
           "on the wire at reset")
-DUMMY_W = ("axi_write_bfm.h:127-145 drains the burst of the last AW at reset: it sends the model a zero W beat, "
+DUMMY_W = ("axi_write_bfm.h:130-148 drains the burst of the last AW at reset: it sends the model a zero W beat, "
            "with that AW's ID, for each beat left, and the model reads them as data. This is a defect in the reset "
            "drain, left for the reset work")
-TAKE_IN_RESET = f"rdy_vld_src_driver.h:93-97 {RESET_SRC}"
-R_TAKE_IN_RESET = f"axi_read_bfm.h:235 adds no reset handling, and {TAKE_IN_RESET}"
-B_TAKE_IN_RESET = f"axi_write_bfm.h:290 adds no reset handling, and {TAKE_IN_RESET}"
+TAKE_IN_RESET = f"rdy_vld_src_driver.h:102-106 {RESET_SRC}"
+R_TAKE_IN_RESET = f"axi_read_bfm.h:242 adds no reset handling, and {TAKE_IN_RESET}"
+B_TAKE_IN_RESET = f"axi_write_bfm.h:298 adds no reset handling, and {TAKE_IN_RESET}"
 DST_RULE_1 = ('dst write returns never run ahead of handshakes', 'dst write returns at its handshake edge')
 SRC_RULE_1 = 'src handshake only while the model waits in read()'
 SRC_RETURN = 'src read returns at its handshake edge'
@@ -203,16 +202,16 @@ MOVED_RESET = ('rv', 'axis', 'ar', 'aw', 'w')
 # failure, for example which beats are lost, and None accepts any failure.
 XFail = namedtuple('XFail', 'families dir checks applies how reason')
 EXPECTED_FAILURES = [
-    XFail(('rv',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"rdy_vld_bfm.h:151 {RESET_DST}"),
-    XFail(('rv',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"rdy_vld_bfm.h:151 {RESET_DST}"),
-    XFail(('axis',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi4_stream_bfm.h:193 {RESET_DST}"),
-    XFail(('axis',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi4_stream_bfm.h:193 {RESET_DST}"),
-    XFail(('ar',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_read_bfm.h:227 {RESET_DST}"),
-    XFail(('ar',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_read_bfm.h:227 {RESET_DST}"),
-    XFail(('aw',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:257 {RESET_DST}"),
-    XFail(('aw',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:257 {RESET_DST}"),
-    XFail(('w',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:282 {RESET_DST}"),
-    XFail(('w',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:282 {RESET_DST}"),
+    XFail(('rv',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"rdy_vld_bfm.h:157 {RESET_DST}"),
+    XFail(('rv',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"rdy_vld_bfm.h:157 {RESET_DST}"),
+    XFail(('axis',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi4_stream_bfm.h:199 {RESET_DST}"),
+    XFail(('axis',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi4_stream_bfm.h:199 {RESET_DST}"),
+    XFail(('ar',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_read_bfm.h:234 {RESET_DST}"),
+    XFail(('ar',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_read_bfm.h:234 {RESET_DST}"),
+    XFail(('aw',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:264 {RESET_DST}"),
+    XFail(('aw',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:264 {RESET_DST}"),
+    XFail(('w',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:290 {RESET_DST}"),
+    XFail(('w',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_write_bfm.h:290 {RESET_DST}"),
     XFail(('r',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, R_DRAIN),
     XFail(('r',), 'dst', (ORDER,), inReset, 'hs missing, model ok', R_DRAIN),
     XFail(('b',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, B_DROP),
@@ -243,10 +242,10 @@ EXPECTED_FAILURES = [
 
 # The _ack dst BFMs: (family, lines, how a reset run loses order).
 ACK_BFMS = (
-    ('pushack', 'push_ack_bfm.h:81-88', 'hs missing, model ok'),
-    ('popack', 'pop_ack_bfm.h:82-89', 'hs missing, model missing+duplicate'),
-    ('notifyack', 'notify_ack_bfm.h:76-81', 'hs missing, model ok'),
-    ('reqack', 'req_ack_bfm.h:84-90', 'hs missing, model missing+duplicate'),
+    ('pushack', 'push_ack_bfm.h:88-95', 'hs missing, model ok'),
+    ('popack', 'pop_ack_bfm.h:89-96', 'hs missing, model missing+duplicate'),
+    ('notifyack', 'notify_ack_bfm.h:83-88', 'hs missing, model ok'),
+    ('reqack', 'req_ack_bfm.h:91-97', 'hs missing, model missing+duplicate'),
 )
 for fam, dstLines, dstOrder in ACK_BFMS:
     EXPECTED_FAILURES += [
@@ -256,28 +255,28 @@ for fam, dstLines, dstOrder in ACK_BFMS:
 
 MEM_RESET = "reads rst_n only before the first reset, never in its loop"
 BUS_RESET = "never reads rst_n after the first reset, so a transfer in flight at the reset is lost or completes later"
-APB_SRC_RESET = ("apb_bfm.h:44-70 reads rst_n only where it samples a setup phase. A reset that cuts off a "
+APB_SRC_RESET = ("apb_bfm.h:47-74 reads rst_n only where it samples a setup phase. A reset that cuts off a "
                  "transfer after the model has answered loses the answer, and the model serves the RTL's repeat "
                  "of it as the next operation")
 EXPECTED_FAILURES += [
-    XFail(('apb',), 'dst', ('served once',), inReset, None, f"apb_bfm.h:97-140 {BUS_RESET}"),
+    XFail(('apb',), 'dst', ('served once',), inReset, None, f"apb_bfm.h:103-147 {BUS_RESET}"),
     XFail(('apb',), 'src', ('served once',), resetDelayed, 'RTL 4/3, model 4', APB_SRC_RESET),
     XFail(('apb',), 'src', ('values',), resetDelayed, None, APB_SRC_RESET),
     XFail(('apb',), 'src', ('an error reaches the RTL on its own transfer',), resetDelayed, '[0, 0, 0]', APB_SRC_RESET),
-    XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:140-190 {BUS_RESET}"),
+    XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:146-197 {BUS_RESET}"),
     XFail(('ahb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'), inReset, None,
-          f"ahb_bfm.h:76-102 {BUS_RESET}; line 100 takes an address phase on a reset edge and sends it to the model"),
+          f"ahb_bfm.h:79-106 {BUS_RESET}; line 104 takes an address phase on a reset edge and sends it to the model"),
     XFail(('mem',), 'dst', ('served once',), inReset, 'RTL 2/2, model 4',
-          f"memory_bfm.h:83 {MEM_RESET}: 89-97 drive operations 2 and 3 on reset edges, where the RTL takes "
+          f"memory_bfm.h:95 {MEM_RESET}: 103-111 drive operations 2 and 3 on reset edges, where the RTL takes "
           "neither, and the model's calls return"),
     XFail(('mem',), 'dst', ('values',), inReset, None,
-          f"memory_bfm.h:83 {MEM_RESET}: 101-105 complete the read the RTL never took with the previous read's "
+          f"memory_bfm.h:95 {MEM_RESET}: 115-119 complete the read the RTL never took with the previous read's "
           "word, 0x11"),
     XFail(('mem',), 'src', ('values',), inReset, None,
-          f"memory_bfm.h:43 {MEM_RESET}: 46-54 take operation 2 on a reset edge and send it to the model, and "
+          f"memory_bfm.h:46 {MEM_RESET}: 49-57 take operation 2 on a reset edge and send it to the model, and "
           "the RTL gets the stale read data"),
     XFail(('mem',), 'src', ('src completes on the edge after the model',), inReset, '+2 clock',
-          f"memory_bfm.h:43 {MEM_RESET}: 46-54 take operation 2 on a reset edge and send it to the model"),
+          f"memory_bfm.h:46 {MEM_RESET}: 49-57 take operation 2 on a reset edge and send it to the model"),
 ]
 
 
@@ -646,7 +645,7 @@ def visible(writes, resetEdges, end):
 
 def inOrderAcrossReset(case, who, got, want):
     """external_reg drops a write the RTL has not taken at a reset and drives rdata 0 in reset
-    (external_reg_bfm.h:50, 112-114, 128-129), so across a reset this checks that the values seen
+    (external_reg_bfm.h:59, 123-125, 139-140), so across a reset this checks that the values seen
     come in order, none extra or repeated, and the last one arrives."""
     seen = [v for v in got if v]
     rest = iter(want)
@@ -663,7 +662,7 @@ def levelChecks(case, ev):
         want = visible(wire, resetEdges, RUN_END)
         got = [v for v, _ in smp]
         if case.family == 'extreg' and case.rtl == 'reset':
-            # A write issued in reset, or in the clock before it, may be dropped (external_reg_bfm.h:112-114,
+            # A write issued in reset, or in the clock before it, may be dropped (external_reg_bfm.h:123-125,
             # 128-129); every other write must reach the RTL.
             kept = [v for v, t in calls if nextEdge(t) not in resetEdges and nextEdge(t) - PERIOD not in resetEdges]
             lost = [v for v in kept if v not in got]
