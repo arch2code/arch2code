@@ -80,7 +80,9 @@ int sc_main(int argc, char* argv[])
     std::string execName = execPath.filename().string();
 #ifdef VCS
     VcsSetExitFunc(exit_handler);
-    // VCS roots every SystemC instance under sc_main.
+#endif
+#if defined(VCS) || defined(XCELIUM)
+    // VCS and Xcelium root every SystemC instance under sc_main.
     synchLockFactoryRegistery::getInstance().setHierarchyPrefix("sc_main");
 #endif
 
