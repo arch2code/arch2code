@@ -117,7 +117,7 @@ A `status` channel keeps only the latest value. It has no queue and no handshake
 *   A thread may wake on a `status` change to re-sample state, such as new configuration. It must stay correct if it misses an intermediate value.
 *   A level that only rises until reset, such as a fatal alert latched until reset, may be `status` when one place turns its single rise into an event.
 *   A boundary input that is genuinely pin-level, such as GPIO or an external pps or fsync, may enter as `status`. The block that receives it turns its edges into transactions for the rest of the design.
-*   Workarounds give the misuse away: a value held for a minimum number of clocks so the reader sees it, a `done` level kept up until the next operation, a toggle bit, edge detection in the consumer to recover events, or a custom interface type adopted because `status` lost a value. In tandem (A2C Pro) the status tee pairs the two sides' changes one for one, so a model and RTL that make different numbers of changes stall it.
+*   Workarounds give the misuse away: a value held for a minimum number of clocks so the reader sees it, a `done` level kept up until the next operation, a toggle bit, edge detection in the consumer to recover events, or a custom interface type adopted because `status` lost a value. In tandem (A2C Pro) the status tee compares the two sides' levels. A difference that lasts the level window, or is left when the run ends, is a mismatch. A shorter difference, such as a pulse on one side only, is not caught. The `final` and `off` policies compare less. See [Tandem status compare](#tandem-status-compare).
 
 Replace each control use with its transactional form:
 
