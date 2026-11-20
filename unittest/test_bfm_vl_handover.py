@@ -24,6 +24,13 @@ Runs, picked with BVH_MODE:
   beat 8 while the FIFO holds more beats, then reading the rest.
 - poweron: one beat sent and read at time 0, while reset is still low.
 
+single, burst, hold and pause run again with BVH_ON_EDGE set, which moves the
+send, the hold read and the pause 3 or 2 ns earlier, onto a clock edge. A
+model call in the timestep of an edge reaches the RTL at the next edge, on
+every simulator, so the same checks hold: the RTL takes the first beat at the
+first edge after the send, and no beat is lost or doubled. The check names
+carry " on edge".
+
 Where today's BFM breaks the rule, EXPECTED_FAILURES names the check, how it
 fails and the BFM line. A marked check that passes, or fails another way than
 its row pins, fails the suite, and so does a row no check matched. A fix has
@@ -62,6 +69,9 @@ RUN_TIMEOUT = 120               # s
 TIME_LIMIT_US = 5
 
 MODES = ('single', 'burst', 'hold', 'pause', 'poweron')
+EDGE_MODES = ('single', 'burst', 'hold', 'pause')
+SEND_SHIFT = 3000               # ps BVH_ON_EDGE moves the send, onto the edge at 100 ns
+READ_SHIFT = 2000               # ps it moves the hold read and the pause
 SIGNALS = ('in_vld', 'in_rdy', 'out_vld', 'out_rdy', 'clk', 'rst_n')
 
 # The checks, by name. Two runs use the same words only where they check the same thing.
@@ -140,15 +150,17 @@ def require(result, what):
         raise RuntimeError(f"{what} failed (rc={result.returncode}):\n{result.stdout}\n{result.stderr}")
 
 
-def runMode(rundir, mode):
+def runMode(rundir, mode, onEdge):
     """Runs one mode with the FIFO Verilated; returns the run and its model log."""
     build = os.path.join(rundir, 'build')
     trace = os.path.join(build, 'simx.vcd')
     if os.path.exists(trace):
         os.remove(trace)
+    env = dict(shell_make_env(), BVH_MODE=mode)
+    if onEdge:
+        env['BVH_ON_EDGE'] = '1'
     run = subprocess.run(['./run', 'bvhTop', '--vlInst', VL_INST, '--vlTrace', '--scTimeLimit', str(TIME_LIMIT_US)],
-                         capture_output=True, text=True, timeout=RUN_TIMEOUT, cwd=build,
-                         env=dict(shell_make_env(), BVH_MODE=mode))
+                         capture_output=True, text=True, timeout=RUN_TIMEOUT, cwd=build, env=env)
     return run, modelLog(run.stdout)
 
 
@@ -223,7 +235,7 @@ def times(entries):
 
 
 def beatCount(mode):
-    return 1 if mode in ('single', 'poweron') else BEATS
+    return 1 if mode.split()[0] in ('single', 'poweron') else BEATS
 
 
 def checkRun(mode, run):
@@ -253,8 +265,7 @@ def checkRecvEdge(mode, recv, outHs):
           f"first at beat {wrong}")
 
 
-def singleChecks(log, changes, inHs, outHs):
-    mode = 'single'
+def singleChecks(mode, log, changes, inHs, outHs):
     call, ret, recv = log['src call'][0][1], log['src ret'][0][1], log['snk recv'][0][1]
     vld = firstChange(changes, 'in_vld', 1)
     check(mode, FIRST_VLD, vld == call, f"send at {call} ps, vld rose at {vld} ps")
@@ -274,8 +285,7 @@ def singleChecks(log, changes, inHs, outHs):
     checkOrder(mode, log)
 
 
-def burstChecks(log, inHs, outHs):
-    mode = 'burst'
+def burstChecks(mode, log, inHs, outHs):
     steady = all(b - a == PERIOD for a, b in zip(inHs, inHs[1:]))
     check(mode, RATE_IN, steady, f"{len(inHs)} handshakes at {ns(inHs)} ns")
     recv = times(log['snk recv'])
@@ -285,10 +295,9 @@ def burstChecks(log, inHs, outHs):
     checkOrder(mode, log)
 
 
-def holdChecks(log, edges, inHs, outHs):
-    mode = 'hold'
+def holdChecks(mode, readAt, log, edges, inHs, outHs):
     read = log['snk call'][0][1]
-    assert read == HOLD_READ_AT, f"the sink starts reading at {read} ps, expected {HOLD_READ_AT} ps"
+    assert read == readAt, f"the sink starts reading at {read} ps, expected {readAt} ps"
     accepted = [t for t in inHs if t < read]
     full = [(t, p) for t, p in edges if accepted and accepted[-1] < t < read]
     stuck = sum(1 for t, p in full if p['in_vld'] and not p['in_rdy'])
@@ -310,11 +319,10 @@ def holdChecks(log, edges, inHs, outHs):
     checkOrder(mode, log)
 
 
-def pauseChecks(log, outHs):
-    mode = 'pause'
+def pauseChecks(mode, pause, log, outHs):
     recv, calls = times(log['snk recv']), times(log['snk call'])
-    assert calls[PAUSE_BEAT] - recv[PAUSE_BEAT - 1] == PAUSE, \
-        f"the sink paused {calls[PAUSE_BEAT] - recv[PAUSE_BEAT - 1]} ps, expected {PAUSE} ps"
+    assert calls[PAUSE_BEAT] - recv[PAUSE_BEAT - 1] == pause, \
+        f"the sink paused {calls[PAUSE_BEAT] - recv[PAUSE_BEAT - 1]} ps, expected {pause} ps"
     checkRecvEdge(mode, recv, outHs)
     early = next((k for k, (c, h) in enumerate(zip(calls, outHs)) if c >= h), None)
     check(mode, HAND_WAITING, early is None,
@@ -349,10 +357,13 @@ def main():
         rundir = os.path.join(project, 'rundir')
         require(make(project, 'all', 'VL_DUT=1', 'CCACHE_DISABLE=1', directory=rundir), "make all VL_DUT=1")
 
-        for mode in MODES:
+        runs = [(m, False) for m in MODES] + [(m, True) for m in EDGE_MODES]
+        for base, onEdge in runs:
+            mode = f"{base} on edge" if onEdge else base
+            shift = (SEND_SHIFT, READ_SHIFT) if onEdge else (0, 0)
             print(f"\n  {mode}")
             before = len(FAILURES)
-            run, log = runMode(rundir, mode)
+            run, log = runMode(rundir, base, onEdge)
             if not checkRun(mode, run):
                 print(run.stdout + run.stderr)
                 SKIPPED.add(mode)
@@ -363,17 +374,18 @@ def main():
             if not checkComplete(mode, log, inHs, outHs):
                 SKIPPED.add(mode)
             else:
-                if mode != 'poweron':
-                    assert log['src call'][0][1] == SEND_AT, \
-                        f"the source sends at {log['src call'][0][1]} ps, expected {SEND_AT} ps"
-                if mode == 'single':
-                    singleChecks(log, changes, inHs, outHs)
-                elif mode == 'burst':
-                    burstChecks(log, inHs, outHs)
-                elif mode == 'hold':
-                    holdChecks(log, edges, inHs, outHs)
-                elif mode == 'pause':
-                    pauseChecks(log, outHs)
+                if base != 'poweron':
+                    sendAt = SEND_AT - shift[0]
+                    assert log['src call'][0][1] == sendAt, \
+                        f"the source sends at {log['src call'][0][1]} ps, expected {sendAt} ps"
+                if base == 'single':
+                    singleChecks(mode, log, changes, inHs, outHs)
+                elif base == 'burst':
+                    burstChecks(mode, log, inHs, outHs)
+                elif base == 'hold':
+                    holdChecks(mode, HOLD_READ_AT - shift[1], log, edges, inHs, outHs)
+                elif base == 'pause':
+                    pauseChecks(mode, PAUSE - shift[1], log, outHs)
                 else:
                     powerOnChecks(log, edges, changes, inHs)
             if len(FAILURES) > before:

@@ -69,7 +69,8 @@ bvhSnk::bvhSnk(sc_module_name blockName, const char * variant, blockBaseMode bbM
 
 // BVH_MODE picks the run, see test_bfm_vl_handover.py. hold starts reading at
 // 502 ns and pause stops for 52 ns before beat 8. Both land 2 ns after a clock
-// edge, so no read lands on one.
+// edge, so no read lands on one. BVH_ON_EDGE moves both 2 ns earlier, onto an
+// edge.
 void bvhSnk::receive(void)
 {
     m_eot.registerVoter();
@@ -85,13 +86,14 @@ void bvhSnk::receive(void)
         return;
     }
     const unsigned beats = (mode == "single" || mode == "poweron") ? 1 : 16;
+    const sc_time shift = std::getenv("BVH_ON_EDGE") ? sc_time(2, SC_NS) : SC_ZERO_TIME;
     if (mode == "hold") {
-        wait(sc_time(502, SC_NS));
+        wait(sc_time(502, SC_NS) - shift);
     }
     for (unsigned k = 0; k < beats; k++) {
         bvhBeat beat;
         if (mode == "pause" && k == 8) {
-            wait(sc_time(52, SC_NS));
+            wait(sc_time(52, SC_NS) - shift);
         }
         std::cout << "BVH snk call " << k << " " << sc_time_stamp().value() << std::endl;
         in->read(beat);

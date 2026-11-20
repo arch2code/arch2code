@@ -485,8 +485,11 @@ void runProbe( int delayNs, const std::string &mode )
 //           for 70 ns from the lane's start), every3 (on every third edge;
 //           a src offer comes three or more edges after the last
 //           handshake), random (seeded), comb (rdy follows vld, or vld
-//           follows rdy), reset (high, with reset asserted again from 45 to
-//           65 ns after the lane's start; 65 to 85 ns in delayed rv, axis
+//           follows rdy), edge (always, with the model's first send at
+//           40 ns, or its first read 10 ns after vld rises, both in the
+//           timestep of a rising edge), reset (high, with reset asserted
+//           again from 45 to 65 ns after the lane's start; 65 to 85 ns in
+//           delayed rv, axis
 //           and ar src runs; 55 to 75 ns in delayed aw and w src runs; 25 to
 //           45 ns for memory). Against
 //           always the src model first reads half a clock after vld rises;
@@ -625,7 +628,9 @@ struct handoverBase : sc_module
     void measureDst( lane l, std::function<void()> setup, std::function<std::uint64_t( int )> send )
     {
         sc_spawn( [this, setup, send] {
-            wait( 33, SC_NS );
+            // An edge run sends first in the timestep of a rising edge, after
+            // the BFM is out of reset and waits for a send.
+            wait( cfg.rtl == "edge" ? 40 : 33, SC_NS );
             if (setup) { setup(); }
             startLane();
             for (int k = 0; k < BEATS; k++) {
@@ -645,11 +650,12 @@ struct handoverBase : sc_module
                      std::function<bool()> go )
     {
         sc_spawn( [this, l, setup, recv] {
-            wait( 33, SC_NS );
+            wait( cfg.rtl == "edge" ? 30 : 33, SC_NS );
             if (setup) { setup(); }
-            if (cfg.rtl == "always" || cfg.rtl == "parked") {
+            if (cfg.rtl == "always" || cfg.rtl == "parked" || cfg.rtl == "edge") {
+                // vld rises at an edge, so an edge run reads first at the next one.
                 if (!l.vld) { wait( l.vld.posedge_event() ); }
-                wait( cfg.rtl == "always" ? 5 : 15, SC_NS );
+                wait( cfg.rtl == "always" ? 5 : cfg.rtl == "edge" ? 10 : 15, SC_NS );
             }
             modelReading = true;
             if (arb()) { watch(); }
@@ -702,7 +708,7 @@ struct handoverBase : sc_module
     {
         std::mt19937 rng( 1 );
         int n = 0;
-        if (cfg.rtl != "comb") { l.rdy = cfg.rtl == "always" || cfg.rtl == "reset"; }
+        if (cfg.rtl != "comb") { l.rdy = cfg.rtl == "always" || cfg.rtl == "reset" || cfg.rtl == "edge"; }
         if (l.respond) { l.respond( n ); }
         for (int edge = 1;; edge++) {
             waitEdge();

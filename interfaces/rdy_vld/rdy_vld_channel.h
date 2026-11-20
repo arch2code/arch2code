@@ -512,7 +512,12 @@ void rdy_vld_channel<T>::readClocked( T& val_)
 
 // A burst beat after the first is already in the read buffer, so it returns
 // at once. Otherwise peek waits for a writer, and the first beat of a burst
-// comes from the writer's buffer.
+// comes from the writer's buffer. A write wakes peek in the write's delta,
+// which can be the delta in which a rising edge changes the clock. Pins the
+// BFM drives in that delta reach Verilator at that edge, but Xcelium and VCS
+// sample the edge first. So peek returns a delta later, after the edge's
+// processes have run, and the RTL sees the beat at the next edge on every
+// simulator.
 template <class T>
 void rdy_vld_channel<T>::peek( T& val_ )
 {
@@ -521,8 +526,11 @@ void rdy_vld_channel<T>::peek( T& val_ )
         m_multicycle->copyReadData(m_get_struct_value ? m_read_value.getStructValue() : m_read_context, (uint8_t *)&val_);
         return;
     }
-    while (!m_valid) {
-        sc_core::wait(m_valid_event);
+    if (!m_valid) {
+        while (!m_valid) {
+            sc_core::wait(m_valid_event);
+        }
+        sc_core::wait(SC_ZERO_TIME);
     }
     val_ = m_value;
     if (m_multicycle != nullptr) {

@@ -85,9 +85,10 @@ void bvhSrc::send(void)
     }
     const unsigned beats = (mode == "single" || mode == "poweron") ? 1 : 16;
     // 103 ns is 3 ns after a clock edge, and 73 ns after reset releases, so the
-    // BFM is already waiting for a beat.
+    // BFM is already waiting for a beat. BVH_ON_EDGE moves the send onto the
+    // edge at 100 ns.
     if (mode != "poweron") {
-        wait(sc_time(103, SC_NS));
+        wait(sc_time(103, SC_NS) - (std::getenv("BVH_ON_EDGE") ? sc_time(3, SC_NS) : SC_ZERO_TIME));
     }
     for (unsigned k = 0; k < beats; k++) {
         bvhBeat beat;

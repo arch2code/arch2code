@@ -16,6 +16,12 @@
 // settled half a clock later, and the protocol holds vld and the data until
 // the handshake.
 //
+// A read() wakes the driver in the read's delta, which can be the delta in
+// which a rising edge changes the clock. Ready driven in that delta reaches
+// Verilator at that edge, but Xcelium and VCS sample the edge first. So the
+// driver raises ready a delta later, after the edge's processes have run,
+// and the RTL sees it at the next edge on every simulator.
+//
 // The falling-edge offer assumes vld and the data come from flops on this
 // clock's rising edge. An output with a combinational path from an input
 // driven in that timestep, or launched by another clock such as one the DUT
@@ -57,6 +63,11 @@ public:
         m_rdy = m_ch->get_rdy();
         while (true) {
             wait(m_clk.posedge_event() | m_clk.negedge_event() | m_ch->readEnteredEvent());
+            if (!m_clk.event()) {
+                // A read() woke the driver. An edge in this timestep has run
+                // its processes by the next delta, and is handled below.
+                wait(SC_ZERO_TIME);
+            }
             if (m_clk.negedge()) {
                 if (m_rst_n && m_vld && !m_rdy && !offered) {
                     m_unpack(data);

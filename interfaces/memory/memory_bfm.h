@@ -53,7 +53,16 @@ public:
                 }
                 if_p->request(is_write, addr, data);
                 if (!is_write) {
+                    // The model's completion wakes the BFM in its own delta,
+                    // which can be the delta in which a rising edge changes
+                    // the clock. Driving a delta later keeps the RTL from
+                    // seeing the data at that edge on any simulator.
+                    wait(SC_ZERO_TIME);
                     hdl_if_p->read_data = VL_DATA_T(data.sc_pack());
+                    if (clk.posedge()) {
+                        // That edge has fired in this delta. Sample it.
+                        continue;
+                    }
                 }
             }
             wait(clk.posedge_event());
@@ -86,6 +95,11 @@ public:
             DATA_T data;
             bool is_write;
             if_p->reqReceive(is_write, addr, data);
+            // A request wakes the BFM in the request's delta, which can be the
+            // delta in which a rising edge changes the clock. Driving a delta
+            // later keeps the RTL from seeing the request at that edge on any
+            // simulator.
+            wait(SC_ZERO_TIME);
             hdl_if_p->enable = true;
             hdl_if_p->addr = addr.sc_pack();
             if (is_write) {

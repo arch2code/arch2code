@@ -92,7 +92,9 @@ RTL_MODES = ('always', 'hold', 'every3', 'random', 'comb', 'reset')
 # Always-valid src runs: the model first reads half a clock after vld rises
 # (always), is already in read() when vld rises (waiting), or first reads
 # 15 ns after vld rises, so beat 0 sits on the wire across an edge (parked).
-FULL_RATE = ('always', 'waiting', 'parked')
+# In edge runs the model's first send, or first read, starts in the timestep
+# of a rising edge. The RTL must not see it at that edge, on any simulator.
+FULL_RATE = ('always', 'waiting', 'parked', 'edge')
 # (rtl, busy ns) for src runs: each RTL mode with a model that reads back to
 # back, and slow models against an always-valid or random RTL.
 SRC_RUNS = ([(m, 0) for m in RTL_MODES] + [('waiting', 0), ('parked', 0)]
@@ -105,6 +107,7 @@ CASES = [Case(f, 'dst', m, 0, 'allowed', d) for f in HANDSHAKE for m in RTL_MODE
 CASES += [Case(f, 'src', m, b, 'allowed', d) for f in HANDSHAKE for m, b in SRC_RUNS for d in DELAYS
           if not (f in TWO_PHASE and m == 'comb')]
 CASES += [Case('rvmulti', dr, 'always', 0, 'allowed', d) for dr in ('dst', 'src') for d in DELAYS]
+CASES += [Case(f, dr, 'edge', 0, 'allowed', 0) for f in HANDSHAKE for dr in ('dst', 'src')]
 CASES += [Case('wfirst', 'src', 'always', 0, 'allowed', d) for d in DELAYS]
 # A delayed aw or w src run moves a beat every other edge. Its reset, 55 ns
 # after the lane starts, lands while a delayed model call blocks. resetlate
@@ -324,12 +327,11 @@ def liveEdge(t, resetEdges):
 
 
 def events(output):
-    """Each kind's (value, ps) list, and its sc_delta_count() list."""
-    ev, deltas = {}, {}
-    for kind, value, ps, delta in re.findall(r'^ev (\w+) (\d+) (\d+) (\d+)$', output, re.M):
+    """Each kind's (value, ps) list."""
+    ev = {}
+    for kind, value, ps in re.findall(r'^ev (\w+) (\d+) (\d+) \d+$', output, re.M):
         ev.setdefault(kind, []).append((int(value), int(ps)))
-        deltas.setdefault(kind, []).append(int(delta))
-    return ev, deltas
+    return ev
 
 
 def beatsHow(values):
@@ -341,7 +343,7 @@ def beatsHow(values):
     return '+'.join(faults) or 'reordered'
 
 
-def handshakeChecks(case, ev, deltas, output):
+def handshakeChecks(case, ev, output):
     hs, calls, rets, vld = (ev.get(k, []) for k in ('hs', 'call', 'ret', 'vld'))
     if case.rtl == 'arbreset':
         r0 = min(t for _, t in ev['rst'])
@@ -421,13 +423,9 @@ def handshakeChecks(case, ev, deltas, output):
             check(case, ACK_RETURN, len(rets) == len(hs) and all(h == nextEdge(r[1]) for h, r in zip(hsTimes, rets)),
                   f"acks={[t for _, t in rets]} hs={hsTimes}", 'count' if len(rets) != len(hs) else 'edge')
     elif judged:
-        # A read that starts in an edge's timestep, woken by time, runs ahead
-        # of that edge's processes, so the RTL sees its ready at that edge.
-        # This relies on the RTL sampling rdy in the posedge delta, as dst
-        # relies on it to drive vld in the timestep of the model's send.
-        callDeltas, hsDeltas = deltas.get('call', []), deltas.get('hs', [])
-        unwaited = [i for i, t in enumerate(hsTimes) if i >= len(calls) or calls[i][1] > t
-                    or (calls[i][1] == t and callDeltas[i] >= hsDeltas[i])]
+        # A read that starts in an edge's timestep reaches the RTL at the next
+        # edge, on every simulator, so its handshake comes after that timestep.
+        unwaited = [i for i, t in enumerate(hsTimes) if i >= len(calls) or calls[i][1] >= t]
         check(case, SRC_RULE_1, not unwaited,
               f"handshakes with no read waiting: {unwaited}, reads={[t for _, t in calls]} hs={hsTimes}",
               f"first at beat {unwaited[0]}" if unwaited else '')
@@ -752,13 +750,13 @@ def test_bfm_handover():
                 asserted = re.search(r'^probe assert (.*)$', output, re.M)
                 how = re.sub(r'\((?:\S*/)?([^/:]+):\d+\)', r'(\1)', asserted.group(1)) if asserted else f"exit {status}"
                 check(case, NO_ASSERT, status == 0 and not asserted, f"status {status}, {how}", how)
-                ev, deltas = events(output)
+                ev = events(output)
                 if case.family in BUS:
                     busChecks(case, ev)
                 elif case.family in LEVEL:
                     levelChecks(case, ev)
                 else:
-                    handshakeChecks(case, ev, deltas, output)
+                    handshakeChecks(case, ev, output)
             if len(FAILURES) > before:
                 print(output)
         print("\n  Throughput and latency today (RTL always ready or valid, model back to back, no delay):")
