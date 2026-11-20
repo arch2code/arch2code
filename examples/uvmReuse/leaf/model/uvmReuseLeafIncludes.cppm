@@ -24,10 +24,10 @@ export namespace uvmReuseLeaf_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace uvmReuseLeaf_ns {
 // types
-typedef uint16_t uvmReusePixelT; // [16] One pixel
-typedef uint8_t uvmReuseBitT; // [1] A frame marker
+typedef uint16_t uvmReuseWordT; // [16] One data word
+typedef uint8_t uvmReuseBitT; // [1] A one-bit flag
 typedef uint32_t uvmReuseBusT; // [32] Register bus address and data
-template<uint32_t UVM_REUSE_OFF_W> using uvmReuseOffT_v = uint64_t; // [max:8] Offset added to each pixel
+template<uint32_t UVM_REUSE_OFF_W> using uvmReuseOffT_v = uint64_t; // [max:8] Offset added to each word
 template<typename Config> using uvmReuseOffT = uvmReuseOffT_v<Config::UVM_REUSE_OFF_W>;
 
 } // namespace uvmReuseLeaf_ns
@@ -42,29 +42,23 @@ export namespace uvmReuseLeaf_ns {
 export namespace uvmReuseLeaf_ns {
 // structures
 struct uvmReuseBeatSt {
-    uvmReuseBitT eof; //Last beat of a frame
-    uvmReuseBitT eol; //Last beat of a line
-    uvmReuseBitT sof; //First beat of a frame
-    uvmReusePixelT pixel; //Pixel
+    uvmReuseBitT last; //Final beat of a packet
+    uvmReuseWordT word; //Data word
 
     uvmReuseBeatSt() {}
 
-    static constexpr uint16_t _bitWidth = 1 + 1 + 1 + 16;
+    static constexpr uint16_t _bitWidth = 1 + 16;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint32_t _packedSt;
     inline bool operator == (const uvmReuseBeatSt & rhs) const {
         bool ret = true;
-        ret = ret && (pixel == rhs.pixel);
-        ret = ret && (sof == rhs.sof);
-        ret = ret && (eol == rhs.eol);
-        ret = ret && (eof == rhs.eof);
+        ret = ret && (word == rhs.word);
+        ret = ret && (last == rhs.last);
         return ( ret );
         }
     inline friend void sc_trace(sc_trace_file *tf, const uvmReuseBeatSt & v, const std::string & NAME ) {
-        sc_trace(tf,v.pixel, NAME + ".pixel");
-        sc_trace(tf,v.sof, NAME + ".sof");
-        sc_trace(tf,v.eol, NAME + ".eol");
-        sc_trace(tf,v.eof, NAME + ".eof");
+        sc_trace(tf,v.word, NAME + ".word");
+        sc_trace(tf,v.last, NAME + ".last");
     }
     inline friend ostream& operator << ( ostream& os,  uvmReuseBeatSt const & v ) {
         os << v.prt();
@@ -72,11 +66,9 @@ struct uvmReuseBeatSt {
     }
     std::string prt(bool all=false) const
     {
-        return (std::format("pixel:0x{:04x} sof:0x{:01x} eol:0x{:01x} eof:0x{:01x}",
-           (uint64_t) pixel,
-           (uint64_t) sof,
-           (uint64_t) eol,
-           (uint64_t) eof
+        return (std::format("word:0x{:04x} last:0x{:01x}",
+           (uint64_t) word,
+           (uint64_t) last
         ));
     }
     static const char* getValueType(void) { return( "" );}
@@ -84,21 +76,15 @@ struct uvmReuseBeatSt {
     inline void pack(_packedSt &_ret) const
     {
         memset(&_ret, 0, sizeof(_ret));
-        _ret = eof;
-        _ret |= (uint32_t)eol << (1 & 31);
-        _ret |= (uint32_t)sof << (2 & 31);
-        _ret |= (uint32_t)pixel << (3 & 31);
+        _ret = last;
+        _ret |= (uint32_t)word << (1 & 31);
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        eof = (uvmReuseBitT)((_src >> (_pos & 31)) & 1);
+        last = (uvmReuseBitT)((_src >> (_pos & 31)) & 1);
         _pos += 1;
-        eol = (uvmReuseBitT)((_src >> (_pos & 31)) & 1);
-        _pos += 1;
-        sof = (uvmReuseBitT)((_src >> (_pos & 31)) & 1);
-        _pos += 1;
-        pixel = (uvmReusePixelT)((_src >> (_pos & 31)) & ((1ULL << 16) - 1));
+        word = (uvmReuseWordT)((_src >> (_pos & 31)) & ((1ULL << 16) - 1));
     }
     inline sc_bv<uvmReuseBeatSt::_bitWidth> sc_pack(void) const
     {
@@ -123,14 +109,10 @@ struct uvmReuseBeatSt {
     }
     explicit uvmReuseBeatSt(const sc_bv<uvmReuseBeatSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit uvmReuseBeatSt(
-        uvmReuseBitT eof_,
-        uvmReuseBitT eol_,
-        uvmReuseBitT sof_,
-        uvmReusePixelT pixel_) :
-        eof(eof_),
-        eol(eol_),
-        sof(sof_),
-        pixel(pixel_)
+        uvmReuseBitT last_,
+        uvmReuseWordT word_) :
+        last(last_),
+        word(word_)
     {}
     explicit uvmReuseBeatSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
@@ -272,7 +254,7 @@ struct uvmReuseDataSt {
 };
 template<uint32_t UVM_REUSE_OFF_W>
 struct uvmReuseOffSt_v {
-    uvmReuseOffT_v<UVM_REUSE_OFF_W> offset; //Added to each pixel
+    uvmReuseOffT_v<UVM_REUSE_OFF_W> offset; //Added to each word
 
     uvmReuseOffSt_v() {}
 
@@ -356,18 +338,14 @@ template<uint32_t UVM_REUSE_OFF_W> inline void testRefUnpack(uvmReuseOffSt_v<UVM
 inline sc_bv<uvmReuseBeatSt::_bitWidth> testRefPack(const uvmReuseBeatSt &x)
 {
     sc_bv<uvmReuseBeatSt::_bitWidth> packed_data;
-    packed_data.range(0+1-1, 0) = x.eof;
-    packed_data.range(1+1-1, 1) = x.eol;
-    packed_data.range(2+1-1, 2) = x.sof;
-    packed_data.range(3+16-1, 3) = x.pixel;
+    packed_data.range(0+1-1, 0) = x.last;
+    packed_data.range(1+16-1, 1) = x.word;
     return packed_data;
 }
 inline void testRefUnpack(uvmReuseBeatSt &x, const sc_bv<uvmReuseBeatSt::_bitWidth> &packed_data)
 {
-    x.eof = (uvmReuseBitT) packed_data.range(0+1-1, 0).to_uint64();
-    x.eol = (uvmReuseBitT) packed_data.range(1+1-1, 1).to_uint64();
-    x.sof = (uvmReuseBitT) packed_data.range(2+1-1, 2).to_uint64();
-    x.pixel = (uvmReusePixelT) packed_data.range(3+16-1, 3).to_uint64();
+    x.last = (uvmReuseBitT) packed_data.range(0+1-1, 0).to_uint64();
+    x.word = (uvmReuseWordT) packed_data.range(1+16-1, 1).to_uint64();
 }
 inline sc_bv<uvmReuseAddrSt::_bitWidth> testRefPack(const uvmReuseAddrSt &x)
 {

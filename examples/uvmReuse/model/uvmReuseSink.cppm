@@ -67,24 +67,20 @@ uvmReuseSink::uvmReuseSink(sc_module_name blockName, const char * variant, block
     SC_THREAD(endOfTestVoter);
 };
 
-// uDrv programs both offsets before it streams, and sends pixel x of line y
-// in frame f as f * 0x100 + y * 0x10 + x.
+// uDrv programs both offsets before it streams, and sends word i of packet p
+// as p * 0x100 + i.
 void uvmReuseSink::stream_test(void)
 {
     using namespace uvmReuse_ns;
-    for (uint32_t f = 0; f < UVM_REUSE_FRAMES; ++f) {
-        for (uint32_t y = 0; y < UVM_REUSE_HEIGHT; ++y) {
-            for (uint32_t x = 0; x < UVM_REUSE_WIDTH; ++x) {
-                uvmReuseBeatSt b;
-                in->read(b);
-                uvmReuseBeatSt e;
-                e.pixel = static_cast<uvmReusePixelT>(f * 0x100 + y * 0x10 + x + UVM_REUSE_TB_OFFSET_A + UVM_REUSE_TB_OFFSET_B);
-                e.sof = (y == 0 && x == 0);
-                e.eol = (x == UVM_REUSE_WIDTH - 1);
-                e.eof = e.eol && (y == UVM_REUSE_HEIGHT - 1);
-                if (!(b == e)) {
-                    errorCode::fail(std::format("{}: frame {} line {} pixel {} is {}, expected {}", name(), f, y, x, b.prt(), e.prt()));
-                }
+    for (uint32_t p = 0; p < UVM_REUSE_PACKETS; ++p) {
+        for (uint32_t i = 0; i < UVM_REUSE_PACKET_WORDS; ++i) {
+            uvmReuseBeatSt b;
+            in->read(b);
+            uvmReuseBeatSt e;
+            e.word = static_cast<uvmReuseWordT>(p * 0x100 + i + UVM_REUSE_TB_OFFSET_A + UVM_REUSE_TB_OFFSET_B);
+            e.last = (i == UVM_REUSE_PACKET_WORDS - 1);
+            if (!(b == e)) {
+                errorCode::fail(std::format("{}: packet {} word {} is {}, expected {}", name(), p, i, b.prt(), e.prt()));
             }
         }
     }

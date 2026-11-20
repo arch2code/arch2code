@@ -71,7 +71,7 @@ EXAMPLE_READERS=(
     test_make_synthf.py                       # reads examples/hierVlDemo + examples/ip_test (copytree)
     test_uvm_model_credit.py                  # reads examples/uvmMem (copytree)
     test_sv_string_select.py                  # reads every examples/ tree
-    test_uvm_sv_parse.py                      # reads examples/uvmMem, uvmRegs, uvmVideo
+    test_uvm_sv_parse.py                      # reads examples/uvmMem, uvmRegs, uvmReuse
     test_uvm_reuse.py                         # reads examples/uvmReuse (copytree)
 )
 

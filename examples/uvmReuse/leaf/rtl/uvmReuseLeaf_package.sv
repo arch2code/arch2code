@@ -5,18 +5,16 @@
 package uvmReuseLeaf_package;
 
 // types
-typedef logic[16-1:0] uvmReusePixelT; //One pixel
-typedef logic[1-1:0] uvmReuseBitT; //A frame marker
+typedef logic[16-1:0] uvmReuseWordT; //One data word
+typedef logic[1-1:0] uvmReuseBitT; //A one-bit flag
 typedef logic[32-1:0] uvmReuseBusT; //Register bus address and data
 
 // enums
 
 // structures
 typedef struct packed {
-    uvmReusePixelT pixel; //Pixel
-    uvmReuseBitT sof; //First beat of a frame
-    uvmReuseBitT eol; //Last beat of a line
-    uvmReuseBitT eof; //Last beat of a frame
+    uvmReuseWordT word; //Data word
+    uvmReuseBitT last; //Final beat of a packet
 } uvmReuseBeatSt;
 
 typedef struct packed {

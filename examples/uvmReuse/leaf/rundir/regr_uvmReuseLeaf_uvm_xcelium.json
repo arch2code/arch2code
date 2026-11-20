@@ -31,17 +31,8 @@
                 "uvmReuseLeaf_smoke_test": {
                     "args+": "+UVM_TESTNAME=uvmReuseLeaf_smoke_test"
                 },
-                "uvmReuseLeaf_video_test_back_to_back": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_back_to_back"
-                },
-                "uvmReuseLeaf_video_test_short_line": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_short_line"
-                },
-                "uvmReuseLeaf_video_test_cut_frame": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_cut_frame"
-                },
-                "uvmReuseLeaf_video_test_random": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_random",
+                "uvmReuseLeaf_random_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_random_test",
                     "count": 2,
                     "seed": "random"
                 },
@@ -59,17 +50,8 @@
                 "uvmReuseLeaf_smoke_test": {
                     "args+": "+UVM_TESTNAME=uvmReuseLeaf_smoke_test"
                 },
-                "uvmReuseLeaf_video_test_back_to_back": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_back_to_back"
-                },
-                "uvmReuseLeaf_video_test_short_line": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_short_line"
-                },
-                "uvmReuseLeaf_video_test_cut_frame": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_cut_frame"
-                },
-                "uvmReuseLeaf_video_test_random": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_random",
+                "uvmReuseLeaf_random_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_random_test",
                     "count": 2,
                     "seed": "random"
                 },
@@ -90,17 +72,8 @@
                 "uvmReuseLeaf_smoke_test": {
                     "args+": "+UVM_TESTNAME=uvmReuseLeaf_smoke_test"
                 },
-                "uvmReuseLeaf_video_test_back_to_back": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_back_to_back"
-                },
-                "uvmReuseLeaf_video_test_short_line": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_short_line"
-                },
-                "uvmReuseLeaf_video_test_cut_frame": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_cut_frame"
-                },
-                "uvmReuseLeaf_video_test_random": {
-                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_video_test_random",
+                "uvmReuseLeaf_random_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_random_test",
                     "count": 2,
                     "seed": "random"
                 },

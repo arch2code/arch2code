@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The UVM library lints, and its loopback testbench and the generated UVM
-packages of examples/uvmMem, uvmRegs, uvmVideo and uvmReuse parse, with no
+packages of examples/uvmMem, uvmRegs and uvmReuse parse, with no
 simulator licence.
 
 Verilator parses each against the open-source Accellera UVM 1.2 that
@@ -44,7 +44,6 @@ LOOPBACK_DIR = os.path.join(UVM_DIR, 'loopback')
 EXAMPLES = (
     ('uvmMem', 'uvmMem', None, ()),
     ('uvmRegs', 'uvmRegs', None, ()),
-    ('uvmVideo', 'uvmVideo', None, ()),
     ('uvmReuse/leaf', 'uvmReuseLeaf', 'w4', ()),
     ('uvmReuse', 'uvmReuseChain', 'v4', ('leaf/uvm/uvmReuseLeaf_w8_uvm_pkg.sv', 'leaf/uvm/uvmReuseLeaf_w4_uvm_pkg.sv')),
 )

@@ -33,14 +33,8 @@
                     "uvmReuseChain_smoke_test": {
                         "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
                     },
-                    "uvmReuseChain_video_test_back_to_back": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
-                    },
-                    "uvmReuseChain_video_test_short_line": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
-                    },
-                    "uvmReuseChain_video_test_random": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                    "uvmReuseChain_random_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_random_test",
                         "count": 2,
                         "seed": "random"
                     },
@@ -58,14 +52,8 @@
                     "uvmReuseChain_smoke_test": {
                         "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
                     },
-                    "uvmReuseChain_video_test_back_to_back": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
-                    },
-                    "uvmReuseChain_video_test_short_line": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
-                    },
-                    "uvmReuseChain_video_test_random": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                    "uvmReuseChain_random_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_random_test",
                         "count": 2,
                         "seed": "random"
                     },
@@ -86,14 +74,8 @@
                     "uvmReuseChain_smoke_test": {
                         "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
                     },
-                    "uvmReuseChain_video_test_back_to_back": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
-                    },
-                    "uvmReuseChain_video_test_short_line": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
-                    },
-                    "uvmReuseChain_video_test_random": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                    "uvmReuseChain_random_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_random_test",
                         "count": 2,
                         "seed": "random"
                     },
@@ -117,14 +99,8 @@
                     "uvmReuseChain_smoke_test": {
                         "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
                     },
-                    "uvmReuseChain_video_test_back_to_back": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
-                    },
-                    "uvmReuseChain_video_test_short_line": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
-                    },
-                    "uvmReuseChain_video_test_random": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                    "uvmReuseChain_random_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_random_test",
                         "count": 2,
                         "seed": "random"
                     },
@@ -142,14 +118,8 @@
                     "uvmReuseChain_smoke_test": {
                         "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
                     },
-                    "uvmReuseChain_video_test_back_to_back": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
-                    },
-                    "uvmReuseChain_video_test_short_line": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
-                    },
-                    "uvmReuseChain_video_test_random": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                    "uvmReuseChain_random_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_random_test",
                         "count": 2,
                         "seed": "random"
                     },
@@ -167,14 +137,8 @@
                     "uvmReuseChain_smoke_test": {
                         "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
                     },
-                    "uvmReuseChain_video_test_back_to_back": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
-                    },
-                    "uvmReuseChain_video_test_short_line": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
-                    },
-                    "uvmReuseChain_video_test_random": {
-                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                    "uvmReuseChain_random_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_random_test",
                         "count": 2,
                         "seed": "random"
                     },

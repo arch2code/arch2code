@@ -19,7 +19,7 @@ export class uvmReuseDrvBase : public virtual blockPortBase
 public:
     virtual ~uvmReuseDrvBase() = default;
     // src ports
-    // uvmReuseVideoIf->u_uvmReuseChain: Video, one pixel per beat
+    // uvmReuseStreamIf->u_uvmReuseChain: Packets, one word per beat
     rdy_vld_out< uvmReuseBeatSt > out;
     // apbReg->u_uvmReuseChain: Register bus
     apb_out< uvmReuseAddrSt, uvmReuseDataSt > apbReg;
@@ -45,7 +45,7 @@ export class uvmReuseDrvInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // uvmReuseVideoIf->u_uvmReuseChain: Video, one pixel per beat
+    // uvmReuseStreamIf->u_uvmReuseChain: Packets, one word per beat
     rdy_vld_in< uvmReuseBeatSt > out;
     // apbReg->u_uvmReuseChain: Register bus
     apb_in< uvmReuseAddrSt, uvmReuseDataSt > apbReg;
@@ -71,7 +71,7 @@ export class uvmReuseDrvChannels
 {
 public:
     // src ports
-    // Video, one pixel per beat
+    // Packets, one word per beat
     rdy_vld_channel< uvmReuseBeatSt > out;
     // Register bus
     apb_channel< uvmReuseAddrSt, uvmReuseDataSt > apbReg;

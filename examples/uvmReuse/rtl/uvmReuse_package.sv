@@ -5,9 +5,8 @@
 package uvmReuse_package;
 // Generated Import package statement(s)
 import uvmReuseLeaf_package::*;
-localparam int unsigned UVM_REUSE_WIDTH = 32'h0000_0008;  // Pixels per line uDrv sends in the SystemC testbench
-localparam int unsigned UVM_REUSE_HEIGHT = 32'h0000_0004;  // Lines per frame uDrv sends in the SystemC testbench
-localparam int unsigned UVM_REUSE_FRAMES = 32'h0000_0003;  // Frames uDrv sends in the SystemC testbench
+localparam int unsigned UVM_REUSE_PACKETS = 32'h0000_0004;  // Packets uDrv sends in the SystemC testbench
+localparam int unsigned UVM_REUSE_PACKET_WORDS = 32'h0000_0008;  // Words per packet uDrv sends in the SystemC testbench
 localparam int unsigned UVM_REUSE_TB_OFFSET_A = 32'h0000_0021;  // uLeafA offset uDrv programs
 localparam int unsigned UVM_REUSE_TB_OFFSET_B = 32'h0000_0003;  // uLeafB offset uDrv programs
 

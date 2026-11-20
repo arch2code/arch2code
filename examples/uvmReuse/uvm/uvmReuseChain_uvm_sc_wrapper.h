@@ -39,10 +39,10 @@ template <typename TB_T, typename Config>
 class uvmReuseChain_uvm_sc_wrapper : public sc_module, public blockBase {
     // The shell takes each pin width from the boundary pin list, and the
     // BFMs take theirs from the payload types.
-    static_assert(std::is_same_v<decltype(TB_T::in_data), sc_out<sc_bv<19>>>,
-                  "in_data in the testbench shell is not sc_out<sc_bv<19>>");
-    static_assert(std::is_same_v<decltype(TB_T::out_data), sc_in<sc_bv<19>>>,
-                  "out_data in the testbench shell is not sc_in<sc_bv<19>>");
+    static_assert(std::is_same_v<decltype(TB_T::in_data), sc_out<sc_bv<17>>>,
+                  "in_data in the testbench shell is not sc_out<sc_bv<17>>");
+    static_assert(std::is_same_v<decltype(TB_T::out_data), sc_in<sc_bv<17>>>,
+                  "out_data in the testbench shell is not sc_in<sc_bv<17>>");
     static_assert(std::is_same_v<decltype(TB_T::apbReg_paddr), sc_out<sc_bv<32>>>,
                   "apbReg_paddr in the testbench shell is not sc_out<sc_bv<32>>");
     static_assert(std::is_same_v<decltype(TB_T::apbReg_pwdata), sc_out<sc_bv<32>>>,
@@ -105,13 +105,13 @@ public:
             dut->out(chnl->out);
             dut->apbReg(chnl->apbReg);
 
-            in_bfm_inst = std::make_unique<rdy_vld_src_bfm<uvmReuseBeatSt, sc_bv<19>>>("in_bfm_inst");
+            in_bfm_inst = std::make_unique<rdy_vld_src_bfm<uvmReuseBeatSt, sc_bv<17>>>("in_bfm_inst");
             in_bfm_inst->if_p(chnl->in);
             in_bfm_inst->hdl_if_p(in_hdl_inst);
             in_bfm_inst->clk(clk);
             in_bfm_inst->rst_n(rst_n);
 
-            out_bfm_inst = std::make_unique<rdy_vld_dst_bfm<uvmReuseBeatSt, sc_bv<19>>>("out_bfm_inst");
+            out_bfm_inst = std::make_unique<rdy_vld_dst_bfm<uvmReuseBeatSt, sc_bv<17>>>("out_bfm_inst");
             out_bfm_inst->if_p(chnl->out);
             out_bfm_inst->hdl_if_p(out_hdl_inst);
             out_bfm_inst->clk(clk);
@@ -151,14 +151,14 @@ private:
     sc_signal<bool> model_dut;
     sc_signal<bool> uvm_reset_req;
 
-    rdy_vld_hdl_if<sc_bv<19>> in_hdl_inst;
-    rdy_vld_hdl_if<sc_bv<19>> out_hdl_inst;
+    rdy_vld_hdl_if<sc_bv<17>> in_hdl_inst;
+    rdy_vld_hdl_if<sc_bv<17>> out_hdl_inst;
     apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_inst;
 
     std::unique_ptr<uvmReuseChainChannels<Config>> chnl;
     std::shared_ptr<uvmReuseChainBase<Config>> dut;
-    std::unique_ptr<rdy_vld_src_bfm<uvmReuseBeatSt, sc_bv<19>>> in_bfm_inst;
-    std::unique_ptr<rdy_vld_dst_bfm<uvmReuseBeatSt, sc_bv<19>>> out_bfm_inst;
+    std::unique_ptr<rdy_vld_src_bfm<uvmReuseBeatSt, sc_bv<17>>> in_bfm_inst;
+    std::unique_ptr<rdy_vld_dst_bfm<uvmReuseBeatSt, sc_bv<17>>> out_bfm_inst;
     std::unique_ptr<apb_src_bfm<uvmReuseAddrSt, uvmReuseDataSt, sc_bv<32>, sc_bv<32>>> apbReg_bfm_inst;
 
     endOfTest m_eot;

@@ -538,8 +538,8 @@ package uvmMem_uvm_test_pkg;
     // off, each such checker paired at least one unit and failed each one
     // once, and the demoted errors are the failures of the checkers that
     // judge, which on the model DUT is none unless rt_on_model is set. A
-    // checker under env that is off, as a2c_rt_off or a2c_video_env turns
-    // one off, is left out.
+    // checker under env that is off, by a2c_rt_off or turn_off(), is left
+    // out.
     class uvmMem_rt_fire_test extends uvmMem_smoke_test;
         a2c_error_demoter demoter;
 

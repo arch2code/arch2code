@@ -1,5 +1,5 @@
-# uvmReuseChain passes video from in through uLeafA and uLeafB to out, each
-# leaf adding its offset to every pixel. Its register model holds uLeafA as
+# uvmReuseChain passes packets from in through uLeafA and uLeafB to out, each
+# leaf adding its offset to every word. Its register model holds uLeafA as
 # the leaf's own register block class in both variants. uLeafB is the leaf's
 # w8 package in v8 and its w4 package in v4, so the chain's model generates
 # its own class for uLeafB, and both leaf packages compile in each top.
@@ -14,9 +14,8 @@ ipParameters:
         UVM_REUSE_B_W: { value: 8, maxValue: 8, desc: "Width of uLeafB's offset register" }
 
 constants:
-    UVM_REUSE_WIDTH: { value: 8, desc: "Pixels per line uDrv sends in the SystemC testbench" }
-    UVM_REUSE_HEIGHT: { value: 4, desc: "Lines per frame uDrv sends in the SystemC testbench" }
-    UVM_REUSE_FRAMES: { value: 3, desc: "Frames uDrv sends in the SystemC testbench" }
+    UVM_REUSE_PACKETS: { value: 4, desc: "Packets uDrv sends in the SystemC testbench" }
+    UVM_REUSE_PACKET_WORDS: { value: 8, desc: "Words per packet uDrv sends in the SystemC testbench" }
     UVM_REUSE_TB_OFFSET_A: { value: 0x21, desc: "uLeafA offset uDrv programs" }
     UVM_REUSE_TB_OFFSET_B: { value: 3, desc: "uLeafB offset uDrv programs" }
 
@@ -62,8 +61,8 @@ blocks:
             rst_n: { clock: clk }
             rstAux_n: { clock: clkAux }
         ports:
-            in:  { interface: uvmReuseVideoIf, direction: dst }
-            out: { interface: uvmReuseVideoIf, direction: src }
+            in:  { interface: uvmReuseStreamIf, direction: dst }
+            out: { interface: uvmReuseStreamIf, direction: src }
         registerPorts:
             apbReg: { interface: apbReg }
     uvmReuseRouter:
@@ -105,22 +104,22 @@ blocks:
         ports:
             in: { interface: uvmReuseTickIf, direction: dst }
     uvmReuseDrv:
-        desc: "Programs both offsets and sends UVM_REUSE_FRAMES frames"
+        desc: "Programs both offsets and sends UVM_REUSE_PACKETS packets"
         hasVl: false
         hasRtl: false
         hasMdl: true
         hasTb: false
         ports:
             apbReg: { interface: apbReg, direction: src }
-            out: { interface: uvmReuseVideoIf, direction: src }
+            out: { interface: uvmReuseStreamIf, direction: src }
     uvmReuseSink:
-        desc: "Checks each pixel against the offsets uDrv programs"
+        desc: "Checks each word against the offsets uDrv programs"
         hasVl: false
         hasRtl: false
         hasMdl: true
         hasTb: false
         ports:
-            in: { interface: uvmReuseVideoIf, direction: dst }
+            in: { interface: uvmReuseStreamIf, direction: dst }
 
 instances:
     uvmReuse_tb: { container: uvmReuse_tb, instanceType: uvmReuse_tb, instGroup: top,
@@ -145,12 +144,12 @@ parameters:
         fromChain: { UVM_REUSE_OFF_W: { containerParam: UVM_REUSE_B_W } }
 
 connections:
-    - { interface: uvmReuseVideoIf, src: uDrv, srcport: out, dst: u_uvmReuseChain, dstport: in }
-    - { interface: uvmReuseVideoIf, src: u_uvmReuseChain, srcport: out, dst: uSink, dstport: in }
+    - { interface: uvmReuseStreamIf, src: uDrv, srcport: out, dst: u_uvmReuseChain, dstport: in }
+    - { interface: uvmReuseStreamIf, src: u_uvmReuseChain, srcport: out, dst: uSink, dstport: in }
     - { interface: apbReg, src: uDrv, srcport: apbReg, dst: u_uvmReuseChain, dstport: apbReg }
-    - { interface: uvmReuseVideoIf, src: uLeafA, srcport: out, dst: uLeafB, dstport: in, interfaceName: mid }
+    - { interface: uvmReuseStreamIf, src: uLeafA, srcport: out, dst: uLeafB, dstport: in, interfaceName: mid }
     - { interface: uvmReuseTickIf, src: uTick, srcport: out, dst: uTock, dstport: in, interfaceName: ticks }
 
 connectionMaps:
-    - { interface: uvmReuseVideoIf, block: uvmReuseChain, direction: dst, instance: uLeafA, instancePort: in, name: in }
-    - { interface: uvmReuseVideoIf, block: uvmReuseChain, direction: src, instance: uLeafB, instancePort: out, name: out }
+    - { interface: uvmReuseStreamIf, block: uvmReuseChain, direction: dst, instance: uLeafA, instancePort: in, name: in }
+    - { interface: uvmReuseStreamIf, block: uvmReuseChain, direction: src, instance: uLeafB, instancePort: out, name: out }

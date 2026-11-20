@@ -145,7 +145,7 @@ With `lrp` set to 1 or above, some of those logs are deleted or gzipped; see `se
 A test that fails in elaboration, in under a second, with `Error: (E549) uncaught exception: Resource temporarily unavailable` hit a host process or thread limit while many runs started at once. It is not a design failure. Report it and rerun the failed tests.
 
 ## UVM regressions
-`specs/SIMULATOR_INTEGRATION.md` section 9.7 has the group layout, the `seed_repro` group and its verdicts. `examples/uvmVideo/rundir/regr_uvmVideo_uvm_xcelium.json` is a working file.
+`specs/SIMULATOR_INTEGRATION.md` section 9.7 has the group layout, the `seed_repro` group and its verdicts. `examples/uvmMem/rundir/regr_uvmMem_uvm_xcelium.json` is a working file.
 
 *   List the rules files as `config/regrRules/uvm.json`, any project rules file, `default.json`, then the vendor file.
 *   `uvm.json` ships in base. It fails a run on a `UVM_ERROR` or `UVM_FATAL` report, a non-zero count of either in the report summary, or a log with no report summary. A missing summary means UVM never reached its report phase.

@@ -110,17 +110,6 @@ txn_count_model_without_dual_test
 # a2c_txn_digest_lb_tests.svh
 txn_digest_test
 
-# a2c_video_lb_tests.svh
-vid_defect_crop_test
-vid_unspecified_const_test
-vid_unspecified_clocked_test
-vid_paired_trail_test
-vid_pass_markers_test
-vid_reject_cut_last_test
-vid_reject_no_model_mon_test
-vid_rt_off_scope_test
-vid_edit_plan_empty_test
-
 # apb_lb_tests.svh
 apb_random_test
 apb_monitor_checks_test

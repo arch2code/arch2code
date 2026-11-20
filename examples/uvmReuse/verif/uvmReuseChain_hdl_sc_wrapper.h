@@ -33,8 +33,8 @@ public:
     sc_signal<bool> clk;
     sc_signal<bool> clkAux;
 
-    rdy_vld_dst_bfm<uvmReuseBeatSt, sc_bv<19>> in_bfm_inst;
-    rdy_vld_src_bfm<uvmReuseBeatSt, sc_bv<19>> out_bfm_inst;
+    rdy_vld_dst_bfm<uvmReuseBeatSt, sc_bv<17>> in_bfm_inst;
+    rdy_vld_src_bfm<uvmReuseBeatSt, sc_bv<17>> out_bfm_inst;
     apb_dst_bfm<uvmReuseAddrSt, uvmReuseDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm_inst;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
@@ -113,8 +113,8 @@ public:
 
 private:
 
-    rdy_vld_hdl_if<sc_bv<19>> in_hdl_inst;
-    rdy_vld_hdl_if<sc_bv<19>> out_hdl_inst;
+    rdy_vld_hdl_if<sc_bv<17>> in_hdl_inst;
+    rdy_vld_hdl_if<sc_bv<17>> out_hdl_inst;
     apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_inst;
 
     sc_signal<bool> rst_n;

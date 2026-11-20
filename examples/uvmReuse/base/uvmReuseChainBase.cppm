@@ -24,11 +24,11 @@ public:
     virtual ~uvmReuseChainBase() = default;
     static constexpr auto UVM_REUSE_B_W = Config::UVM_REUSE_B_W;
     // src ports
-    // uvmReuseVideoIf->uSink: Video, one pixel per beat
+    // uvmReuseStreamIf->uSink: Packets, one word per beat
     rdy_vld_out< uvmReuseBeatSt > out;
 
     // dst ports
-    // uDrv->uvmReuseVideoIf: Video, one pixel per beat
+    // uDrv->uvmReuseStreamIf: Packets, one word per beat
     rdy_vld_in< uvmReuseBeatSt > in;
     // uDrv->apbReg: Register bus
     apb_in< uvmReuseAddrSt, uvmReuseDataSt > apbReg;
@@ -58,11 +58,11 @@ class uvmReuseChainInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // uvmReuseVideoIf->uSink: Video, one pixel per beat
+    // uvmReuseStreamIf->uSink: Packets, one word per beat
     rdy_vld_in< uvmReuseBeatSt > out;
 
     // dst ports
-    // uDrv->uvmReuseVideoIf: Video, one pixel per beat
+    // uDrv->uvmReuseStreamIf: Packets, one word per beat
     rdy_vld_out< uvmReuseBeatSt > in;
     // uDrv->apbReg: Register bus
     apb_out< uvmReuseAddrSt, uvmReuseDataSt > apbReg;
@@ -92,11 +92,11 @@ class uvmReuseChainChannels
 {
 public:
     // src ports
-    // Video, one pixel per beat
+    // Packets, one word per beat
     rdy_vld_channel< uvmReuseBeatSt > out;
 
     // dst ports
-    // Video, one pixel per beat
+    // Packets, one word per beat
     rdy_vld_channel< uvmReuseBeatSt > in;
     // Register bus
     apb_channel< uvmReuseAddrSt, uvmReuseDataSt > apbReg;

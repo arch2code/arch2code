@@ -1,83 +1,113 @@
 // The library of uvmReuseLeaf: the classes its own bench and a parent's
 // bench share. Each variant package includes it in its user span, and a
 // parent build compiles those packages too, so the file names nothing of the
-// test package or `A2C_UVM_PKG. Both rundir Makefiles put this directory on
-// EXTRA_HDL_INCDIRS. The file has no include guard because it declares
-// classes in the including package, and a guard would leave the second
-// variant package compiled in the same unit without them.
+// test package or `A2C_UVM_PKG. It names the variant package's in_item_t and
+// out_item_t, which a parent's ports of uvmReuseStreamIf share, since every
+// rdy_vld_item of uvmReuseBeatSt is one type. Both rundir Makefiles put this
+// directory on EXTRA_HDL_INCDIRS. The file has no include guard because it
+// declares classes in the including package, and a guard would leave the
+// second variant package compiled in the same unit without them.
 
 import a2c_uvm_pkg::*;
-import a2c_video_pkg::*;
 
-// uvmReuseVideoIf for a2c_video_pkg: one pixel per beat, the markers in the
-// beat. ITEM is the item of the port or connection the adapter serves.
-class uvmReuseLeaf_video_adapter #(type ITEM = uvm_sequence_item) extends a2c_video_handshake_adapter #(ITEM);
-    `uvm_object_param_utils(uvmReuseLeaf_video_adapter #(ITEM))
+`uvm_analysis_imp_decl(_beat_in)
+`uvm_analysis_imp_decl(_beat_out)
 
-    function new(string name = "uvmReuseLeaf_video_adapter");
+// Checks the beats on an output against the beats in, through one leaf or
+// several in series: each word plus every register in offsets, at the
+// mirrored value it had when the beat went in, and last unchanged. A leaf
+// moves a beat from in to out in the same clock, so either monitor may write
+// first; the two sides are paired in order. offsets are uvm_regs, so a parent
+// whose register model holds a leaf in a class of its own binds them too.
+class uvmReuseLeaf_scoreboard extends uvm_component;
+    uvm_analysis_imp_beat_in #(in_item_t, uvmReuseLeaf_scoreboard)   in_export;
+    uvm_analysis_imp_beat_out #(out_item_t, uvmReuseLeaf_scoreboard) out_export;
+    uvm_reg offsets[$];
+    int unsigned checked;
+    protected uvmReuseBeatSt expected[$];
+    protected uvmReuseBeatSt actual[$];
+
+    `uvm_component_utils(uvmReuseLeaf_scoreboard)
+
+    function new(string name, uvm_component parent);
+        super.new(name, parent);
+        in_export  = new("in_export", this);
+        out_export = new("out_export", this);
+    endfunction
+
+    function void write_beat_in(in_item_t it);
+        uvmReuseBeatSt e = it.data;
+        foreach (offsets[k]) e.word = uvmReuseWordT'(e.word + offsets[k].get_mirrored_value());
+        expected.push_back(e);
+        compare();
+    endfunction
+
+    function void write_beat_out(out_item_t it);
+        actual.push_back(it.data);
+        compare();
+    endfunction
+
+    protected function void compare();
+        while (expected.size() != 0 && actual.size() != 0) begin
+            uvmReuseBeatSt e = expected.pop_front();
+            uvmReuseBeatSt a = actual.pop_front();
+            if (a !== e) begin
+                `uvm_error("UVM_REUSE_SB", $sformatf("%s: beat %0d is word 'h%0h last %0b, expected word 'h%0h last %0b",
+                                                     get_name(), checked, a.word, a.last, e.word, e.last))
+            end
+            checked++;
+        end
+    endfunction
+
+    virtual function void check_phase(uvm_phase phase);
+        super.check_phase(phase);
+        if (expected.size() != 0 || actual.size() != 0) begin
+            `uvm_error("UVM_REUSE_SB", $sformatf("%s: %0d beats in never came out, and %0d came out with no beat in",
+                                                 get_name(), expected.size(), actual.size()))
+        end
+        `uvm_info("UVM_REUSE_SB", $sformatf("%s: %0d beats checked", get_name(), checked), UVM_LOW)
+    endfunction
+endclass : uvmReuseLeaf_scoreboard
+
+// Sends packets of 1 to max_words words, with last on each packet's final
+// beat and 0 to max_gap idle clocks before each beat. plan() draws the
+// lengths, so a test can declare the beats() it expects before start().
+class uvmReuseLeaf_packet_seq extends uvm_sequence #(in_item_t);
+    int unsigned max_words = 8;
+    int unsigned max_gap;
+    int unsigned lens[$];
+
+    `uvm_object_utils(uvmReuseLeaf_packet_seq)
+
+    function new(string name = "uvmReuseLeaf_packet_seq");
         super.new(name);
-        has_eof    = 1;
-        pixel_bits = $bits(uvmReusePixelT);
     endfunction
 
-    virtual function void clear(ITEM it);
-        it.data = '0;
+    function void plan(int unsigned packets);
+        lens.delete();
+        repeat (packets) lens.push_back($urandom_range(max_words, 1));
     endfunction
 
-    virtual function void set_frame(ITEM it, bit fv, bit sof, bit eof);
-        it.data.sof = sof;
-        it.data.eof = eof;
+    function int unsigned beats();
+        int unsigned n = 0;
+        foreach (lens[p]) n += lens[p];
+        return n;
     endfunction
 
-    virtual function void set_line(ITEM it, bit lv, bit eol);
-        it.data.eol = eol;
-    endfunction
-
-    virtual function void set_pixel(ITEM it, int unsigned p, uvm_bitstream_t v);
-        it.data.pixel = uvmReusePixelT'(v);
-    endfunction
-
-    virtual function void get_frame(ITEM it, output bit fv, output bit sof, output bit eof);
-        fv  = 1;
-        sof = it.data.sof;
-        eof = it.data.eof;
-    endfunction
-
-    virtual function void get_line(ITEM it, output bit lv, output bit eol);
-        lv  = 1;
-        eol = it.data.eol;
-    endfunction
-
-    virtual function uvm_bitstream_t get_pixel(ITEM it, int unsigned p);
-        return it.data.pixel;
-    endfunction
-endclass : uvmReuseLeaf_video_adapter
-
-// Each pixel plus the offset register's mirrored value, the markers as
-// received. offset is a uvm_reg, so a parent whose model holds the leaf in a
-// class of its own binds the contract too.
-class uvmReuseLeaf_video_contract extends a2c_video_contract;
-    uvm_reg offset;
-
-    `uvm_object_utils(uvmReuseLeaf_video_contract)
-
-    function new(string name = "uvmReuseLeaf_video_contract");
-        super.new(name);
-        pixel_check = A2C_VIDEO_PIX_EXACT;
-        markers     = A2C_VIDEO_MARKERS_AS_RECEIVED;
-    endfunction
-
-    virtual function a2c_video_frame expected_frame(a2c_video_frame in, a2c_video_cfg cfg);
-        a2c_video_frame out = super.expected_frame(in, cfg);
-        uvm_reg_data_t  add = offset.get_mirrored_value();
-        foreach (out.lines[y]) foreach (out.lines[y].px[x]) out.lines[y].px[x] = uvmReusePixelT'(out.lines[y].px[x] + add);
-        return out;
-    endfunction
-
-    virtual function string describe();
-        return {super.describe(), ", each pixel plus offset"};
-    endfunction
-endclass : uvmReuseLeaf_video_contract
+    virtual task body();
+        foreach (lens[p]) begin
+            for (int unsigned i = 0; i < lens[p]; i++) begin
+                in_item_t it = in_item_t::type_id::create("it");
+                bit       is_last = i == lens[p] - 1;
+                start_item(it);
+                if (!it.randomize() with { data.last == local::is_last; gap <= local::max_gap; }) begin
+                    `uvm_error("SEQ", "randomize failed")
+                end
+                finish_item(it);
+            end
+        end
+    endtask
+endclass : uvmReuseLeaf_packet_seq
 
 // Writes offset to the leaf's register block, the model the starter sets
 // (seq.model = <reg block>; seq.start(null)), and reads it back. The read

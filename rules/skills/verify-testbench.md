@@ -138,7 +138,7 @@ void myScoreboard::check(const transaction &actual)
 Comparing the RTL with the model catches a disagreement and misses an error both make. Give each output a check from the specification and the stimulus too, never from the model.
 
 *   In the SystemC testbench, a scoreboard in the External or a sink BFM that computes the expected output from what the test sent.
-*   In the UVM testbench, a scoreboard in `<block>_tb_env`, or the video library for a video stream; see `verify-uvm`.
+*   In the UVM testbench, a scoreboard in `<block>_tb_env`, a contract-style check the bench writes, or an assertion; see `verify-uvm`.
 *   Nothing warns about an output with no such check. Decide per output, and say in the bench why an output has none.
 
 ## Test sequencing with `testController`

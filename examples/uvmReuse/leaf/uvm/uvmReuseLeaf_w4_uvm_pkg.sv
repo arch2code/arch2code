@@ -15,9 +15,9 @@ package uvmReuseLeaf_w4_uvm_pkg;
 // GENERATED_CODE_BEGIN --template=uvmPkg --section=items
 
     localparam UVM_REUSE_OFF_W = 4;
-    typedef logic[UVM_REUSE_OFF_W-1:0] uvmReuseOffT; //Offset added to each pixel
+    typedef logic[UVM_REUSE_OFF_W-1:0] uvmReuseOffT; //Offset added to each word
     typedef struct packed {
-        uvmReuseOffT offset; //Added to each pixel
+        uvmReuseOffT offset; //Added to each word
     } uvmReuseOffSt;
 
     typedef rdy_vld_agent #(.data_t(uvmReuseBeatSt)) in_agent_t;

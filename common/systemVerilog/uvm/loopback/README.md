@@ -1,6 +1,6 @@
 # UVM loopback
 
-`a2c_uvm_loopback_tb.sv` connects each agent package to a copy of itself, with no DUT, and runs the tests the `*_lb_tests.svh` files beside it register. It is the self-test of the UVM library: agents, paired mode, the video library, the real-time checker, expected errors and the register layer. It runs on Xcelium and VCS only. `specs/SIMULATOR_INTEGRATION.md` section 9.9 lists the tests and what each checks.
+`a2c_uvm_loopback_tb.sv` connects each agent package to a copy of itself, with no DUT, and runs the tests the `*_lb_tests.svh` files beside it register. It is the self-test of the UVM library: agents, paired mode, the real-time checker, expected errors and the register layer. It runs on Xcelium and VCS only. `specs/SIMULATOR_INTEGRATION.md` section 9.9 lists the tests and what each checks.
 
 ## Running it
 

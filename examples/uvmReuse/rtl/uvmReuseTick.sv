@@ -20,8 +20,8 @@ import uvmReuse_package::*;
 // Instances
 // GENERATED_CODE_END
 
-    // A count on every clkTick cycle out of reset, independent of the video
-    // path, so it keeps moving while the video stalls.
+    // A count on every clkTick cycle out of reset, independent of the packet
+    // path, so it keeps moving while the packets stall.
     `DFF_INST(uvmReuseCountT, count)
 
     assign out.push = rst_n;

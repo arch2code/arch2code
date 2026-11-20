@@ -15,8 +15,8 @@ to its file by name. A checker in a misnamed file, or in a directory a2c.f does
 not search, fails only when a simulator elaborates the wrapper.
 
 The simulators compile the agents from common/systemVerilog/uvm/a2c_uvm.f, so
-that file must list every flagged type's package, after a2c_clk_if.sv,
-a2c_uvm_pkg.sv and a2c_video_pkg.sv, which the agents import.
+that file must list every flagged type's package, after a2c_clk_if.sv and
+a2c_uvm_pkg.sv, which the agents import.
 
 A Pro type takes the same checks against Pro's lists: a2cPro.mk adds
 pro/common/systemVerilog/uvm/a2cPro_uvm.f to A2C_LAYER_UVM_F_FILES, which
@@ -40,7 +40,7 @@ base_dir = os.path.dirname(test_dir)
 UVM_DOT_F = os.path.join(base_dir, 'common', 'systemVerilog', 'uvm', 'a2c_uvm.f')
 A2C_DOT_F = os.path.join(base_dir, 'common', 'systemVerilog', 'a2c.f')
 # Agent packages import these, so they come before the first agent.
-SHARED = ('a2c_clk_if.sv', 'a2c_uvm_pkg.sv', 'a2c_video_pkg.sv')
+SHARED = ('a2c_clk_if.sv', 'a2c_uvm_pkg.sv')
 
 pro_dir = os.path.join(os.path.dirname(base_dir), 'pro')
 # Each shipped interface tree, with the list its agent packages compile from

@@ -17,9 +17,9 @@ import uvmReuseLeaf_package::*;
 );
 
     // Module-local parameterizable type/struct declarations
-    typedef logic[UVM_REUSE_OFF_W-1:0] uvmReuseOffT; //Offset added to each pixel
+    typedef logic[UVM_REUSE_OFF_W-1:0] uvmReuseOffT; //Offset added to each word
     typedef struct packed {
-        uvmReuseOffT offset; //Added to each pixel
+        uvmReuseOffT offset; //Added to each word
     } uvmReuseOffSt;
 
     // Interface Instances, needed for between instanced modules inside this module
@@ -39,7 +39,7 @@ uvmReuseLeaf_regs #(.UVM_REUSE_OFF_W(UVM_REUSE_OFF_W)) u_uvmReuseLeaf_regs (
     assign in.rdy = out.rdy;
     always_comb begin
         out.data = in.data;
-        out.data.pixel = in.data.pixel + uvmReusePixelT'(offset.data.offset);
+        out.data.word = in.data.word + uvmReuseWordT'(offset.data.offset);
     end
 
 endmodule: uvmReuseLeaf

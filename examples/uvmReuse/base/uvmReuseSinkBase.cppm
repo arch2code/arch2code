@@ -18,7 +18,7 @@ export class uvmReuseSinkBase : public virtual blockPortBase
 public:
     virtual ~uvmReuseSinkBase() = default;
     // dst ports
-    // u_uvmReuseChain->uvmReuseVideoIf: Video, one pixel per beat
+    // u_uvmReuseChain->uvmReuseStreamIf: Packets, one word per beat
     rdy_vld_in< uvmReuseBeatSt > in;
 
 
@@ -39,7 +39,7 @@ export class uvmReuseSinkInverted : public virtual blockPortBase
 {
 public:
     // dst ports
-    // u_uvmReuseChain->uvmReuseVideoIf: Video, one pixel per beat
+    // u_uvmReuseChain->uvmReuseStreamIf: Packets, one word per beat
     rdy_vld_out< uvmReuseBeatSt > in;
 
 
@@ -60,7 +60,7 @@ export class uvmReuseSinkChannels
 {
 public:
     // dst ports
-    // Video, one pixel per beat
+    // Packets, one word per beat
     rdy_vld_channel< uvmReuseBeatSt > in;
 
 

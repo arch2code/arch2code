@@ -47,7 +47,7 @@ public:
     using uvmReuseChainBase<Config>::apbReg;
 
     // channels
-    // Video, one pixel per beat
+    // Packets, one word per beat
     rdy_vld_channel< uvmReuseBeatSt > mid;
     // Tick counts
     push_ack_channel< uvmReuseCountSt > ticks;

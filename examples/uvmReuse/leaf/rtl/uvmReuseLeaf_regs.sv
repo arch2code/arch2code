@@ -17,15 +17,15 @@ module uvmReuseLeaf_regs
     );
     // Module-local parameterizable type/struct declarations (SV cannot
     // parameterize a package, so these live in the owning module).
-    typedef logic[UVM_REUSE_OFF_W-1:0] uvmReuseOffT; //Offset added to each pixel
+    typedef logic[UVM_REUSE_OFF_W-1:0] uvmReuseOffT; //Offset added to each word
     typedef struct packed {
-        uvmReuseOffT offset; //Added to each pixel
+        uvmReuseOffT offset; //Added to each word
     } uvmReuseOffSt;
 
     uvmReuseAddrSt apb_addr;
     assign apb_addr = uvmReuseAddrSt'(apbReg.paddr) & 32'h7;
     // Register/memory address offsets for decode documentation
-    localparam int unsigned REG_UVMREUSELEAF_OFFSET = 32'h00000000; // Added to each pixel
+    localparam int unsigned REG_UVMREUSELEAF_OFFSET = 32'h00000000; // Added to each word
 
     genvar gi;
 

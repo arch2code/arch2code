@@ -1,6 +1,6 @@
 ---
 name: verify-uvm
-description: Guide for writing and running tests on a generated arch2code UVM testbench (hasUvm): where user code goes, sequences, directed and register tests, scoreboards, video framing tests, negative tests with a2c_expected_error, running on Xcelium or VCS, and debugging a failing run
+description: Guide for writing and running tests on a generated arch2code UVM testbench (hasUvm): where user code goes, sequences, directed and register tests, scoreboards, negative tests with a2c_expected_error, running on Xcelium or VCS, and debugging a failing run
 ---
 # Skill: Verify with the UVM testbench
 
@@ -13,7 +13,7 @@ A block with `hasUvm: true` gets a generated UVM testbench that runs its SystemC
     *   user span 1, after the `header` section: `<block>_tb_env extends <block>_env`, scoreboards, sequences and helpers;
     *   user span 2, after the generated `<block>_base_test`: `<block>_smoke_test` and every other test.
 4.  Do not rename `<block>_smoke_test`. The generated `<block>_fail_test`, `<block>_rt_fire_test` and `<block>_model_mismatch_test` in the `footer` section extend it.
-5.  Code a parent block's bench must also compile, such as a video contract, an adapter or a configuration sequence, goes in the user span of the variant package `uvm/<stem>_uvm_pkg.sv` (`// user package items here`) instead. It must not name anything of the test package. See spec section 9.15.
+5.  Code a parent block's bench must also compile, such as a check, a scoreboard or a configuration sequence, goes in the user span of the variant package `uvm/<stem>_uvm_pkg.sv` (`// user package items here`) instead. It must not name anything of the test package. See spec section 9.15.
 6.  The scaffolded smoke test sends nothing, so it warns `A2C_NO_STIMULUS` until its `run_body()` sends stimulus.
 
 ## Write a sequence
@@ -97,15 +97,6 @@ endclass
 4.  Run the check in every mode. In paired mode, also connect `<port>_agent.model_mon.ap` to a second instance, so a model error fails on the model lane as well.
 5.  Nothing warns about an output with no such check. Decide per output, and say in the bench why an output has none.
 6.  To share one memory between two `memory` ports, create one `a2c_mem_model` in `build_phase` and set `cfg.mem` on both ports' configs (spec section 9.10, "`a2c_mem_model`").
-
-## Video streams
-*   Extend `a2c_video_test #(<block>_base_test)` as `<block>_video_test`. Write the port's adapter, `video_ports()`, `video_connect()` and `configure_dut()`, and add `` `a2c_video_corner_tests(<block>_video_test) `` for one test per framing corner. `video_ports()` creates the adapters and adds the ports, and must not read the env, which may not be built yet. `video_connect()` names each port's agent.
-*   The video contract defaults to the same frame out with SOF, EOL and EOF re-derived. Set `markers` to `A2C_VIDEO_MARKERS_AS_RECEIVED` when the design passes framing through, so a cut frame with no EOF is expected with none. Override `expected_frame()` when the design changes the frame, and `expected_frames()` when it drops or splits frames. Set `pixel_check` to `A2C_VIDEO_PIX_EXACT` and compute the pixels from the stimulus and the register mirror when the output is a function of the input.
-*   The env applies `configure_video()`, then the corner, then the `+a2c_video_<knob>=<n>` plusargs. A corner's knobs that depend on the geometry, such as `cut_frame`'s cut and `short_line`'s beats, are derived again from the geometry the plusargs leave, and a plusarg or test value that sets such a knob still wins over the corner.
-*   `cut_frame` always cuts after line `height/2 - 1`, so the default corner keeps `height/2` lines. A design whose state alternates by line and does not restart at SOF goes wrong only after a cut frame that keeps an odd number of lines. Make sure one `cut_frame` entry of its regression keeps an odd number of lines: where `height/2` is even, add one with `+a2c_video_cut_after_line=<n>`, `n` being the lines kept minus 1. At a height of 8 the corner keeps 4 lines, and `n` = 2 keeps 3.
-*   The `random` corner draws from every corner the stream allows. Bound it to what the design accepts. `min_cut_lines` sets the fewest lines a cut frame keeps. `random_exclude` names corners it never draws, such as `short_line` and `long_line` for a design that needs equal line lengths, with `none` for the plain frame. `cut_eof` makes its cut frames end with EOF. `+a2c_video_min_cut_lines=<n>` and `+a2c_video_random_exclude=<corner>,<corner>...` set the first two from a regression entry.
-*   For stimulus the cfg cannot describe, such as pixel values the test computes, override `edit_plan(cfg, plan)`. It edits each run's planned frames before the contract, the counters and the checkers see them. Do not copy `send_video()`'s planning code into the bench.
-*   `examples/uvmVideo` is the reference; spec section 9.6, "Video framing tests", has the details.
 
 ## Real-time checks
 A stream whose timing is a contract gets an `a2c_rt_checker` in `<block>_tb_env`; base wires none. Follow the four wiring steps in spec section 9.6, "Wiring a checker into a project": a unit rule, the checker and its `connect_in()` and `connect_out()`, bounds measured from a passing run's `A2C_RT` summary, and the generated `<block>_rt_fire_test` to prove the wiring.

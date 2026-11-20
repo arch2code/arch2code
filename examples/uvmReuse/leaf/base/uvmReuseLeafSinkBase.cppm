@@ -18,7 +18,7 @@ export class uvmReuseLeafSinkBase : public virtual blockPortBase
 public:
     virtual ~uvmReuseLeafSinkBase() = default;
     // dst ports
-    // u_uvmReuseLeaf->uvmReuseVideoIf: Video, one pixel per beat
+    // u_uvmReuseLeaf->uvmReuseStreamIf: Packets, one word per beat
     rdy_vld_in< uvmReuseBeatSt > in;
 
 
@@ -39,7 +39,7 @@ export class uvmReuseLeafSinkInverted : public virtual blockPortBase
 {
 public:
     // dst ports
-    // u_uvmReuseLeaf->uvmReuseVideoIf: Video, one pixel per beat
+    // u_uvmReuseLeaf->uvmReuseStreamIf: Packets, one word per beat
     rdy_vld_out< uvmReuseBeatSt > in;
 
 
@@ -60,7 +60,7 @@ export class uvmReuseLeafSinkChannels
 {
 public:
     // dst ports
-    // Video, one pixel per beat
+    // Packets, one word per beat
     rdy_vld_channel< uvmReuseBeatSt > in;
 
 

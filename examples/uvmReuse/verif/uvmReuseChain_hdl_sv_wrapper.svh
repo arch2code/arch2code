@@ -15,12 +15,12 @@ module uvmReuseChain_hdl_sv_wrapper
 ) (
     // rdy_vld_if.dst
     input bit in_vld,
-    input bit [18:0] in_data,
+    input bit [16:0] in_data,
     output bit in_rdy,
 
     // rdy_vld_if.src
     output bit out_vld,
-    output bit [18:0] out_data,
+    output bit [16:0] out_data,
     input bit out_rdy,
 
     // apb_if.dst

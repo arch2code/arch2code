@@ -4683,7 +4683,7 @@ package a2c_uvm_pkg;
         pure virtual protected function bit has_out_rule();
 
         // The rules and the components connect_in() and connect_out() were
-        // given, so that a2c_video_test can find the checkers on its ports.
+        // given, so that a test can find the checkers on its ports.
         pure virtual function uvm_object in_unit_rule();
         pure virtual function uvm_object out_unit_rule();
 

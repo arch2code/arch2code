@@ -30,7 +30,7 @@ public:
 
     bool createTestBench(void) override
     {
-        // uDrv programs both leaf offsets, then streams the frames that uSink
+        // uDrv programs both leaf offsets, then streams the packets that uSink
         // checks; final() fails until both have completed.
         testController &controller = testController::GetInstance();
         controller.set_test_names({

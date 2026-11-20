@@ -105,21 +105,16 @@ void uvmReuseDrv::program_test(void)
     expect(LEAF_B, uvmReuse_ns::UVM_REUSE_TB_OFFSET_B, "uLeafB.offset");
 }
 
-// Pixel x of line y in frame f is f * 0x100 + y * 0x10 + x, which uSink
-// recomputes.
+// Word i of packet p is p * 0x100 + i, which uSink recomputes.
 void uvmReuseDrv::stream_test(void)
 {
     using namespace uvmReuse_ns;
-    for (uint32_t f = 0; f < UVM_REUSE_FRAMES; ++f) {
-        for (uint32_t y = 0; y < UVM_REUSE_HEIGHT; ++y) {
-            for (uint32_t x = 0; x < UVM_REUSE_WIDTH; ++x) {
-                uvmReuseBeatSt b;
-                b.pixel = static_cast<uvmReusePixelT>(f * 0x100 + y * 0x10 + x);
-                b.sof = (y == 0 && x == 0);
-                b.eol = (x == UVM_REUSE_WIDTH - 1);
-                b.eof = b.eol && (y == UVM_REUSE_HEIGHT - 1);
-                out->write(b);
-            }
+    for (uint32_t p = 0; p < UVM_REUSE_PACKETS; ++p) {
+        for (uint32_t i = 0; i < UVM_REUSE_PACKET_WORDS; ++i) {
+            uvmReuseBeatSt b;
+            b.word = static_cast<uvmReuseWordT>(p * 0x100 + i);
+            b.last = (i == UVM_REUSE_PACKET_WORDS - 1);
+            out->write(b);
         }
     }
 }

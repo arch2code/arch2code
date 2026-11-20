@@ -22,15 +22,55 @@ package uvmReuseLeaf_uvm_test_pkg;
 
 // GENERATED_CODE_END
 
-    import a2c_video_pkg::*;
-    `include "uvm/a2c_video_macros.svh"
-
+    // sb checks out against in and the offset register's mirror; in paired
+    // mode model_sb checks the model lane the same way.
     class uvmReuseLeaf_tb_env extends uvmReuseLeaf_env;
+        uvmReuseLeaf_scoreboard sb, model_sb;
+
         `uvm_component_utils(uvmReuseLeaf_tb_env)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
         endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            sb = uvmReuseLeaf_scoreboard::type_id::create("sb", this);
+            if (dual_dut) model_sb = uvmReuseLeaf_scoreboard::type_id::create("model_sb", this);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            sb.offsets.push_back(regmodel.offset);
+            in_agent.mon.ap.connect(sb.in_export);
+            out_agent.mon.ap.connect(sb.out_export);
+            if (dual_dut) begin
+                model_sb.offsets.push_back(regmodel.offset);
+                in_agent.model_mon.ap.connect(model_sb.in_export);
+                out_agent.model_mon.ap.connect(model_sb.out_export);
+            end
+        endfunction
+
+        // Programs a random offset through the library's configuration
+        // sequence.
+        task configure();
+            uvmReuseLeaf_config_seq seq = uvmReuseLeaf_config_seq::type_id::create("config_seq");
+            seq.offset = $urandom_range((1 << regmodel.offset.get_n_bits()) - 1);
+            seq.model  = regmodel;
+            seq.start(null);
+        endtask
+
+        // Sends packets through the library's sequence and, with declare set,
+        // declares their beats to out's counter.
+        task send(int unsigned packets, int unsigned max_words, int unsigned max_gap, bit declare = 1);
+            uvmReuseLeaf_packet_seq seq = uvmReuseLeaf_packet_seq::type_id::create("packet_seq");
+            seq.max_words = max_words;
+            seq.max_gap   = max_gap;
+            seq.plan(packets);
+            if (declare) out_counter.expect_count(seq.beats());
+            `uvm_info("A2C_TEST", $sformatf("%0d packets, %0d beats, max_gap %0d", packets, seq.beats(), max_gap), UVM_LOW)
+            seq.start(in_agent.sqr);
+        endtask
     endclass : uvmReuseLeaf_tb_env
 
 // GENERATED_CODE_BEGIN --template=uvmTest --section=tests
@@ -290,51 +330,42 @@ package uvmReuseLeaf_uvm_test_pkg;
 
 // GENERATED_CODE_END
 
-    // Programs a random offset through the library's configuration sequence
-    // and checks out against the library's contract.
-    class uvmReuseLeaf_video_test extends a2c_video_test #(uvmReuseLeaf_base_test);
-        uvmReuseLeaf_video_contract contract;
-
-        `uvm_component_utils(uvmReuseLeaf_video_test)
-
-        function new(string name, uvm_component parent);
-            super.new(name, parent);
-        endfunction
-
-        virtual function void video_ports();
-            contract = uvmReuseLeaf_video_contract::type_id::create("out_contract");
-            add_video_input(a2c_video_input#(in_item_t)::make("in", uvmReuseLeaf_video_adapter#(in_item_t)::type_id::create("in_adapter")));
-            add_video_output(a2c_video_output#(out_item_t)::make("out", uvmReuseLeaf_video_adapter#(out_item_t)::type_id::create("out_adapter"),
-                                                                 contract));
-        endfunction
-
-        virtual function void video_connect();
-            contract.offset = env.regmodel.offset;
-            connect_video_input(env.in_agent);
-            connect_video_output("out", env.out_agent, env.out_counter);
-        endfunction
-
-        virtual task configure_dut(a2c_video_cfg cfg);
-            uvmReuseLeaf_config_seq seq = uvmReuseLeaf_config_seq::type_id::create("config_seq");
-            seq.offset = $urandom_range((1 << env.regmodel.offset.get_n_bits()) - 1);
-            seq.model  = env.regmodel;
-            seq.start(null);
-        endtask
-    endclass : uvmReuseLeaf_video_test
-
-    `a2c_video_corner_tests(uvmReuseLeaf_video_test)
-
-    class uvmReuseLeaf_smoke_test extends uvmReuseLeaf_video_test;
+    class uvmReuseLeaf_smoke_test extends uvmReuseLeaf_base_test;
         `uvm_component_utils(uvmReuseLeaf_smoke_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
         endfunction
+
+        virtual task run_body();
+            env.configure();
+            env.send(8, 8, 0, !expect_from_model);
+        endtask
     endclass : uvmReuseLeaf_smoke_test
 
-    // Sends n beats with pixels first, first + 1, ..., as one line of one
-    // frame. after_reset is the index of the first beat the driver took
-    // after a reset, which the test counts in resets.
+    // Longer packets with idle clocks between beats, and out ready on about
+    // half the clocks.
+    class uvmReuseLeaf_random_test extends uvmReuseLeaf_base_test;
+        `uvm_component_utils(uvmReuseLeaf_random_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            env.out_agent.cfg.ready_pct = 50;
+        endfunction
+
+        virtual task run_body();
+            env.configure();
+            env.send(64, 16, 3);
+        endtask
+    endclass : uvmReuseLeaf_random_test
+
+    // Sends n beats with words first, first + 1, ..., as one packet.
+    // after_reset is the index of the first beat the driver took after a
+    // reset, which the test counts in resets.
     class uvmReuseLeaf_beat_seq extends uvm_sequence #(in_item_t);
         int unsigned n;
         int unsigned first;
@@ -352,12 +383,10 @@ package uvmReuseLeaf_uvm_test_pkg;
                 in_item_t it = in_item_t::type_id::create("it");
                 start_item(it);
                 if (resets > 0 && after_reset < 0) after_reset = i;
-                it.data       = '0;
-                it.data.pixel = uvmReusePixelT'(first + i);
-                it.data.sof   = i == 0;
-                it.data.eol   = i == n - 1;
-                it.data.eof   = i == n - 1;
-                it.gap        = 0;
+                it.data      = '0;
+                it.data.word = uvmReuseWordT'(first + i);
+                it.data.last = i == n - 1;
+                it.gap       = 0;
                 finish_item(it);
             end
         endtask
@@ -367,9 +396,9 @@ package uvmReuseLeaf_uvm_test_pkg;
     // take. The test programs offset 5, streams with out stalling, and
     // resets the DUT while the input driver holds a beat the DUT has not
     // taken. The driver abandons that beat and the stream goes on from the
-    // next one after the release. Each pixel out before the reset carries
+    // next one after the release. Each word out before the reset carries
     // offset 5; the offset register must read its default of 1 after the
-    // release, and each pixel after it must carry that.
+    // release, and each word after it must carry that.
     class uvmReuseLeaf_reset_test extends uvmReuseLeaf_base_test;
         uvm_tlm_analysis_fifo #(out_item_t) out_fifo;
 
@@ -389,17 +418,17 @@ package uvmReuseLeaf_uvm_test_pkg;
             env.out_agent.mon.ap.connect(out_fifo.analysis_export);
         endfunction
 
-        // Checks the next n pixels out against first + i + offset.
+        // Checks the next n words out against first + i + offset.
         protected function void check_out(int unsigned n, int unsigned first, uvm_reg_data_t offset);
             for (int unsigned i = 0; i < n; i++) begin
                 out_item_t it;
                 if (!out_fifo.try_get(it)) begin
-                    `uvm_error("RESET_TEST", $sformatf("%0d of %0d pixels out", i, n))
+                    `uvm_error("RESET_TEST", $sformatf("%0d of %0d words out", i, n))
                     return;
                 end
-                if (it.data.pixel != uvmReusePixelT'(first + i + offset)) begin
-                    `uvm_error("RESET_TEST", $sformatf("pixel %0d out is 'h%0h, expected 'h%0h", i, it.data.pixel,
-                                                       uvmReusePixelT'(first + i + offset)))
+                if (it.data.word != uvmReuseWordT'(first + i + offset)) begin
+                    `uvm_error("RESET_TEST", $sformatf("word %0d out is 'h%0h, expected 'h%0h", i, it.data.word,
+                                                       uvmReuseWordT'(first + i + offset)))
                 end
             end
         endfunction
@@ -526,8 +555,8 @@ package uvmReuseLeaf_uvm_test_pkg;
     // off, each such checker paired at least one unit and failed each one
     // once, and the demoted errors are the failures of the checkers that
     // judge, which on the model DUT is none unless rt_on_model is set. A
-    // checker under env that is off, as a2c_rt_off or a2c_video_env turns
-    // one off, is left out.
+    // checker under env that is off, by a2c_rt_off or turn_off(), is left
+    // out.
     class uvmReuseLeaf_rt_fire_test extends uvmReuseLeaf_smoke_test;
         a2c_error_demoter demoter;
 

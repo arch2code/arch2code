@@ -1,5 +1,5 @@
 // a2c_ready_policy, the config knobs' constraints and the item gap, included
-// in a2c_uvm_loopback_pkg after the agent and video tests.
+// in a2c_uvm_loopback_pkg after the agent tests.
 
     // The dst agent's policy is a2c_always_ready_policy, by an instance
     // override from the test, so the agent acks each transfer in the clock
@@ -341,8 +341,8 @@
         endfunction
     endclass : lb_slow_rv_config
 
-    // randomize() with no constraint of the test's own leaves every config,
-    // video cfg and item knob at its declared default; an inline constraint
+    // randomize() with no constraint of the test's own leaves every config
+    // and item knob at its declared default; an inline constraint
     // replaces a soft default it excludes and keeps the others; c_valid
     // holds a range together; and a config class a factory override puts in
     // the env's place applies its own constraints.
@@ -365,12 +365,11 @@
             apb_config_t  apb = apb_config_t::type_id::create("apb");
             axr_config_t  axr = axr_config_t::type_id::create("axr");
             axw_config_t  axw = axw_config_t::type_id::create("axw");
-            a2c_video_cfg v = a2c_video_cfg::type_id::create("v");
             rv_item_t     rvi = rv_item_t::type_id::create("rvi");
             pa_item_t     pai = pa_item_t::type_id::create("pai");
             axr_item_t    axri = axr_item_t::type_id::create("axri");
             if (!(rv.randomize() && axis.randomize() && pa.randomize() && na.randomize() && apb.randomize() && axr.randomize()
-                  && axw.randomize() && v.randomize() && rvi.randomize() && pai.randomize() && axri.randomize())) begin
+                  && axw.randomize() && rvi.randomize() && pai.randomize() && axri.randomize())) begin
                 `uvm_error("LB_RAND_KNOBS", "a randomize() with no inline constraint failed")
                 return;
             end
@@ -386,31 +385,24 @@
             expect_eq("axi_read max_outstanding", axr.max_outstanding, 1);
             expect_eq("axi_write wready_pct", axw.wready_pct, 100);
             expect_eq("axi_write reorder", axw.reorder, 0);
-            expect_eq("video width", v.width, 64);
-            expect_eq("video height", v.height, 8);
-            expect_eq("video frames", v.frames, 3);
-            expect_eq("video h_blank_min", v.h_blank_min, 2);
-            expect_eq("video v_blank_max", v.v_blank_max, 8);
-            expect_eq("video lead_clocks", v.lead_clocks, 4);
-            expect_eq("video pixel_mode", v.pixel_mode, A2C_PIX_RAMP);
             expect_eq("rdy_vld item gap", rvi.gap, 0);
             expect_eq("push_ack item gap", pai.gap, 0);
             expect_eq("axi_read item gap", axri.gap, 0);
         endfunction
 
         protected function void constrained();
-            rv_config_t   rv = rv_config_t::type_id::create("rv");
-            a2c_video_cfg v = a2c_video_cfg::type_id::create("v");
-            rv_item_t     it = rv_item_t::type_id::create("it");
+            rv_config_t  rv = rv_config_t::type_id::create("rv");
+            axr_config_t axr = axr_config_t::type_id::create("axr");
+            rv_item_t    it = rv_item_t::type_id::create("it");
             if (!rv.randomize() with { ready_pct inside {[30:60]}; burst == 1; }) `uvm_error("LB_RAND_KNOBS", "rdy_vld config randomize() failed")
             if (!(rv.ready_pct inside {[30:60]}) || rv.burst != 1) begin
                 `uvm_error("LB_RAND_KNOBS", $sformatf("rdy_vld config drew ready_pct %0d and burst %0d", rv.ready_pct, rv.burst))
             end
             expect_eq("rdy_vld burst_max beside a constrained ready_pct", rv.burst_max, 8);
-            if (!v.randomize() with { h_blank_max == 1; width == 32; }) `uvm_error("LB_RAND_KNOBS", "video cfg randomize() failed")
-            if (v.h_blank_min > 1) `uvm_error("LB_RAND_KNOBS", $sformatf("h_blank_min %0d is above h_blank_max 1", v.h_blank_min))
-            expect_eq("video width", v.width, 32);
-            expect_eq("video height beside a constrained width", v.height, 8);
+            if (!axr.randomize() with { resp_delay_min == 3; arready_pct == 50; }) `uvm_error("LB_RAND_KNOBS", "axi_read config randomize() failed")
+            if (axr.resp_delay_max < 3) `uvm_error("LB_RAND_KNOBS", $sformatf("resp_delay_max %0d is below resp_delay_min 3", axr.resp_delay_max))
+            expect_eq("axi_read arready_pct", axr.arready_pct, 50);
+            expect_eq("axi_read rready_pct beside a constrained arready_pct", axr.rready_pct, 100);
             if (!it.randomize() with { gap inside {[2:5]}; }) `uvm_error("LB_RAND_KNOBS", "rdy_vld item randomize() failed")
             if (!(it.gap inside {[2:5]})) `uvm_error("LB_RAND_KNOBS", $sformatf("rdy_vld item drew gap %0d", it.gap))
         endfunction

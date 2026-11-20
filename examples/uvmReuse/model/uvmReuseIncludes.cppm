@@ -20,9 +20,8 @@ using namespace uvmReuseLeaf_ns;
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 export namespace uvmReuse_ns {
 //constants
-inline constexpr uint32_t UVM_REUSE_WIDTH = 8;  // Pixels per line uDrv sends in the SystemC testbench
-inline constexpr uint32_t UVM_REUSE_HEIGHT = 4;  // Lines per frame uDrv sends in the SystemC testbench
-inline constexpr uint32_t UVM_REUSE_FRAMES = 3;  // Frames uDrv sends in the SystemC testbench
+inline constexpr uint32_t UVM_REUSE_PACKETS = 4;  // Packets uDrv sends in the SystemC testbench
+inline constexpr uint32_t UVM_REUSE_PACKET_WORDS = 8;  // Words per packet uDrv sends in the SystemC testbench
 inline constexpr uint32_t UVM_REUSE_TB_OFFSET_A = 33;  // uLeafA offset uDrv programs
 inline constexpr uint32_t UVM_REUSE_TB_OFFSET_B = 3;  // uLeafB offset uDrv programs
 

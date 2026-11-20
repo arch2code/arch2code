@@ -23,17 +23,71 @@ package uvmReuseChain_uvm_test_pkg;
     import `A2C_UVM_PKG::*;
 
 // GENERATED_CODE_END
-    import a2c_video_pkg::*;
-    `include "uvm/a2c_video_macros.svh"
 
-    // Sequences and scoreboard classes go here; the env below instantiates
-    // the scoreboards.
+    typedef uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_scoreboard uvmReuseChain_sb_t;
+
+    // The leaf library's scoreboard, from its w8 package, checks the chain.
+    // out_sb checks out against in and both leaves' offsets. With the RTL in
+    // the run, mid_sb checks the internal connection mid against in and
+    // uLeafA's offset alone, so a defect fails first at the leaf that makes
+    // it. In paired mode model_sb checks the model lane's out.
     class uvmReuseChain_tb_env extends uvmReuseChain_env;
+        uvmReuseChain_sb_t out_sb, mid_sb, model_sb;
+
         `uvm_component_utils(uvmReuseChain_tb_env)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
         endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            out_sb = uvmReuseChain_sb_t::type_id::create("out_sb", this);
+            if (mid_agent != null) mid_sb = uvmReuseChain_sb_t::type_id::create("mid_sb", this);
+            if (dual_dut) model_sb = uvmReuseChain_sb_t::type_id::create("model_sb", this);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            out_sb.offsets.push_back(regmodel.uLeafA.offset);
+            out_sb.offsets.push_back(regmodel.uLeafB.offset);
+            in_agent.mon.ap.connect(out_sb.in_export);
+            out_agent.mon.ap.connect(out_sb.out_export);
+            if (mid_sb != null) begin
+                mid_sb.offsets.push_back(regmodel.uLeafA.offset);
+                in_agent.mon.ap.connect(mid_sb.in_export);
+                mid_agent.mon.ap.connect(mid_sb.out_export);
+            end
+            if (model_sb != null) begin
+                model_sb.offsets = out_sb.offsets;
+                in_agent.model_mon.ap.connect(model_sb.in_export);
+                out_agent.model_mon.ap.connect(model_sb.out_export);
+            end
+        endfunction
+
+        // uLeafA is the leaf's w8 variant in both tops, so its register block
+        // is that package's class and the package's configuration sequence
+        // programs it. uLeafB's block is this package's own class, written
+        // directly.
+        task configure();
+            uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_config_seq seq = uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_config_seq::type_id::create("config_seq");
+            seq.offset = $urandom_range((1 << regmodel.uLeafA.offset.get_n_bits()) - 1);
+            seq.model  = regmodel.uLeafA;
+            seq.start(null);
+            write_reg(regmodel.uLeafB.offset, $urandom_range((1 << regmodel.uLeafB.offset.get_n_bits()) - 1));
+        endtask
+
+        // Sends packets through the leaf library's sequence and, with declare
+        // set, declares their beats to out's counter.
+        task send(int unsigned packets, int unsigned max_words, int unsigned max_gap, bit declare = 1);
+            uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_packet_seq seq = uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_packet_seq::type_id::create("packet_seq");
+            seq.max_words = max_words;
+            seq.max_gap   = max_gap;
+            seq.plan(packets);
+            if (declare) out_counter.expect_count(seq.beats());
+            `uvm_info("A2C_TEST", $sformatf("%0d packets, %0d beats, max_gap %0d", packets, seq.beats(), max_gap), UVM_LOW)
+            seq.start(in_agent.sqr);
+        endtask
     endclass : uvmReuseChain_tb_env
 
 // GENERATED_CODE_BEGIN --template=uvmTest --section=tests
@@ -295,74 +349,38 @@ package uvmReuseChain_uvm_test_pkg;
 
 // GENERATED_CODE_END
 
-    // uLeafA is the leaf's w8 variant in both tops, so its register block is
-    // that package's class and the package's configuration sequence programs
-    // it. uLeafB's block is this package's own class, written directly. out
-    // takes the chain of both leaves' contracts; with an RTL DUT the internal
-    // connection mid takes uLeafA's alone, so a defect fails first at the
-    // leaf that makes it.
-    class uvmReuseChain_video_test extends a2c_video_test #(uvmReuseChain_base_test);
-        uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_video_contract leaf_a, leaf_b;
-        a2c_video_contract_chain out_chain, mid_chain;
-        bit internal;
-
-        `uvm_component_utils(uvmReuseChain_video_test)
-
-        function new(string name, uvm_component parent);
-            super.new(name, parent);
-        endfunction
-
-        virtual function void video_ports();
-            a2c_video_output #(mid_item_t) mid;
-            bit model_dut;
-            void'(uvm_config_db#(bit)::get(this, "env", "a2c_model_dut", model_dut));
-            internal  = !model_dut;
-            leaf_a    = uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_video_contract::type_id::create("leaf_a");
-            leaf_b    = uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_video_contract::type_id::create("leaf_b");
-            out_chain = a2c_video_contract_chain::type_id::create("out_chain");
-            out_chain.add_stage(leaf_a);
-            out_chain.add_stage(leaf_b);
-            mid_chain = a2c_video_contract_chain::type_id::create("mid_chain");
-            mid_chain.add_stage(leaf_a);
-            add_video_input(a2c_video_input#(in_item_t)::make("in", uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_video_adapter#(in_item_t)::type_id::create("in_adapter")));
-            if (internal) begin
-                mid = a2c_video_output#(mid_item_t)::make("mid", uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_video_adapter#(mid_item_t)::type_id::create("mid_adapter"),
-                                                          mid_chain);
-                mid.dut_lane_only = 1;
-                add_video_output(mid);
-            end
-            add_video_output(a2c_video_output#(out_item_t)::make("out", uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_video_adapter#(out_item_t)::type_id::create("out_adapter"),
-                                                                 out_chain));
-        endfunction
-
-        virtual function void video_connect();
-            leaf_a.offset = env.regmodel.uLeafA.offset;
-            leaf_b.offset = env.regmodel.uLeafB.offset;
-            connect_video_input(env.in_agent);
-            if (internal) connect_video_output("mid", env.mid_agent);
-            connect_video_output("out", env.out_agent, env.out_counter);
-        endfunction
-
-        virtual task configure_dut(a2c_video_cfg cfg);
-            uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_config_seq seq = uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_config_seq::type_id::create("config_seq");
-            uvm_status_e status;
-            seq.offset = $urandom_range((1 << env.regmodel.uLeafA.offset.get_n_bits()) - 1);
-            seq.model  = env.regmodel.uLeafA;
-            seq.start(null);
-            env.regmodel.uLeafB.offset.write(status, $urandom_range((1 << env.regmodel.uLeafB.offset.get_n_bits()) - 1));
-            env.regmodel.uLeafB.offset.mirror(status, UVM_CHECK);
-        endtask
-    endclass : uvmReuseChain_video_test
-
-    `a2c_video_corner_tests(uvmReuseChain_video_test)
-
-    class uvmReuseChain_smoke_test extends uvmReuseChain_video_test;
+    class uvmReuseChain_smoke_test extends uvmReuseChain_base_test;
         `uvm_component_utils(uvmReuseChain_smoke_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
         endfunction
+
+        virtual task run_body();
+            env.configure();
+            env.send(8, 8, 0, !expect_from_model);
+        endtask
     endclass : uvmReuseChain_smoke_test
+
+    // Longer packets with idle clocks between beats, and out ready on about
+    // half the clocks.
+    class uvmReuseChain_random_test extends uvmReuseChain_base_test;
+        `uvm_component_utils(uvmReuseChain_random_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            env.out_agent.cfg.ready_pct = 50;
+        endfunction
+
+        virtual task run_body();
+            env.configure();
+            env.send(64, 16, 3);
+        endtask
+    endclass : uvmReuseChain_random_test
 
     // Counts the transfers on ticks and when the last one was seen.
     class uvmReuseChain_tick_counter extends uvm_subscriber #(ticks_item_t);
@@ -406,13 +424,11 @@ package uvmReuseChain_uvm_test_pkg;
     // passes only if the joint stall rule still fires, which it would not if
     // the internal monitor's transfers counted as progress, and ticks moved
     // within stall_tick_window of it. The stall ends the run phase with
-    // nothing delivered, so out's counter and the mid and out checkers each
-    // report it once too.
-    class uvmReuseChain_stall_test extends uvmReuseChain_video_test;
+    // nothing delivered, so out's counter reports it once too. The leaves
+    // pass ready back in the same clock, so no beat enters and the
+    // scoreboards have nothing outstanding.
+    class uvmReuseChain_stall_test extends uvmReuseChain_smoke_test;
         a2c_expected_error         stall, missing;
-        // The video checkers report at check_phase after an
-        // a2c_expected_error would have counted, so report_phase counts these.
-        a2c_error_demoter          frames;
         uvmReuseChain_tick_counter ticks;
         uvmReuseChain_stall_clock  stall_clock;
         realtime                   stall_tick_window = 20ns;
@@ -430,10 +446,6 @@ package uvmReuseChain_uvm_test_pkg;
             stall.id = "A2C_JOINT_STALL";
             missing  = a2c_expected_error::type_id::create("missing", this);
             missing.id = "A2C_TXN_COUNT";
-            frames   = a2c_error_demoter::type_id::create("frames");
-            frames.demote_id   = "A2C_VIDEO";
-            frames.demote_text = "expected frames never came out";
-            uvm_report_cb::add(null, frames);
             ticks    = uvmReuseChain_tick_counter::type_id::create("ticks", this);
             stall_clock = uvmReuseChain_stall_clock::type_id::create("stall_clock");
             uvm_report_cb::add(null, stall_clock);
@@ -455,10 +467,6 @@ package uvmReuseChain_uvm_test_pkg;
 
         virtual function void report_phase(uvm_phase phase);
             super.report_phase(phase);
-            if (frames.demoted != 2) begin
-                `uvm_error("A2C_STALL_TEST", $sformatf("expected the mid and out checkers each to report missing frames once; caught %0d",
-                                                       frames.demoted))
-            end
             // A missing stall is the expected error's to report.
             if (!stall_clock.seen) return;
             if (ticks.seen == 0 || stall_clock.at - ticks.last_at > stall_tick_window) begin
@@ -467,7 +475,6 @@ package uvmReuseChain_uvm_test_pkg;
             end
         endfunction
     endclass : uvmReuseChain_stall_test
-
 
 // GENERATED_CODE_BEGIN --template=uvmTest --section=footer
 
@@ -547,8 +554,8 @@ package uvmReuseChain_uvm_test_pkg;
     // off, each such checker paired at least one unit and failed each one
     // once, and the demoted errors are the failures of the checkers that
     // judge, which on the model DUT is none unless rt_on_model is set. A
-    // checker under env that is off, as a2c_rt_off or a2c_video_env turns
-    // one off, is left out.
+    // checker under env that is off, by a2c_rt_off or turn_off(), is left
+    // out.
     class uvmReuseChain_rt_fire_test extends uvmReuseChain_smoke_test;
         a2c_error_demoter demoter;
 

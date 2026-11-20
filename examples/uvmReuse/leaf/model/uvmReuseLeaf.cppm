@@ -42,7 +42,7 @@ public:
 
 
     //registers
-    hwRegister< uvmReuseOffSt<Config>, 4 > offset; // Added to each pixel
+    hwRegister< uvmReuseOffSt<Config>, 4 > offset; // Added to each word
 
     // inherited parameterized types usable unqualified (no <Config>)
     using typename uvmReuseLeafBase<Config>::uvmReuseOffT;
@@ -90,7 +90,7 @@ void uvmReuseLeaf<Config>::datapath(void)
     while (true) {
         uvmReuseBeatSt b;
         in->read(b);
-        b.pixel = static_cast<uvmReusePixelT>(b.pixel + offset.read().offset);
+        b.word = static_cast<uvmReuseWordT>(b.word + offset.read().offset);
         out->write(b);
     }
 }

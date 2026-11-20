@@ -1,35 +1,32 @@
-# uvmReuseLeaf adds its offset register to each pixel of a video stream and
-# passes the frame markers through. Each beat is one pixel, with sof on a
-# frame's first beat, eol on a line's last and eof on a frame's last. Its two
-# standalone variants differ in the width of offset.
+# uvmReuseLeaf adds its offset register to each word of a stream of packets
+# and passes last through. Each beat is one word, with last set on a packet's
+# final beat. Its two standalone variants differ in the width of offset.
 
 ipParameters:
     constants:
         UVM_REUSE_OFF_W: { value: 4, maxValue: 8, desc: "Width of the offset register" }
 
 types:
-    uvmReusePixelT: { width: 16, desc: "One pixel" }
-    uvmReuseBitT: { width: 1, desc: "A frame marker" }
+    uvmReuseWordT: { width: 16, desc: "One data word" }
+    uvmReuseBitT: { width: 1, desc: "A one-bit flag" }
     uvmReuseBusT: { width: 32, desc: "Register bus address and data" }
-    uvmReuseOffT: { width: UVM_REUSE_OFF_W, desc: "Offset added to each pixel" }
+    uvmReuseOffT: { width: UVM_REUSE_OFF_W, desc: "Offset added to each word" }
 
 structures:
     uvmReuseBeatSt:
-        pixel: { varType: uvmReusePixelT, desc: "Pixel" }
-        sof: { varType: uvmReuseBitT, desc: "First beat of a frame" }
-        eol: { varType: uvmReuseBitT, desc: "Last beat of a line" }
-        eof: { varType: uvmReuseBitT, desc: "Last beat of a frame" }
+        word: { varType: uvmReuseWordT, desc: "Data word" }
+        last: { varType: uvmReuseBitT, desc: "Final beat of a packet" }
     uvmReuseAddrSt:
         address: { varType: uvmReuseBusT, generator: address }
     uvmReuseDataSt:
         data: { varType: uvmReuseBusT, generator: data }
     uvmReuseOffSt:
-        offset: { varType: uvmReuseOffT, desc: "Added to each pixel" }
+        offset: { varType: uvmReuseOffT, desc: "Added to each word" }
 
 interfaces:
-    uvmReuseVideoIf:
+    uvmReuseStreamIf:
         interfaceType: rdy_vld
-        desc: "Video, one pixel per beat"
+        desc: "Packets, one word per beat"
         structures:
             - { structure: uvmReuseBeatSt, structureType: data_t }
     apbReg:
@@ -41,7 +38,7 @@ interfaces:
 
 blocks:
     uvmReuseLeaf:
-        desc: "Adds offset to each pixel"
+        desc: "Adds offset to each word"
         hasVl: true
         hasRtl: true
         hasMdl: true
@@ -53,13 +50,13 @@ blocks:
         resets:
             rst_n: { clock: clk }
         ports:
-            in:  { interface: uvmReuseVideoIf, direction: dst }
-            out: { interface: uvmReuseVideoIf, direction: src }
+            in:  { interface: uvmReuseStreamIf, direction: dst }
+            out: { interface: uvmReuseStreamIf, direction: src }
         registerPorts:
             apbReg: { interface: apbReg }
 
 registers:
-    - { register: offset, regType: rw, block: uvmReuseLeaf, structure: uvmReuseOffSt, defaultValue: 1, desc: "Added to each pixel" }
+    - { register: offset, regType: rw, block: uvmReuseLeaf, structure: uvmReuseOffSt, defaultValue: 1, desc: "Added to each word" }
 
 parameters:
     uvmReuseLeaf:

@@ -35,21 +35,21 @@ blocks:
             upstreamPort: apbReg
             registerDecoderPort: apbReg
     uvmReuseLeafSrc:
-        desc: "Video source"
+        desc: "Stream source"
         hasVl: false
         hasRtl: false
         hasMdl: true
         hasTb: false
         ports:
-            out: { interface: uvmReuseVideoIf, direction: src }
+            out: { interface: uvmReuseStreamIf, direction: src }
     uvmReuseLeafSink:
-        desc: "Video sink"
+        desc: "Stream sink"
         hasVl: false
         hasRtl: false
         hasMdl: true
         hasTb: false
         ports:
-            in: { interface: uvmReuseVideoIf, direction: dst }
+            in: { interface: uvmReuseStreamIf, direction: dst }
 
 instances:
     uvmReuseLeaf_tb: { container: uvmReuseLeaf_tb, instanceType: uvmReuseLeaf_tb, instGroup: top }
@@ -61,5 +61,5 @@ instances:
 
 connections:
     - { interface: apbReg, src: uCpu, srcport: apbReg, dst: uRouter, dstport: apbReg }
-    - { interface: uvmReuseVideoIf, src: uSrc, srcport: out, dst: u_uvmReuseLeaf, dstport: in }
-    - { interface: uvmReuseVideoIf, src: u_uvmReuseLeaf, srcport: out, dst: uSink, dstport: in }
+    - { interface: uvmReuseStreamIf, src: uSrc, srcport: out, dst: u_uvmReuseLeaf, dstport: in }
+    - { interface: uvmReuseStreamIf, src: u_uvmReuseLeaf, srcport: out, dst: uSink, dstport: in }
