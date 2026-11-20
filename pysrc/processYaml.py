@@ -4374,6 +4374,7 @@ class projectCreate:
         # Templates are merged shallow - pro/user can override base templates.
         ("templates",): "dict_shallow",
         ("postProcess",): "list_override",
+        ("schemaExtensions",): "list_append",
     }
 
     # Sections whose rows may not author clock:, because each end's domain is
@@ -4488,11 +4489,20 @@ class projectCreate:
         # save the global base path referenced by project file location
         g.yamlBasePath = os.path.dirname(os.path.abspath(projFile))
         os.chdir(os.path.dirname(os.path.abspath(projFile)))
+        # Before the schema load, so schemaExtensions: paths can use dirs: macros.
+        self.projectDirs()
         schemaFile = resolveFilePath(self.proj, self.a2cProj, "dbSchema", self.a2cRoot )
         # read schema file referenced by project
         self.schemaYaml = existsLoad(schemaFile)
-        # initialize schema base on the schema file
-        self.schema = Schema(self.schemaYaml, schemaFile)
+        # The build manifest reads the resolved list.
+        self.schemaExtensionFiles = self.resolveSchemaExtensions()
+        extensions = []
+        for extensionFile in self.schemaExtensionFiles:
+            fragment = existsLoad(extensionFile)
+            if not isinstance(fragment, dict):
+                self.logError(f"Schema extension {extensionFile} must be a mapping of schema sections.")
+            extensions.append((extensionFile, fragment))
+        self.schema = Schema(self.schemaYaml, schemaFile, extensions=extensions)
         self.counterReverseField = self.schema.counter_reverse_field
         # Top-level sections declared _attribs: [projectScope]: authored in the
         # project file and stored in a bucket keyed by the declaring projectName
@@ -4514,7 +4524,6 @@ class projectCreate:
         # table and are natural no-ops for such a project.
         if 'topInstance' in self.proj:
             self.topInstance = self.proj['topInstance']
-        self.projectDirs()
         self.validateLayout()
         self.buildLayout()
         self.configTemplates()
@@ -5459,6 +5468,21 @@ class projectCreate:
             )
             macros[name] = os.path.abspath(os.path.join(baseDir, raw_path))
         return macros
+
+    def resolveSchemaExtensions(self):
+        # A fragment listed twice would fail as a redefinition naming the same
+        # file twice, so name the layers that list it instead. Paths resolve
+        # like postProcess: script paths.
+        def resolve(entry):
+            return os.path.abspath(basePathRelative(expandDirMacros(entry)))
+        files = [resolve(entry) for entry in self.proj.get('schemaExtensions', [])]
+        for extensionFile in sorted({f for f in files if files.count(f) > 1}):
+            layers = [layer for layer, proj in (('base', self._a2cBaseProj), ('pro', self._a2cProProj),
+                                                ('user', self._userProjRaw))
+                      for entry in proj.get('schemaExtensions', []) if resolve(entry) == extensionFile]
+            self.logError(f"Schema extension {extensionFile} is listed more than once in schemaExtensions: "
+                          f"(by the {', '.join(layers)} project.yaml). List it once.")
+        return files
 
     def projectDirs(self):
         global dirMacros
