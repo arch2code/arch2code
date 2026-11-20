@@ -36,6 +36,8 @@ class Field:
         self.name = name
         self.field_type = field_type  # key, required, optional, auto, const, eval, etc.
         self.line_number = line_number
+        # The schema file or schema extension that declared the field.
+        self.schema_file = ''
         self.validator: Optional[ValidationRule] = None
         self.default_value: Any = None
         self.auto_function: Optional[str] = None  # e.g., "_auto_width"
@@ -79,6 +81,8 @@ class Node:
         self.name = name
         self.context = context  # e.g., "structures" for nested vars
         self.full_path = context + name
+        # The schema file or schema extension that declared the node.
+        self.schema_file = ''
         self.fields: Dict[str, Field] = {}  # name -> Field
         self.fields_lower: Dict[str, str] = {}  # lowercase name -> actual name (for case-insensitive collision detection)
         self.sub_nodes: Dict[str, Node] = {}  # name -> Node
@@ -610,7 +614,7 @@ class Schema:
             'typeStruct': ('types', 'structures'),
         }.get(word)
     
-    def __init__(self, schema_yaml=None, schema_file='', skip_config=False):
+    def __init__(self, schema_yaml=None, schema_file='', skip_config=False, extensions=()):
         self.sections: Dict[str, Node] = {}  # section_name -> Node (top-level only)
         self.nodes: Dict[str, Node] = {}  # full_path -> Node (all nodes, for direct access)
         self.tables: List[str] = []  # List of table names
@@ -623,7 +627,7 @@ class Schema:
             if not skip_config:
                 from pysrc.processYaml import config
                 self.config = config(RO=False)
-            self.validate(schema_yaml, schema_file)
+            self.validate(schema_yaml, schema_file, extensions)
             # Build data dict immediately after validation so it's available
             self._data = self._build_data_dict()
         elif not skip_config:
@@ -682,8 +686,10 @@ class Schema:
                 return "__bad_function"
         return ""
         
-    def validate(self, schema_yaml: dict, schema_file: str):
-        """Parse and validate schema YAML, building Node/Field hierarchy"""
+    def validate(self, schema_yaml: dict, schema_file: str, extensions):
+        """Parse and validate schema YAML, building Node/Field hierarchy.
+        extensions is a list of (file, yaml) schema fragments, merged onto
+        schema_yaml in list order before validation."""
         valid_field_types = {
             'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'post', 'dataGroup',
             'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param', 'typeStruct',
@@ -692,14 +698,53 @@ class Schema:
         reserved_keys = {'_validate', '_type', '_key', '_combo', '_attribs', '_singular', '_mapto'}
         custom_checker = {'_singular', '_mapto'}
         
+        origins = {}
+        for extension_file, extension_yaml in extensions:
+            self._merge_extension(schema_yaml, schema_file, extension_yaml, extension_file, origins, ())
+
         # Process all sections recursively, starting with no parent keys
-        self._validate_sections(schema_yaml, schema_file, '', valid_field_types, reserved_keys, custom_checker)
+        self._validate_sections(schema_yaml, schema_file, '', valid_field_types, reserved_keys, custom_checker, origins)
 
         # Verify the types section has the required fields and post function for widthLog2 support
         self._validateTypesSchema(schema_file)
-        self._validate_context_key_sources(schema_file)
-        self._validate_project_scope_sections(schema_file)
-        self._validate_foreign_key_lookups(schema_file)
+        self._validate_context_key_sources()
+        self._validate_project_scope_sections()
+        self._validate_foreign_key_lookups()
+
+    def _merge_extension(self, node: dict, node_file: str, extension: dict, extension_file: str,
+                         origins: dict, path: tuple):
+        """Add a schema fragment's keys to the schema tree in place.
+
+        A fragment may only add keys. It restates an existing section or
+        sub-table only to reach a new key under it. node is a mapping already
+        in the tree, declared in node_file. origins maps (id(mapping), key) to
+        (fragment file, line) for each added key, so _validate_sections can
+        name the fragment in its errors."""
+        for key, value in extension.items():
+            line = extension.lc.key(key)[0] + 1
+            key_path = '.'.join(path + (key,))
+            if path and key.startswith('_'):
+                printError(f"Bad schema extension {extension_file}:{line}. '{key_path}' sets a directive on "
+                           f"'{'.'.join(path)}', which is declared in {node_file}. A schema extension may "
+                           f"only add keys, and may not change an existing node's directives.")
+                exit(warningAndErrorReport())
+            if key not in node:
+                node[key] = value
+                origins[(id(node), key)] = (extension_file, line)
+                continue
+            existing = node[key]
+            existing_file = origins.get((id(node), key), (node_file,))[0]
+            if isinstance(existing, dict) and '_mapto' in existing:
+                printError(f"Bad schema extension {extension_file}:{line}. '{key_path}' is an alias of "
+                           f"'{existing['_mapto']}', declared in {existing_file}. Extend "
+                           f"'{existing['_mapto']}' instead.")
+                exit(warningAndErrorReport())
+            existing_is_table = isinstance(existing, dict) and any(not k.startswith('_') for k in existing)
+            if not (existing_is_table and isinstance(value, dict)):
+                printError(f"Bad schema extension {extension_file}:{line}. '{key_path}' is already declared in "
+                           f"{existing_file}. A schema extension may only add keys.")
+                exit(warningAndErrorReport())
+            self._merge_extension(existing, existing_file, value, extension_file, origins, path + (key,))
 
     def _project_scope_node_paths(self) -> dict:
         """Every node inside a projectScope section's subtree, mapped to the
@@ -727,12 +772,12 @@ class Schema:
                 walk(node, section)
         return owners
 
-    def _validate_project_scope_sections(self, schema_file: str):
+    def _validate_project_scope_sections(self):
         """A projectScope section must be a top-level section, and must be flat."""
         for node in self.nodes.values():
             if node.is_project_scope and node.context != "":
                 printError(
-                    f"Bad schema detected in {schema_file}. "
+                    f"Bad schema detected in {node.schema_file}. "
                     f"Node {node.full_path} declares _attribs: [projectScope] but is nested "
                     f"inside '{node.context}'. projectScope is a property of a whole top-level "
                     f"section: the project-file pre-pass selects sections by name, so the "
@@ -741,14 +786,14 @@ class Schema:
                 exit(warningAndErrorReport())
             if node.is_project_scope and not node.is_flat:
                 printError(
-                    f"Bad schema detected in {schema_file}. "
+                    f"Bad schema detected in {node.schema_file}. "
                     f"Section {node.full_path} declares _attribs: [projectScope] without "
                     f"'flat'. Project scope composes rows across projects by their qualified "
                     f"storage key, which only a flat section maintains."
                 )
                 exit(warningAndErrorReport())
 
-    def _validate_foreign_key_lookups(self, schema_file: str):
+    def _validate_foreign_key_lookups(self):
         """Validate schema contracts required by parse-time FK lookup."""
         project_scope_paths = self._project_scope_node_paths()
         # top-level declaration order, which is the order the pre-pass parses in
@@ -765,7 +810,7 @@ class Schema:
                 # name and fail far from the schema line that caused it.
                 if validator.scope not in (None, 'global', 'project'):
                     printError(
-                        f"Bad schema detected in {schema_file}. "
+                        f"Bad schema detected in {source_field.schema_file}. "
                         f"Section {source_node.full_path}, field '{source_field_name}' declares "
                         f"unknown scope '{validator.scope}'. Valid scopes are 'project', 'global', "
                         f"or omitted for the referring row's include chain."
@@ -777,7 +822,7 @@ class Schema:
 
                 if source_node.full_path in project_scope_paths and validator.scope is None:
                     printError(
-                        f"Bad schema detected in {schema_file}. "
+                        f"Bad schema detected in {source_field.schema_file}. "
                         f"Section {source_node.full_path}, field '{source_field_name}' is a field of "
                         f"a projectScope section and validates against '{validator.section}' with no "
                         f"scope. A project-scoped row is parsed with its projectName as context, so "
@@ -789,7 +834,7 @@ class Schema:
                 target_node = self.get_node(validator.section)
                 if target_node is None:
                     printError(
-                        f"Bad schema detected in {schema_file}. "
+                        f"Bad schema detected in {source_field.schema_file}. "
                         f"Section {source_node.full_path}, field '{source_field_name}' validates "
                         f"against unknown section '{validator.section}'."
                     )
@@ -798,7 +843,7 @@ class Schema:
                 target_field = target_node.get_field(validator.field)
                 if target_field is None:
                     printError(
-                        f"Bad schema detected in {schema_file}. "
+                        f"Bad schema detected in {source_field.schema_file}. "
                         f"Section {source_node.full_path}, field '{source_field_name}' validates "
                         f"against missing field '{validator.field}' in section '{validator.section}'."
                     )
@@ -808,7 +853,7 @@ class Schema:
                 # is reachable by neither an include-chain nor a global lookup.
                 if validator.scope == 'project' and not target_node.is_project_scope:
                     printError(
-                        f"Bad schema detected in {schema_file}. "
+                        f"Bad schema detected in {source_field.schema_file}. "
                         f"Section {source_node.full_path}, field '{source_field_name}' declares "
                         f"scope: project against '{validator.section}', which is not declared "
                         f"_attribs: [projectScope]."
@@ -816,7 +861,7 @@ class Schema:
                     exit(warningAndErrorReport())
                 if target_node.is_project_scope and validator.scope != 'project':
                     printError(
-                        f"Bad schema detected in {schema_file}. "
+                        f"Bad schema detected in {source_field.schema_file}. "
                         f"Section {source_node.full_path}, field '{source_field_name}' validates "
                         f"against projectScope section '{validator.section}' but does not declare "
                         f"scope: project."
@@ -831,10 +876,11 @@ class Schema:
                     owning_section = project_scope_paths[source_node.full_path]
                     if section_order[validator.section] > section_order[owning_section]:
                         printError(
-                            f"Bad schema detected in {schema_file}. "
+                            f"Bad schema detected in {source_field.schema_file}. "
                             f"Section {source_node.full_path}, field '{source_field_name}' declares "
-                            f"scope: project against '{validator.section}', which is declared AFTER "
-                            f"'{owning_section}' in this file. The project-file pre-pass parses "
+                            f"scope: project against '{validator.section}' ({target_node.schema_file}), "
+                            f"which is declared AFTER '{owning_section}' "
+                            f"({self.sections[owning_section].schema_file}). The project-file pre-pass parses "
                             f"project-scoped sections in declaration order and validates foreign "
                             f"keys as it parses, so '{validator.section}' would not yet be "
                             f"populated. Move '{validator.section}' above '{owning_section}'."
@@ -844,7 +890,7 @@ class Schema:
                 if source_field.is_combo:
                     if validator.scope == 'project':
                         printError(
-                            f"Bad schema detected in {schema_file}. "
+                            f"Bad schema detected in {source_field.schema_file}. "
                             f"Section {source_node.full_path}, combo FK field '{source_field_name}' "
                             f"declares scope: project. Project scope resolves by a direct hit on the "
                             f"target's storage key and cannot match combo component fields."
@@ -853,21 +899,21 @@ class Schema:
                     for combo_source in source_field.combo_sources:
                         if not source_node.has_field(combo_source):
                             printError(
-                                f"Bad schema detected in {schema_file}. "
+                                f"Bad schema detected in {source_field.schema_file}. "
                                 f"Section {source_node.full_path}, combo FK field '{source_field_name}' "
                                 f"uses missing source field '{combo_source}'."
                             )
                             exit(warningAndErrorReport())
                     if not target_field.is_combo:
                         printError(
-                            f"Bad schema detected in {schema_file}. "
+                            f"Bad schema detected in {source_field.schema_file}. "
                             f"Section {source_node.full_path}, combo FK field '{source_field_name}' "
                             f"validates against non-combo target '{validator.section}.{validator.field}'."
                         )
                         exit(warningAndErrorReport())
                     if target_field.combo_sources != source_field.combo_sources:
                         printError(
-                            f"Bad schema detected in {schema_file}. "
+                            f"Bad schema detected in {source_field.schema_file}. "
                             f"Section {source_node.full_path}, combo FK field '{source_field_name}' "
                             f"uses sources {source_field.combo_sources}, but target "
                             f"'{validator.section}.{validator.field}' uses {target_field.combo_sources}."
@@ -876,14 +922,14 @@ class Schema:
                 else:
                     if not target_node.is_flat:
                         printError(
-                            f"Bad schema detected in {schema_file}. "
+                            f"Bad schema detected in {source_field.schema_file}. "
                             f"Section {source_node.full_path}, field '{source_field_name}' validates "
                             f"against non-flat target section '{validator.section}'."
                         )
                         exit(warningAndErrorReport())
                     if validator.field != target_node.get_storage_key_field_name():
                         printError(
-                            f"Bad schema detected in {schema_file}. "
+                            f"Bad schema detected in {source_field.schema_file}. "
                             f"Section {source_node.full_path}, field '{source_field_name}' validates "
                             f"against '{validator.section}.{validator.field}', but plain FK targets "
                             f"must name the target storage key '{target_node.get_storage_key_field_name()}'."
@@ -896,12 +942,12 @@ class Schema:
             storage_key_field_qualified = node.get_storage_key_field_name_qualified()
             if not storage_key_field_qualified or not node.has_field(storage_key_field_qualified):
                 printError(
-                    f"Bad schema detected in {schema_file}. "
+                    f"Bad schema detected in {node.schema_file}. "
                     f"Flat section {node.full_path} has no qualified storage key field."
                 )
                 exit(warningAndErrorReport())
 
-    def _validate_context_key_sources(self, schema_file: str):
+    def _validate_context_key_sources(self):
         """Validate that each contextKey field has a resolvable source producer."""
         for node in self.nodes.values():
             for field_name, field in node.fields.items():
@@ -909,7 +955,7 @@ class Schema:
                     continue
                 if node.get_context_key_source(field_name) is None:
                     printError(
-                        f"Bad schema detected in {schema_file}. "
+                        f"Bad schema detected in {node.schema_file}. "
                         f"Section {node.full_path}, field '{field_name}' is declared as contextKey "
                         f"but no source field (key/listkey/anchor/storage key) can produce it."
                     )
@@ -936,12 +982,14 @@ class Schema:
             exit(warningAndErrorReport())
                 
     def _validate_sections(self, schema: dict, schema_file: str, context: str,
-                          valid_field_types: set, reserved_keys: set, custom_checker: set, 
+                          valid_field_types: set, reserved_keys: set, custom_checker: set, origins: dict,
                           parent_keys: Optional[List[str]] = None, parent_storage_key: Optional[str] = None,
                           parent_node: Optional['Node'] = None):
         """Validate and build nodes for all sections in the schema
         
         Args:
+            origins: (id(mapping), key) -> (file, line) for each key a schema
+                     extension added, from _merge_extension
             parent_keys: List of ancestor key field names (e.g., ['interface_typeKey', 'modportKey'])
                         that should be added to this node if it's a collapsed table
         """
@@ -950,7 +998,9 @@ class Schema:
         for section in schema:
             is_combo_override = False  # Reset for each section
             current_keys = parent_keys  # Reset for each section - can be overridden by combo keys
+            section_file = origins.get((id(schema), section), (schema_file,))[0]
             node = Node(section, context)
+            node.schema_file = section_file
             
             # Set parent_key_chain from the parent_keys passed down
             # parent_node is passed from the recursive call and contains the parent's field information
@@ -969,14 +1019,18 @@ class Schema:
             
             # Process all fields in this section
             for field_name, ftype in schema[section].items():
+                origin = origins.get((id(schema[section]), field_name))
+                field_file = origin[0] if origin else section_file
                 # Get line number if available
                 if hasattr(ftype, 'lc'):
                     line_number = ftype.lc.line + 1
+                elif origin:
+                    line_number = origin[1]
                 elif hasattr(schema[section], 'lc'):
                     line_number = schema[section].lc.line + 1
                 else:
                     line_number = 0
-                    printWarning(f"Warning: {schema_file} {section} {field_name} does not have a line number")
+                    printWarning(f"Warning: {field_file} {section} {field_name} does not have a line number")
                 
                 # Handle metadata fields early (before creating Field objects)
                 if field_name in ('_attribs', '_singular', '_mapto'):
@@ -984,7 +1038,7 @@ class Schema:
                     
                     # Check for validation errors
                     if result['error']:
-                        printError(f"Bad schema detected in {schema_file}:{line_number}, section {section} context {context}. {result['error']}")
+                        printError(f"Bad schema detected in {field_file}:{line_number}, section {section} context {context}. {result['error']}")
                         exit(warningAndErrorReport())
                     
                     # Validate and set post functions
@@ -992,7 +1046,7 @@ class Schema:
                         fn = self._function_find('post', post_func_str)
                         if fn:
                             if fn == "__bad_function":
-                                printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} post, is referencing an invalid function '{post_func_str}'")
+                                printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} post, is referencing an invalid function '{post_func_str}'")
                                 exit(warningAndErrorReport())
                             else:
                                 node.post_function = fn
@@ -1001,7 +1055,7 @@ class Schema:
                     # so that child tables can inherit it correctly
                     if field_name == '_attribs' and node.is_data_group:
                         if not node.parent_storage_key_field:
-                            printError(f"Bad schema detected in {schema_file}, section {section}. dataGroup table must be nested under a parent table with a key")
+                            printError(f"Bad schema detected in {field_file}, section {section}. dataGroup table must be nested under a parent table with a key")
                             exit(warningAndErrorReport())
                         # Configure key using existing API - it handles dataGroup logic
                         node.set_key()
@@ -1028,8 +1082,8 @@ class Schema:
                         # Special case: data schema is a nested definition but not a subtable
                         # Process it separately but don't add it as a field or subnode
                         sub_schema_dict = {field_name: ftype}
-                        self._validate_sections(sub_schema_dict, schema_file, context + section,
-                                              valid_field_types, reserved_keys, custom_checker, parent_keys, node.get_storage_key_field_name(), node)
+                        self._validate_sections(sub_schema_dict, field_file, context + section,
+                                              valid_field_types, reserved_keys, custom_checker, origins, parent_keys, node.get_storage_key_field_name(), node)
                         # Store reference to dataschema node (will be linked later)
                         continue  # Don't add _dataSchema as a regular field
                     else:
@@ -1047,8 +1101,8 @@ class Schema:
                             
                             # This is a subtable - recursively validate it with updated parent keys
                             sub_schema = {field_name: ftype}
-                            self._validate_sections(sub_schema, schema_file, context + section,
-                                                  valid_field_types, reserved_keys, custom_checker, child_parent_keys, node.get_storage_key_field_name(), node)
+                            self._validate_sections(sub_schema, field_file, context + section,
+                                                  valid_field_types, reserved_keys, custom_checker, origins, child_parent_keys, node.get_storage_key_field_name(), node)
                             
                             # Add the sub-node to this node
                             sub_node = self.nodes.get(context + section + field_name)
@@ -1064,11 +1118,12 @@ class Schema:
                             continue
                         else:
                             if my_type is None:
-                                printError(f"Bad schema detected in {schema_file}:{line_number}. Section {context}, {section}, Field {field_name}, is missing a _type definition")
+                                printError(f"Bad schema detected in {field_file}:{line_number}. Section {context}, {section}, Field {field_name}, is missing a _type definition")
                                 exit(warningAndErrorReport())
                                 
                     # Create field with the determined type
                     field = Field(field_name, my_type, line_number)
+                    field.schema_file = field_file
                     
                     # Check for naming conflicts with auto-generated qualified key fields
                     # The system auto-generates fields like 'interface_typeKey' for key/outerkey fields
@@ -1078,7 +1133,7 @@ class Schema:
                         base_name = field_name[:-3]  # Remove 'Key' suffix
                         if base_name in schema[section]:
                             printError(
-                                f"Bad schema detected in {schema_file}:{line_number}. "
+                                f"Bad schema detected in {field_file}:{line_number}. "
                                 f"Field '{field_name}' appears to be a manually declared qualified key field. "
                                 f"The system auto-generates '{field_name}' from '{base_name}'. "
                                 f"Please remove '{field_name}' from the schema - it will be created automatically."
@@ -1112,7 +1167,7 @@ class Schema:
                         # Verify referenced fields exist
                         for k in combo_sources:
                             if k not in node.fields:
-                                printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} combo key, is referencing an invalid field '{k}'. Fields must be declared before use")
+                                printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} combo key, is referencing an invalid field '{k}'. Fields must be declared before use")
                                 exit(warningAndErrorReport())
                         
                         # Use the set_key API which internally uses add_combo for all setup
@@ -1121,7 +1176,7 @@ class Schema:
                         try:
                             node.set_key(field_name, is_combo=True, combo_sources=combo_sources)
                         except ValueError as e:
-                            printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} combo key, {e}")
+                            printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} combo key, {e}")
                             exit(warningAndErrorReport())
                         my_type = 'key'
                         item_key_name = field_name
@@ -1133,7 +1188,7 @@ class Schema:
                         # Verify referenced fields exist
                         for k in combo_sources:
                             if k not in node.fields:
-                                printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} combo field, is referencing an invalid field '{k}'. Fields must be declared before use")
+                                printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} combo field, is referencing an invalid field '{k}'. Fields must be declared before use")
                                 exit(warningAndErrorReport())
                         
                         # Use add_combo which handles all setup including qualified sources
@@ -1141,9 +1196,10 @@ class Schema:
                         try:
                             combo_field = node.add_combo(field_name, combo_sources, field_type='combo')
                         except ValueError as e:
-                            printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} combo field, {e}")
+                            printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} combo field, {e}")
                             exit(warningAndErrorReport())
                         combo_field.validator = field.validator
+                        combo_field.schema_file = field_file
                         combo_field.is_foreign_key = field.is_foreign_key
                         field = combo_field
                         
@@ -1152,13 +1208,14 @@ class Schema:
                     # Simple field (string type)
                     my_type = ftype
                     field = Field(field_name, my_type, 0)
+                    field.schema_file = field_file
                     node.add_field(field)
                     
                 # Process field type attributes
                 fn = self._function_find('auto', my_type)
                 if fn:
                     if fn == "__bad_function":
-                        printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} auto, is referencing an invalid function '{my_type}' ")
+                        printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} auto, is referencing an invalid function '{my_type}' ")
                         exit(warningAndErrorReport())
                     else:
                         field.auto_function = fn
@@ -1185,16 +1242,16 @@ class Schema:
                     if field_form:
                         sibling = field_form.group(1)
                         if sibling not in node.fields:
-                            printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} typeStruct(field, {sibling}) requires sibling field '{sibling}' to be declared earlier in the same section; it is not.")
+                            printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} typeStruct(field, {sibling}) requires sibling field '{sibling}' to be declared earlier in the same section; it is not.")
                             exit(warningAndErrorReport())
                         if node.fields[sibling].field_type in ('ignore', '_ignore'):
-                            printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} typeStruct(field, {sibling}) names sibling field '{sibling}', whose type '{node.fields[sibling].field_type}' stores no value in the row, so it can never supply a mode word.")
+                            printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} typeStruct(field, {sibling}) names sibling field '{sibling}', whose type '{node.fields[sibling].field_type}' stores no value in the row, so it can never supply a mode word.")
                             exit(warningAndErrorReport())
                         field.type_struct_sibling = sibling
                     else:
                         kinds = self.typeStructKindsForMode(arg)
                         if kinds is None:
-                            printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} typeStruct argument must be 'struct', 'type', or 'field, <sibling>', got '{my_type}'")
+                            printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} typeStruct argument must be 'struct', 'type', or 'field, <sibling>', got '{my_type}'")
                             exit(warningAndErrorReport())
                         field.type_struct_kinds = kinds
                     my_type = 'typeStruct'
@@ -1210,7 +1267,7 @@ class Schema:
                     # declare-before-use rule the typeStruct sibling obeys.
                     # dataGroup tables have no per-row key to order against.
                     if item_key_name is None and not node.is_data_group:
-                        printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} is a typeStruct field declared before the section's key field; declare the key field first.")
+                        printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} is a typeStruct field declared before the section's key field; declare the key field first.")
                         exit(warningAndErrorReport())
                     # A typeStruct field names either a types row or a
                     # structures row (resolved in processSimple). It carries
@@ -1242,7 +1299,7 @@ class Schema:
                     if check[:4] == 'post':
                         continue
                     if check not in valid_field_types and field_name not in custom_checker:
-                        printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} is using unknown value '{check}' ")
+                        printError(f"Bad schema detected in {field_file}:{line_number}. Field {field_name} is using unknown value '{check}' ")
                         exit(warningAndErrorReport())
                         
                 # Handle key field
@@ -1274,7 +1331,7 @@ class Schema:
                     # 2. In nested tables (where 'key' was converted to 'anchor')
                     if not node.is_combo_key and not node.parent_storage_key_field:
                         printError(
-                            f"Bad schema detected in {schema_file}:{line_number}. "
+                            f"Bad schema detected in {field_file}:{line_number}. "
                             f"Field '{field_name}' is declared as 'anchor' but no _key directive is present and this is not a nested table. "
                             f"Anchor fields are only valid when defining composite keys with _key or in nested tables. "
                             f"Either add a _key directive or change '{field_name}' to 'key'."
@@ -1310,7 +1367,7 @@ class Schema:
             
             # Verify that list tables have an explicit key defined
             if node.is_list and item_key_name is None:
-                printError(f"Bad schema detected in {schema_file}. Section {context}{section} is a list table but has no key field defined. All list tables must have an explicit key field (e.g., 'fieldName: key').")
+                printError(f"Bad schema detected in {section_file}. Section {context}{section} is a list table but has no key field defined. All list tables must have an explicit key field (e.g., 'fieldName: key').")
                 exit(warningAndErrorReport())
             
             node.finalize()
@@ -1327,10 +1384,10 @@ class Schema:
             if node.is_data_group and item_key_name is None:
                 # Verify storage_key_field was set correctly
                 if not node.storage_key_field:
-                    printError(f"Bad schema detected in {schema_file}, section {section}. dataGroup table storage_key_field not configured")
+                    printError(f"Bad schema detected in {section_file}, section {section}. dataGroup table storage_key_field not configured")
                     exit(warningAndErrorReport())
             elif item_key_name is None:
-                printError(f"Bad schema detected in {schema_file}, section {section}. There is no field defined as key")
+                printError(f"Bad schema detected in {section_file}, section {section}. There is no field defined as key")
                 exit(warningAndErrorReport())
                 
             # Verify single entry list has required fields
@@ -1340,10 +1397,10 @@ class Schema:
                     if field.field_type == 'listkey':
                         found_listkey = True
                     elif field.field_type not in ['key', 'outerkey', 'outer', 'outerkeyKey', 'context', 'contextKey']:
-                        printError(f"Bad schema detected in {schema_file}, section {section} context {context}. singleEntryList is specified but field {field_name} is defined as {field.field_type}. Only listkey, key, outerkey and outer are allowed")
+                        printError(f"Bad schema detected in {section_file}, section {section} context {context}. singleEntryList is specified but field {field_name} is defined as {field.field_type}. Only listkey, key, outerkey and outer are allowed")
                         exit(warningAndErrorReport())
                 if not found_listkey:
-                    printError(f"Bad schema detected in {schema_file}, section {section} context {context}. singleEntryList is specified but no field is defined as listkey")
+                    printError(f"Bad schema detected in {section_file}, section {section} context {context}. singleEntryList is specified but no field is defined as listkey")
                     exit(warningAndErrorReport())
                     
             # Add _context field

@@ -909,6 +909,12 @@ python3 test_type_struct_field.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: schemaExtensions schema fragments"
+echo "------------------------------------------------------------------------"
+python3 test_schema_extensions.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: socket shell on a parameterizable block is registered by the registrar"
 echo "------------------------------------------------------------------------"
 python3 test_socket_parameterized_registrar.py || FAILED=1

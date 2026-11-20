@@ -1,6 +1,10 @@
 # Base project file that defines project level information, inherited by every project
 # note $a2c is automatically replaced with the path to the a2c directory
 dbSchema: $a2c/config/schema.yaml
+# Schema fragments merged onto dbSchema, base then pro then user. A fragment
+# only adds sections, fields or sub-tables; see SCHEMA_SPECIFICATION.md.
+#schemaExtensions:
+#  - $a2c/config/myExtension.yaml
 
 # Interface definitions loaded into the _a2csystem context of every project
 systemFiles:
