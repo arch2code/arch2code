@@ -10,10 +10,11 @@
 // One rdy/vld lane a src BFM receives from the RTL. Ready is high only while
 // the model waits in read(). A beat the RTL holds with ready low is offered,
 // so a model that reads only an active port sees it, and is withdrawn when
-// reset drops it. The driver offers a beat at the falling edge after the RTL
-// raises vld, so a model that reads it then raises ready in time for the next
-// rising edge. The RTL's outputs from the rising edge have settled half a
-// clock later, and the protocol holds vld and the data until the handshake.
+// reset or the RTL drops it. The driver offers a beat at the falling edge
+// after the RTL raises vld, so a model that reads it then raises ready in time
+// for the next rising edge. The RTL's outputs from the rising edge have
+// settled half a clock later, and the protocol holds vld and the data until
+// the handshake.
 //
 // The falling-edge offer assumes vld and the data come from flops on this
 // clock's rising edge. An output with a combinational path from an input
@@ -70,6 +71,11 @@ public:
                 continue;
             }
             bool live = m_rst_n.read();
+            if (live && offered && !m_vld) {
+                // The RTL dropped an offered beat with no handshake.
+                m_ch->withdraw();
+                offered = false;
+            }
             if (!live) {
                 if (offered) {
                     m_ch->withdraw();

@@ -19,7 +19,8 @@ A src model that waits on setExternalEvent() and reads only an active port
 (rtl=arb) must not deadlock, and moves as fast as a model that waits in
 read(). The BFM offers it a beat at the falling edge after vld rises, so the
 RTL takes the first beat at the next rising edge. In rtl=arbreset such a
-model must not see a beat that reset took off the wire.
+model must not see a beat that reset took off the wire, and in rtl=arbdrop one that the
+RTL lowered vld on with no handshake.
 
 Every run also checks that it ends without a hang or a Q_ASSERT, that order
 holds and no beat is lost, and, with no delay, that no model call returns on
@@ -120,6 +121,9 @@ CASES += [Case(f, 'src', 'arb', 0, 'allowed', d) for f in ('rv', 'axis', 'ar', '
 # The same model, busy 25 ns after each read, and a reset that meets a beat
 # offered to it.
 CASES += [Case(f, 'src', 'arbreset', 25, 'allowed', d) for f in ('rv', 'axis', 'ar', 'aw') for d in DELAYS]
+# The same busy model, with an RTL that lowers vld on an offered beat for two
+# edges, with no handshake.
+CASES += [Case(f, 'src', 'arbdrop', 25, 'allowed', 0) for f in ('rv', 'axis', 'ar', 'aw')]
 CASES += [Case(f, dr, m, 0, 'allowed', d) for f in BUS for dr in BUS_MODES for m in BUS_MODES[dr] for d in DELAYS
           if not (m == 'error' and f == 'mem') and not (m == 'slow' and f == 'mem' and dr == 'dst')
           and not (f in UNTIMED and d > 0)]
@@ -135,7 +139,7 @@ B_DROP = ("axi_write_bfm.h:163-168 takes the model's B on a reset edge and drops
 DUMMY_W = ("axi_write_bfm.h:127-145 drains the burst of the last AW at reset: it sends the model a zero W beat, "
            "with that AW's ID, for each beat left, and the model reads them as data. This is a defect in the reset "
            "drain, left for the reset work")
-TAKE_IN_RESET = f"rdy_vld_src_driver.h:83-87 {RESET_SRC}"
+TAKE_IN_RESET = f"rdy_vld_src_driver.h:89-93 {RESET_SRC}"
 R_TAKE_IN_RESET = f"axi_read_bfm.h:235 adds no reset handling, and {TAKE_IN_RESET}"
 B_TAKE_IN_RESET = f"axi_write_bfm.h:290 adds no reset handling, and {TAKE_IN_RESET}"
 DST_RULE_1 = ('dst write returns never run ahead of handshakes', 'dst write returns at its handshake edge')
@@ -372,6 +376,17 @@ def handshakeChecks(case, ev, deltas, output):
               f"active {[t for _, t in ev.get('act', [])]}")
         check(case, 'an arbitrating reader sees no beat reset took off the wire', not ev.get('rstact'),
               f"isActive() mid-clock after a reset edge at {[t for _, t in ev.get('rstact', [])]}")
+    if case.rtl == 'arbdrop':
+        # The model sees the beat active half a clock before the RTL lowers
+        # vld. The BFM sees vld low at the next rising edge and withdraws
+        # the beat, so it is not active half a clock after that edge.
+        drops, act = ev.get('drop', []), {t for _, t in ev.get('act', [])}
+        check(case, 'the RTL drops a beat offered to the model', bool(drops) and drops[0][1] - PERIOD // 2 in act,
+              f"drops {drops}, active {sorted(act)}")
+        if drops:
+            gap = drops[0][1] + PERIOD + PERIOD // 2
+            check(case, 'an arbitrating reader sees no beat the RTL dropped', gap not in act,
+                  f"drop at {drops[0][1]}, active at {gap}: {gap in act}")
     hsTimes = [t for _, t in hs]
     hsValues, retValues = [v for v, _ in hs], [v for v, _ in rets]
     check(case, ORDER, hsValues == IN_ORDER and retValues == IN_ORDER,

@@ -498,7 +498,10 @@ void runProbe( int delayNs, const std::string &mode )
 //           model that waits on setExternalEvent() and calls read() only
 //           while isActive(); rv, axis, ar, r, aw, w and b), arbreset (arb
 //           with a busy model and a reset that meets a beat offered to it;
-//           rv, axis, ar and aw)
+//           rv, axis, ar and aw), arbdrop (arb with a busy model, where the
+//           RTL lowers vld on the first beat it holds with rdy low, keeps it
+//           low for two edges, then offers the beat again; rv, axis, ar
+//           and aw)
 //           A bus runs four operations, write, read, write, read: always,
 //           reset, slow (the RTL completer adds two wait states, or the
 //           RTL master two idle edges), error (apb and ahb: operations 1
@@ -521,7 +524,9 @@ void runProbe( int delayNs, const std::string &mode )
 //   rsths      a src RTL sees vld and ready high on a reset edge, with this beat
 //   rstvld     a src RTL has vld high on a reset edge, with this beat
 //   rstact     an arbreset model sees isActive() mid-clock after a reset edge
-//   act        an arbreset model sees isActive() mid-clock out of reset
+//   act        an arbreset or arbdrop model sees isActive() mid-clock out of
+//              reset
+//   drop       an arbdrop RTL lowers vld on this beat with no handshake
 //   req, ack   non-handshake RTL: it starts an operation, or the operation
 //              completes on this edge
 //   rerr       a bus RTL sees the completion's error response
@@ -591,7 +596,7 @@ struct handoverBase : sc_module
 
     void waitEdge() { wait( clk.posedge_event() ); }
 
-    bool arb() const { return cfg.rtl == "arb" || cfg.rtl == "arbreset"; }
+    bool arb() const { return cfg.rtl == "arb" || cfg.rtl == "arbreset" || cfg.rtl == "arbdrop"; }
 
     // The hold and the mid-run reset count from the edge at or before the
     // lane's first send or offer.
@@ -649,7 +654,7 @@ struct handoverBase : sc_module
         } else {
             sc_spawn( [this, l, go] { sender( l, go ); } );
         }
-        if (cfg.rtl == "arbreset") {
+        if (cfg.rtl == "arbreset" || cfg.rtl == "arbdrop") {
             sc_spawn( [this] {
                 while (true) {
                     wait( clk.posedge_event() );
@@ -699,7 +704,7 @@ struct handoverBase : sc_module
     void sender( lane l, std::function<bool()> go )
     {
         std::mt19937 rng( 1 );
-        int n = 0, lastHs = -3;
+        int n = 0, lastHs = -3, dropEdge = -3;
         for (int edge = 1;; edge++) {
             waitEdge();
             if (!rst_n) {
@@ -712,9 +717,16 @@ struct handoverBase : sc_module
                 logEv( "hs", l.beat ? l.beat() : n );
                 n++;
                 lastHs = edge;
+            } else if (l.vld && cfg.rtl == "arbdrop" && dropEdge < 0) {
+                // Lower vld on a beat held with rdy low, for two edges.
+                logEv( "drop", l.beat ? l.beat() : n );
+                l.vld = false;
+                dropEdge = edge;
+                continue;
             } else if (l.vld) {
                 continue;
             }
+            if (edge == dropEdge + 1) { continue; }
             if (go()) { startLane(); }
             bool offer = cfg.rtl == "hold" ? holdOver() : cfg.rtl == "every3" ? edge % 3 == 0 && edge - lastHs >= 3
                        : cfg.rtl == "random" ? bool( rng() & 1 ) : cfg.rtl == "waiting" ? modelReading : true;
