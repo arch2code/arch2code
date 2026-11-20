@@ -1873,7 +1873,7 @@ Both run scripts pass every argument that starts with `+` to the simulator, so p
 A mismatch report names the comparator, the pair and, where the comparator keys its items, the key:
 
 ```
-UVM_ERROR .../a2c_uvm_pkg.sv(785) @ 13000: uvm_test_top.env.raw_video_out_agent.model_cmp [A2C_MODEL_CMP] uvm_test_top.env.raw_video_out_agent.model_cmp: pair 5: DUT '{data:'{pixels:'ha090807}, frame:'{eol:'h0, sof:'h0, eof:'h0}}, model '{data:'{pixels:'ha090806}, frame:'{eol:'h0, sof:'h0, eof:'h0}}; DUT item sampled at 12500, model item at 10500; fields that differ, lhs DUT and rhs model: item.data: lhs = 'h50484038 : rhs = 'h50484030
+UVM_ERROR .../a2c_uvm_pkg.sv(785) @ 13000: uvm_test_top.env.stream_out_agent.model_cmp [A2C_MODEL_CMP] uvm_test_top.env.stream_out_agent.model_cmp: pair 5: DUT '{data:'{pixels:'ha090807}, frame:'{eol:'h0, sof:'h0, eof:'h0}}, model '{data:'{pixels:'ha090806}, frame:'{eol:'h0, sof:'h0, eof:'h0}}; DUT item sampled at 12500, model item at 10500; fields that differ, lhs DUT and rhs model: item.data: lhs = 'h50484038 : rhs = 'h50484030
 ```
 
 - `pair <n>` counts the comparator's pairs from 1, in the order it compared them. On an in-order comparator the pair is the n-th item of each lane, or of each key.
