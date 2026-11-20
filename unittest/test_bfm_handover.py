@@ -175,6 +175,10 @@ def resetDelayed(case):
     return case.rtl == 'reset' and case.delay > 0
 
 
+def srcResetNow(case):
+    return case.rtl == 'reset' and case.delay == 0
+
+
 def resetLate(case):
     return case.rtl == 'resetlate'
 
@@ -229,26 +233,20 @@ EXPECTED_FAILURES = [
 # The _ack BFMs: (family, src lines, dst lines, how a src reset run loses order, how a dst reset run loses
 # order).
 ACK_BFMS = (
-    ('pushack', 'push_ack_bfm.h:39-46', 'push_ack_bfm.h:76-83',
+    ('pushack', 'push_ack_bfm.h:39-49', 'push_ack_bfm.h:80-87',
      'hs missing, model missing+duplicate', 'hs missing, model ok'),
-    ('popack', 'pop_ack_bfm.h:37-45', 'pop_ack_bfm.h:77-84',
+    ('popack', 'pop_ack_bfm.h:37-48', 'pop_ack_bfm.h:81-88',
      'hs missing, model ok', 'hs missing, model missing+duplicate'),
-    ('notifyack', 'notify_ack_bfm.h:37-43', 'notify_ack_bfm.h:71-76',
+    ('notifyack', 'notify_ack_bfm.h:37-46', 'notify_ack_bfm.h:75-80',
      'hs missing, model ok', 'hs missing, model ok'),
-    ('reqack', 'req_ack_bfm.h:39-48', 'req_ack_bfm.h:79-85',
+    ('reqack', 'req_ack_bfm.h:39-51', 'req_ack_bfm.h:83-89',
      'hs missing, model missing+duplicate', 'hs missing, model missing+duplicate'),
 )
-ACK_LATE = "samples the request only on a clock edge, so the model gets it an edge after the RTL raises it"
-ACK_RATE = "drops ack for the edge after each transfer and then waits an edge to sample the request again"
 ACK_RESET = "never reads rst_n after the first reset: it serves a request it samples on a reset edge"
 for fam, srcLines, dstLines, srcOrder, dstOrder in ACK_BFMS:
     EXPECTED_FAILURES += [
-        XFail((fam,), 'src', ('src latency',), lambda c: c.rtl in ('always', 'waiting'), '+1 clock',
-              f"{srcLines} {ACK_LATE}"),
-        XFail((fam,), 'src', ('throughput',), anyCase, None, f"{srcLines} {ACK_RATE}, one transfer per two clocks"),
-        XFail((fam,), 'src', (ORDER,), inReset, srcOrder, f"{srcLines} {ACK_RESET}"),
-        XFail((fam,), 'src', (RESET_RETURN,), inReset, None, f"{srcLines} {ACK_RESET}"),
-        XFail((fam,), 'src', (ACK_RULE_1, ACK_RETURN), inReset, 'count', f"{srcLines} {ACK_RESET}"),
+        XFail((fam,), 'src', (ORDER,), srcResetNow, srcOrder, f"{srcLines} {ACK_RESET}"),
+        XFail((fam,), 'src', (ACK_RULE_1, ACK_RETURN), srcResetNow, 'count', f"{srcLines} {ACK_RESET}"),
         XFail((fam,), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"{dstLines} {RESET_DST}"),
         XFail((fam,), 'dst', (ORDER,), inReset, dstOrder, f"{dstLines} {RESET_DST}"),
     ]

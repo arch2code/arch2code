@@ -35,8 +35,12 @@ public:
         do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             hdl_if_p->ack = false;
+            // A request the RTL raised at a rising edge has settled by the
+            // falling edge, so the model gets it there and its ack is on the
+            // wire for the next rising edge. A rising edge still catches a
+            // request raised after the falling edge.
             do {
-                wait(clk.posedge_event());
+                wait(clk.posedge_event() | clk.negedge_event());
             } while (!hdl_if_p->notify);
             if_p->notify();
             hdl_if_p->ack = true;
