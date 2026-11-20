@@ -596,6 +596,13 @@ struct handoverBase : sc_module
 
     void waitEdge() { wait( clk.posedge_event() ); }
 
+    // An _ack src model gets a request. The BFM must not hand it one while
+    // reset is asserted.
+    void received()
+    {
+        if (!rst_n) { logEv( "rstcall", 0 ); }
+    }
+
     bool arb() const { return cfg.rtl == "arb" || cfg.rtl == "arbreset" || cfg.rtl == "arbdrop"; }
 
     // The hold and the mid-run reset count from the edge at or before the
@@ -1313,7 +1320,7 @@ struct pushAckSrc : handoverBase
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
         measureSrc( { hdl.push, hdl.ack, [this] { return hdl.data.read().to_uint64(); },
                       [this]( int i ) { hdl.data = sc_bv<32>( i ); }, hdl.data.value_changed_event() },
-                    {}, [this] { wordSt v; in->pushReceive( v ); in->ack(); return v.w; }, [] { return true; } );
+                    {}, [this] { wordSt v; in->pushReceive( v ); received(); in->ack(); return v.w; }, [] { return true; } );
     }
 };
 
@@ -1347,7 +1354,7 @@ struct popAckSrc : handoverBase
         timed = &ch;
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
         measureSrc( { hdl.pop, hdl.ack, [this] { return hdl.rdata.read().to_uint64(); }, {}, hdl.rdata.value_changed_event() },
-                    {}, [this] { in->popReceive(); wordSt v; v.w = served++; in->ack( v ); return v.w; },
+                    {}, [this] { in->popReceive(); received(); wordSt v; v.w = served++; in->ack( v ); return v.w; },
                     [] { return true; } );
     }
 };
@@ -1381,7 +1388,7 @@ struct notifyAckSrc : handoverBase
         timed = &ch;
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
         measureSrc( { hdl.notify, hdl.ack, {}, {}, hdl.notify.value_changed_event() },
-                    {}, [this] { in->waitNotify(); in->ack(); return served++; }, [] { return true; } );
+                    {}, [this] { in->waitNotify(); received(); in->ack(); return served++; }, [] { return true; } );
     }
 };
 
@@ -1415,7 +1422,7 @@ struct reqAckSrc : handoverBase
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
         measureSrc( { hdl.req, hdl.ack, [this] { return hdl.data.read().to_uint64(); },
                       [this]( int i ) { hdl.data = sc_bv<32>( i ); }, hdl.data.value_changed_event() },
-                    {}, [this] { wordSt d; in->reqReceive( d ); in->ack( d ); return d.w; }, [] { return true; } );
+                    {}, [this] { wordSt d; in->reqReceive( d ); received(); in->ack( d ); return d.w; }, [] { return true; } );
     }
 };
 

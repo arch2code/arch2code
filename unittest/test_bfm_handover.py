@@ -149,6 +149,7 @@ SRC_COUNT = 'src read count matches handshakes'
 ORDER = 'order kept, no beat lost'
 RESET_RETURN = 'no model return on a reset edge'
 ACK_RULE_1 = "src handshake only after the model's ack"
+RESET_CALL = 'no request reaches the model while reset is asserted'
 ACK_RETURN = "src handshake on the edge after the model's ack"
 DONE = 'probe runs to completion'
 NO_ASSERT = 'no Q_ASSERT stops the run'
@@ -173,10 +174,6 @@ def inReset(case):
 
 def resetDelayed(case):
     return case.rtl == 'reset' and case.delay > 0
-
-
-def srcResetNow(case):
-    return case.rtl == 'reset' and case.delay == 0
 
 
 def resetLate(case):
@@ -230,23 +227,15 @@ EXPECTED_FAILURES = [
     XFail(('w',), 'src', (SRC_RETURN,), lambda c: inReset(c) or resetLate(c), 'count', DUMMY_W),
 ]
 
-# The _ack BFMs: (family, src lines, dst lines, how a src reset run loses order, how a dst reset run loses
-# order).
+# The _ack dst BFMs: (family, lines, how a reset run loses order).
 ACK_BFMS = (
-    ('pushack', 'push_ack_bfm.h:39-49', 'push_ack_bfm.h:80-87',
-     'hs missing, model missing+duplicate', 'hs missing, model ok'),
-    ('popack', 'pop_ack_bfm.h:37-48', 'pop_ack_bfm.h:81-88',
-     'hs missing, model ok', 'hs missing, model missing+duplicate'),
-    ('notifyack', 'notify_ack_bfm.h:37-46', 'notify_ack_bfm.h:75-80',
-     'hs missing, model ok', 'hs missing, model ok'),
-    ('reqack', 'req_ack_bfm.h:39-51', 'req_ack_bfm.h:83-89',
-     'hs missing, model missing+duplicate', 'hs missing, model missing+duplicate'),
+    ('pushack', 'push_ack_bfm.h:81-88', 'hs missing, model ok'),
+    ('popack', 'pop_ack_bfm.h:82-89', 'hs missing, model missing+duplicate'),
+    ('notifyack', 'notify_ack_bfm.h:76-81', 'hs missing, model ok'),
+    ('reqack', 'req_ack_bfm.h:84-90', 'hs missing, model missing+duplicate'),
 )
-ACK_RESET = "never reads rst_n after the first reset: it serves a request it samples on a reset edge"
-for fam, srcLines, dstLines, srcOrder, dstOrder in ACK_BFMS:
+for fam, dstLines, dstOrder in ACK_BFMS:
     EXPECTED_FAILURES += [
-        XFail((fam,), 'src', (ORDER,), srcResetNow, srcOrder, f"{srcLines} {ACK_RESET}"),
-        XFail((fam,), 'src', (ACK_RULE_1, ACK_RETURN), srcResetNow, 'count', f"{srcLines} {ACK_RESET}"),
         XFail((fam,), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"{dstLines} {RESET_DST}"),
         XFail((fam,), 'dst', (ORDER,), inReset, dstOrder, f"{dstLines} {RESET_DST}"),
     ]
@@ -372,6 +361,10 @@ def handshakeChecks(case, ev, deltas, output):
             gap = drops[0][1] + PERIOD // 2
             check(case, 'an arbitrating reader sees no beat the RTL dropped', gap not in act,
                   f"drop at {drops[0][1]}, active at {gap}: {gap in act}")
+    if case.rtl == 'reset' and case.dir == 'src' and case.family in TWO_PHASE:
+        check(case, RESET_CALL, not ev.get('rstcall'),
+              f"model gets a request at {[t for _, t in ev.get('rstcall', [])]}, reset edges "
+              f"{[t for _, t in ev.get('rst', [])]}")
     hsTimes = [t for _, t in hs]
     hsValues, retValues = [v for v, _ in hs], [v for v, _ in rets]
     check(case, ORDER, hsValues == IN_ORDER and retValues == IN_ORDER,
