@@ -504,7 +504,7 @@ The rdy_vld, axi4_stream and AXI BFMs use four more calls to hand a beat over at
 - `outPort->offer(data)` - Shows a beat the RTL holds while the model is not reading. `isActive()` becomes true and the external event fires, so a model that reads only an active port sees it. `read()` returns only on the `write()` that follows at the handshake edge.
 - `outPort->withdraw()` - Takes back an offered beat the RTL dropped, as when reset takes `vld` down, so `isActive()` is false again.
 
-A model that reads a port only while `isActive()` is true, through `setExternalEvent()`, moves one beat per two clocks against RTL. The BFM offers a beat at the first edge that samples it, and `rdy` rises only once the model is in `read()`, so the RTL hands the beat over an edge later. A model that waits in `read()` moves one beat per clock. With a delay, both models move at the same rate.
+A model that reads a port only while `isActive()` is true, through `setExternalEvent()`, moves as fast against RTL as a model that waits in `read()`: one beat per clock with no delay. The BFM offers a beat at the falling edge after the RTL raises `vld`, so the model's `read()` raises `rdy` before the next rising edge. The BFM reads the RTL's outputs there because they have settled half a clock after the rising edge, and the protocol holds `vld` and the data until the handshake.
 
 The AXI and axi4_stream BFMs reach these calls through the channel's public inner rdy_vld ports, such as `m_addr_in` and `m_tx_out`.
 

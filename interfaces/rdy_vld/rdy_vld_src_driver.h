@@ -10,7 +10,10 @@
 // One rdy/vld lane a src BFM receives from the RTL. Ready is high only while
 // the model waits in read(). A beat the RTL holds with ready low is offered,
 // so a model that reads only an active port sees it, and is withdrawn when
-// reset drops it.
+// reset drops it. The driver offers a beat at the falling edge after the RTL
+// raises vld, so a model that reads it then raises ready in time for the next
+// rising edge. The RTL's outputs from the rising edge have settled half a
+// clock later, and the protocol holds vld and the data until the handshake.
 template <class T>
 class rdyVldSrcDriver {
 
@@ -20,9 +23,9 @@ public:
                     sc_signal<bool> &vld, sc_signal<bool> &rdy, std::function<void(T &)> unpack) :
         m_ch(ch), m_clk(clk), m_rst_n(rst_n), m_vld(vld), m_rdy(rdy), m_unpack(unpack) {}
 
-    // The BFM calls this from a method on clk.pos(). An edge with vld high and
-    // ready low leaves the beat with the RTL. It only reads the wires, so a
-    // second call in the same delta changes nothing.
+    // The BFM calls this from a method on both clock edges. An edge with vld
+    // high and ready low leaves the beat with the RTL. It only reads the
+    // wires, so a second call in the same delta changes nothing.
     void sampleEdge() {
         m_held = m_rst_n.read() && m_vld.read() && !m_rdy.read();
         if (m_held) {
@@ -45,7 +48,16 @@ public:
         bool offered = false;
         m_rdy = m_ch->get_rdy();
         while (true) {
-            wait(m_clk.posedge_event() | m_ch->readEnteredEvent());
+            wait(m_clk.posedge_event() | m_clk.negedge_event() | m_ch->readEnteredEvent());
+            if (m_clk.negedge()) {
+                if (m_rst_n && m_vld && !m_rdy && !offered) {
+                    m_unpack(data);
+                    m_ch->offer(data);
+                    offered = true;
+                }
+                m_rdy = m_ch->get_rdy();
+                continue;
+            }
             if (!m_clk.posedge()) {
                 m_rdy = m_ch->get_rdy();
                 continue;
@@ -66,10 +78,10 @@ public:
                 // The RTL must not transfer while a delayed send blocks.
                 m_rdy = false;
                 take(data);
-                // A send that returns in an edge's posedge delta may run
-                // before the method samples that edge. The wires still show
-                // the values the edge sampled, so sample it here.
-                if (m_clk.posedge()) {
+                // A send that returns in an edge's delta may run before the
+                // method samples that edge. The wires still show the values
+                // the edge sampled, so sample it here.
+                if (m_clk.event()) {
                     sampleEdge();
                 }
                 // An edge that passed while the send blocked left the next

@@ -68,7 +68,7 @@ public:
         SC_THREAD(bfm_driver_ar_thread);
         SC_THREAD(bfm_driver_r_thread);
         SC_METHOD(sample_edges);
-        sensitive << clk.pos();
+        sensitive << clk.pos() << clk.neg();
         dont_initialize();
     }
 
@@ -187,7 +187,7 @@ public:
         SC_THREAD(bfm_driver_ar_thread);
         SC_THREAD(bfm_driver_r_thread);
         SC_METHOD(sample_edges);
-        sensitive << clk.pos();
+        sensitive << clk.pos() << clk.neg();
         dont_initialize();
     }
 

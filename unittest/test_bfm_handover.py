@@ -16,11 +16,10 @@ woken by time, runs ahead of that edge's processes, so the RTL takes the beat
 at that edge.
 
 A src model that waits on setExternalEvent() and reads only an active port
-(rtl=arb) must not deadlock. The BFM offers it a beat at the first edge that
-samples vld, and ready rises only once the model is in read(), so every beat
-takes one clock more: one beat per two clocks. With a delay it moves at the
-same rate as a model that waits in read(). In rtl=arbreset such a model must
-not see a beat that reset took off the wire.
+(rtl=arb) must not deadlock, and moves as fast as a model that waits in
+read(). The BFM offers it a beat at the falling edge after vld rises, so the
+RTL takes the first beat at the next rising edge. In rtl=arbreset such a
+model must not see a beat that reset took off the wire.
 
 Every run also checks that it ends without a hang or a Q_ASSERT, that order
 holds and no beat is lost, and, with no delay, that no model call returns on
@@ -136,7 +135,7 @@ B_DROP = ("axi_write_bfm.h:163-168 takes the model's B on a reset edge and drops
 DUMMY_W = ("axi_write_bfm.h:127-145 drains the burst of the last AW at reset: it sends the model a zero W beat, "
            "with that AW's ID, for each beat left, and the model reads them as data. This is a defect in the reset "
            "drain, left for the reset work")
-TAKE_IN_RESET = f"rdy_vld_src_driver.h:64-68 {RESET_SRC}"
+TAKE_IN_RESET = f"rdy_vld_src_driver.h:76-80 {RESET_SRC}"
 R_TAKE_IN_RESET = f"axi_read_bfm.h:235 adds no reset handling, and {TAKE_IN_RESET}"
 B_TAKE_IN_RESET = f"axi_write_bfm.h:290 adds no reset handling, and {TAKE_IN_RESET}"
 DST_RULE_1 = ('dst write returns never run ahead of handshakes', 'dst write returns at its handshake edge')
@@ -149,8 +148,11 @@ ACK_RULE_1 = "src handshake only after the model's ack"
 ACK_RETURN = "src handshake on the edge after the model's ack"
 DONE = 'probe runs to completion'
 NO_ASSERT = 'no Q_ASSERT stops the run'
-ARB_FIRST = 'an arbitrating reader gets the first beat one clock late'
-ARB_RATE = 'an arbitrating reader moves one beat per two clocks'
+ARB_FIRST = 'an arbitrating reader gets the first beat at the first edge after vld'
+ARB_RATE = 'an arbitrating reader moves as fast as a reader that waits in read()'
+# Handshake gap of a reader that waits in read(), per delay: a delayed send
+# holds ready low until it returns.
+WAITING_GAP = {0: PERIOD, 15: 2 * PERIOD}
 
 
 def anyCase(case):
@@ -182,10 +184,10 @@ MOVED_RESET = ('rv', 'axis', 'ar', 'aw', 'w')
 # failure, for example which beats are lost, and None accepts any failure.
 XFail = namedtuple('XFail', 'families dir checks applies how reason')
 EXPECTED_FAILURES = [
-    XFail(('rv',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"rdy_vld_bfm.h:145 {RESET_DST}"),
-    XFail(('rv',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"rdy_vld_bfm.h:145 {RESET_DST}"),
-    XFail(('axis',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi4_stream_bfm.h:187 {RESET_DST}"),
-    XFail(('axis',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi4_stream_bfm.h:187 {RESET_DST}"),
+    XFail(('rv',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"rdy_vld_bfm.h:151 {RESET_DST}"),
+    XFail(('rv',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"rdy_vld_bfm.h:151 {RESET_DST}"),
+    XFail(('axis',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi4_stream_bfm.h:193 {RESET_DST}"),
+    XFail(('axis',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi4_stream_bfm.h:193 {RESET_DST}"),
     XFail(('ar',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_read_bfm.h:227 {RESET_DST}"),
     XFail(('ar',), 'dst', (ORDER,), inReset, 'hs missing, model ok', f"axi_read_bfm.h:227 {RESET_DST}"),
     XFail(('aw',), 'dst', DST_RULE_1 + (RESET_RETURN,), inReset, None, f"axi_write_bfm.h:257 {RESET_DST}"),
@@ -362,9 +364,12 @@ def handshakeChecks(case, ev, deltas, output):
     hs, calls, rets, vld = (ev.get(k, []) for k in ('hs', 'call', 'ret', 'vld'))
     if case.rtl == 'arbreset':
         r0 = min(t for _, t in ev['rst'])
+        # The model sees the beat active half a clock before the reset edge.
         check(case, 'the reset meets a beat offered to the model',
-              r0 in {t for _, t in ev.get('rstvld', [])} - {t for _, t in ev.get('rsths', [])},
-              f"first reset edge {r0}, vld {ev.get('rstvld', [])}, vld and ready {ev.get('rsths', [])}")
+              r0 in {t for _, t in ev.get('rstvld', [])} - {t for _, t in ev.get('rsths', [])}
+              and r0 - PERIOD // 2 in {t for _, t in ev.get('act', [])},
+              f"first reset edge {r0}, vld {ev.get('rstvld', [])}, vld and ready {ev.get('rsths', [])}, "
+              f"active {[t for _, t in ev.get('act', [])]}")
         check(case, 'an arbitrating reader sees no beat reset took off the wire', not ev.get('rstact'),
               f"isActive() mid-clock after a reset edge at {[t for _, t in ev.get('rstact', [])]}")
     hsTimes = [t for _, t in hs]
@@ -425,13 +430,14 @@ def handshakeChecks(case, ev, deltas, output):
             check(case, SRC_COUNT, len(rets) == len(hs),
                   f"{len(rets)} reads returned, {len(hs)} handshakes")
     if case.rtl == 'arb' and hs and vld:
-        # The BFM offers each beat at the first edge that samples it, and
-        # only then does the model call read() and raise ready.
-        first = nextEdge(vld[0][1]) + PERIOD
+        # The BFM offers each beat at the falling edge after vld rises, so the
+        # model's read() raises ready before the next rising edge.
+        first = nextEdge(vld[0][1])
         check(case, ARB_FIRST, hsTimes[0] == first,
               f"vld {vld[0][1]}, first handshake {hsTimes[0]}, expected {first}")
         gaps = sorted({b - a for a, b in zip(hsTimes, hsTimes[1:])})
-        check(case, ARB_RATE, gaps == [2 * PERIOD], f"handshake gaps {gaps} ps")
+        check(case, ARB_RATE, gaps == [WAITING_GAP[case.delay]],
+              f"handshake gaps {gaps} ps, expected {WAITING_GAP[case.delay]}")
         NUMBERS.append(f"{case.family} src rtl=arb delay={case.delay}: handshake gap {gaps} ps; vld {vld[0][1]} ps, "
                        f"first handshake {hsTimes[0]} ps")
     if case.rtl in FULL_RATE and case.delay == 0 and case.busy == 0 and case.bp == 'allowed':

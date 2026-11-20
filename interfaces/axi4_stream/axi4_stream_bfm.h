@@ -52,6 +52,9 @@ public:
         SC_METHOD(transfer_monitor);
         sensitive << clk.pos();
         dont_initialize();
+        SC_METHOD(sample_edges);
+        sensitive << clk.pos() << clk.neg();
+        dont_initialize();
     }
 
     virtual void end_of_elaboration() {
@@ -89,10 +92,13 @@ public:
         }, nullptr);
     }
 
+    void sample_edges() {
+        m_driver->sampleEdge();
+    }
+
     // The driver wakes on the same edge in either order, so this checks the
     // beats sampled up to the previous edge before counting this edge.
     void transfer_monitor() {
-        m_driver->sampleEdge();
         checkLostBeats(m_sampledBeats - (m_lastSampleTime == sc_time_stamp() ? 1 : 0));
         m_lastEdge = sc_time_stamp();
         if (!rst_n || !hdl_if_p->tvalid) {

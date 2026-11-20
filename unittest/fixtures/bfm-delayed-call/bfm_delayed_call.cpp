@@ -521,6 +521,7 @@ void runProbe( int delayNs, const std::string &mode )
 //   rsths      a src RTL sees vld and ready high on a reset edge, with this beat
 //   rstvld     a src RTL has vld high on a reset edge, with this beat
 //   rstact     an arbreset model sees isActive() mid-clock after a reset edge
+//   act        an arbreset model sees isActive() mid-clock out of reset
 //   req, ack   non-handshake RTL: it starts an operation, or the operation
 //              completes on this edge
 //   rerr       a bus RTL sees the completion's error response
@@ -653,8 +654,11 @@ struct handoverBase : sc_module
                 while (true) {
                     wait( clk.posedge_event() );
                     bool resetEdge = !rst_n;
+                    // A delta later, after a BFM offer at the falling edge.
                     wait( clk.negedge_event() );
+                    wait( SC_ZERO_TIME );
                     if (resetEdge && active()) { logEv( "rstact", 0 ); }
+                    if (rst_n && active()) { logEv( "act", 0 ); }
                 }
             } );
         }
@@ -2013,11 +2017,12 @@ struct extregSrc : levelBase
 // resetlate runs cover the edge after. The memory runs finish their four
 // operations by 45 ns, so their reset starts at 25 ns, with operations 2 and
 // 3 still to go. An arbreset run's reset meets a beat offered to the busy
-// model: 65 ns after with no delay, 45 ns with a delay.
+// model: 47 ns after with no delay, 37 ns with a delay, clear of a clock
+// edge's timestep.
 int resetAfterNs( const runCfg &c )
 {
     if (c.family == "mem") { return 25; }
-    if (c.rtl == "arbreset") { return c.delayNs > 0 ? 45 : 65; }
+    if (c.rtl == "arbreset") { return c.delayNs > 0 ? 37 : 47; }
     bool delayedSrc = c.dir == "src" && c.delayNs > 0;
     if (delayedSrc && (c.family == "rv" || c.family == "axis" || c.family == "ar" || c.rtl == "resetlate")) {
         return 65;
