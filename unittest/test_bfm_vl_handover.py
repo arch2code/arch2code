@@ -265,7 +265,7 @@ def checkRecvEdge(mode, recv, outHs):
           f"first at beat {wrong}")
 
 
-def singleChecks(mode, log, changes, inHs, outHs):
+def singleChecks(log, changes, inHs, outHs, mode='single'):
     call, ret, recv = log['src call'][0][1], log['src ret'][0][1], log['snk recv'][0][1]
     vld = firstChange(changes, 'in_vld', 1)
     check(mode, FIRST_VLD, vld == call, f"send at {call} ps, vld rose at {vld} ps")
@@ -285,7 +285,7 @@ def singleChecks(mode, log, changes, inHs, outHs):
     checkOrder(mode, log)
 
 
-def burstChecks(mode, log, inHs, outHs):
+def burstChecks(log, inHs, outHs, mode='burst'):
     steady = all(b - a == PERIOD for a, b in zip(inHs, inHs[1:]))
     check(mode, RATE_IN, steady, f"{len(inHs)} handshakes at {ns(inHs)} ns")
     recv = times(log['snk recv'])
@@ -295,7 +295,8 @@ def burstChecks(mode, log, inHs, outHs):
     checkOrder(mode, log)
 
 
-def holdChecks(mode, readAt, log, edges, inHs, outHs):
+def holdChecks(log, edges, inHs, outHs, mode='hold', readAt=None):
+    readAt = HOLD_READ_AT if readAt is None else readAt
     read = log['snk call'][0][1]
     assert read == readAt, f"the sink starts reading at {read} ps, expected {readAt} ps"
     accepted = [t for t in inHs if t < read]
@@ -319,7 +320,8 @@ def holdChecks(mode, readAt, log, edges, inHs, outHs):
     checkOrder(mode, log)
 
 
-def pauseChecks(mode, pause, log, outHs):
+def pauseChecks(log, outHs, mode='pause', pause=None):
+    pause = PAUSE if pause is None else pause
     recv, calls = times(log['snk recv']), times(log['snk call'])
     assert calls[PAUSE_BEAT] - recv[PAUSE_BEAT - 1] == pause, \
         f"the sink paused {calls[PAUSE_BEAT] - recv[PAUSE_BEAT - 1]} ps, expected {pause} ps"
@@ -379,13 +381,13 @@ def main():
                     assert log['src call'][0][1] == sendAt, \
                         f"the source sends at {log['src call'][0][1]} ps, expected {sendAt} ps"
                 if base == 'single':
-                    singleChecks(mode, log, changes, inHs, outHs)
+                    singleChecks(log, changes, inHs, outHs, mode)
                 elif base == 'burst':
-                    burstChecks(mode, log, inHs, outHs)
+                    burstChecks(log, inHs, outHs, mode)
                 elif base == 'hold':
-                    holdChecks(mode, HOLD_READ_AT - shift[1], log, edges, inHs, outHs)
+                    holdChecks(log, edges, inHs, outHs, mode, HOLD_READ_AT - shift[1])
                 elif base == 'pause':
-                    pauseChecks(mode, PAUSE - shift[1], log, outHs)
+                    pauseChecks(log, outHs, mode, PAUSE - shift[1])
                 else:
                     powerOnChecks(log, edges, changes, inHs)
             if len(FAILURES) > before:
