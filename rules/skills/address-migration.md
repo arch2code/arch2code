@@ -1,6 +1,6 @@
 ---
 name: address-migration
-description: Convert a legacy arch2code project from project-wide addressControl.yaml to per-block addressBlock: routers and the project.yaml address-policy sections. Covers what the make migrate address phase does, how to resolve TODO_ROUTER_RESOLUTION, TODO_INTERFACE_SCOPE and TODO_LEAF_REGISTER_PORTS, and the checks to make after conversion.
+description: "Convert a legacy arch2code project from project-wide addressControl.yaml to per-block addressBlock: routers and the project.yaml address-policy sections. Covers what the make migrate address phase does, how to resolve TODO_ROUTER_RESOLUTION, TODO_INTERFACE_SCOPE and TODO_LEAF_REGISTER_PORTS, and the checks to make after conversion."
 ---
 # Skill: legacy address-control migration
 
@@ -29,13 +29,15 @@ For each `AddressGroups:` row:
   becomes the router. The phase writes an `addressBlock:` on it with
   `addressGroup:` set to the row name and `addressIncrement`,
   `maxAddressSpaces`, `varType` and `enumPrefix` copied verbatim.
-  `RegisterBusInterface:` becomes both `upstreamPort:` and
-  `registerDecoderPort:`. When `RegisterBusInterface:` is absent or `None`,
-  the phase writes neither key, so both default to `apbReg`, and raises no
-  `TODO_INTERFACE_SCOPE`. The phase does not copy `primaryDecode`,
-  `varTypeContext` or `decoderInstance` into `addressBlock:`. The build infers
-  the primary router from the hierarchy.
+  The phase does not copy `primaryDecode`, `varTypeContext` or
+  `decoderInstance` into `addressBlock:`. The build infers the primary router
+  from the hierarchy.
 - **Anything else** is reported as `TODO_ROUTER_RESOLUTION` (Step 3).
+
+The top-level `RegisterBusInterface:` key of `addressControl.yaml` becomes
+both `upstreamPort:` and `registerDecoderPort:` on every router. When
+`RegisterBusInterface:` is absent or `None`, the phase writes neither key, so
+both default to `apbReg`, and raises no `TODO_INTERFACE_SCOPE`.
 
 It also:
 

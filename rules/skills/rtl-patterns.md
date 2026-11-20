@@ -9,13 +9,15 @@ Common SystemVerilog patterns for arch2code blocks. Flop macros, clock domains a
 
 ## Pipeline stages
 
-Each stage carries `vld`, its data and the sideband metadata, such as transaction IDs, frame markers or sequence numbers:
+Each stage carries `vld`, its data and the sideband metadata, such as transaction IDs, frame markers or sequence numbers. One stall term, `advance`, freezes every stage while stage 3 has data that `outPort` refuses:
 
 ```systemverilog
+logic advance;  // Driven after stage 3, which declares s3Vld
+
 // Stage 1: Capture input
-`DFF_INST(dataT, s1Data)
-`DFF_INST(metaT, s1Meta)
-`DFF_INST(logic, s1Vld)
+`DFFEN_INST(dataT, s1Data, advance)
+`DFFEN_INST(metaT, s1Meta, advance)
+`DFFEN_INST(logic, s1Vld, advance)
 
 always_comb begin
     n_s1Vld  = inPort.vld;
@@ -24,9 +26,9 @@ always_comb begin
 end
 
 // Stage 2: Process
-`DFF_INST(logic, s2Vld)
-`DFF_INST(metaT, s2Meta)
-`DFF_INST(resultT, s2Result)
+`DFFEN_INST(logic, s2Vld, advance)
+`DFFEN_INST(metaT, s2Meta, advance)
+`DFFEN_INST(resultT, s2Result, advance)
 
 always_comb begin
     n_s2Vld    = s1Vld;
@@ -35,15 +37,19 @@ always_comb begin
 end
 
 // Stage 3: Output
-`DFF_INST(outDataT, s3Data)
-`DFF_INST(metaT, s3Meta)
-`DFF_INST(logic, s3Vld)
+`DFFEN_INST(outDataT, s3Data, advance)
+`DFFEN_INST(metaT, s3Meta, advance)
+`DFFEN_INST(logic, s3Vld, advance)
 
 always_comb begin
     n_s3Vld  = s2Vld;
     n_s3Meta = s2Meta;
     n_s3Data = clip(s2Result);
 end
+
+// Advance when stage 3 is empty or the output takes its data
+assign advance    = ~s3Vld | outPort.rdy;
+assign inPort.rdy = advance;
 
 // Drive output
 assign outPort.vld          = s3Vld;
@@ -233,7 +239,8 @@ When multiple addresses must be read from `memory_if`, use an FSM to sequence th
 
 ```systemverilog
 if (1) begin: gen_memReadFsm
-    typedef enum logic [1:0] {RD0, RD1, RD2, RD3} statesT;
+    // memReadStateT is a YAML enum type (RD0 to RD3). fsmDefs.svh needs the name statesT.
+    typedef memReadStateT statesT;
     `include "fsmDefs.svh"
     always_comb begin
         nState = state;
@@ -270,7 +277,8 @@ if (1) begin: gen_memReadFsm
 end: gen_memReadFsm
 
 if (1) begin: gen_computeFsm
-    typedef enum logic [1:0] {CALC0, CALC1, CALC2, CALC3} statesT;
+    // computeStateT is a YAML enum type (CALC0 to CALC3). fsmDefs.svh needs the name statesT.
+    typedef computeStateT statesT;
     `include "fsmDefs.svh"
     always_comb begin
         nState = state;

@@ -11,12 +11,14 @@ Edit text to remove AI patterns and add human voice.
 
 1. Scan for the patterns below.
 2. Rewrite. Preserve meaning, match intended tone.
-3. Add soul (see next section).
+3. Add soul to reports, plans and PR descriptions (see next section).
 4. Self-audit: "What makes this obviously AI generated?" Fix remaining tells.
 
 ## Adding soul
 
 Removing patterns is half the job. Sterile, voiceless writing is just as obvious.
+
+The voice bullets below apply only to reports, plans and PR descriptions, except "Be specific", which applies to all text. In skill and rule files, commit messages, markdown documentation, code comments and docstrings, state the behaviour, the reason and the mechanism. Lead with the fact the reader acts on. One idea per sentence.
 
 - **Have opinions.** React to facts instead of neutrally listing pros and cons.
 - **Vary rhythm.** Short sentences. Then longer ones that take their time. Mix it up.

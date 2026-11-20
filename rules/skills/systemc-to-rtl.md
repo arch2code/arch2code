@@ -121,6 +121,9 @@ assign outPort.data = finalStageData;
 
 When `outPort.rdy` is low, the last stage cannot hand off its data. Either hold every stage while `outPort.rdy` is low and drive `inPort.rdy` from it, or tie `inPort.rdy = 1'b1` only when the downstream block accepts every cycle.
 
+### 8. Verify
+Run `make lint` from the project's `rtl/` directory until it is clean. Lint needs `hasVl: true` on the top instance's block or one of its direct children. Then run `make run VL_DUT=1` from `rundir/` to co-simulate the RTL in place of the model (**verify-cosimulation**). For a block below the top, run `make VL_DUT=1`, then `build/run <testbench> --vlInst <instance path>` (**verify-cosimulation**). With A2C Pro, run tandem (**run-tandem**). Review the RTL with **review-rtl**.
+
 ## Rules
 *   Never edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END`.
 *   Use a flop macro for every flop. Use the bare form on the default clock and `_DOM` on any other clock (`rtl-core.md`).

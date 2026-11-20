@@ -89,11 +89,12 @@ fileGeneration:
 ```
 
 *   `mode: context` writes one `<context>IncludesFW.{h,cpp}` pair per YAML file.
-*   `cond: {smartInclude: true}` writes a context's files only when it has
-    types, structures or constants. These come from `types:` (or its alias
-    `enums:`), `structures:`, `constants:`, `encoders:`, and the address enum of
-    a router's `addressBlock:`, which lands in the router block's own file. A
-    context holding only registers, memories or `ipParameters:` gets no file.
+*   `cond: {smartInclude: true}` writes a context's files only when its YAML
+    file declares `constants:`, `types:` (or its alias `enums:`) or
+    `structures:`, or holds a router whose `addressBlock:` group addresses at
+    least one instance. The generated address enum is a type in the router
+    block's own file. A context holding only registers, memories, `encoders:`
+    or `ipParameters:` gets no file.
 *   `basePath:` names the `dirs:` segment to write into.
 *   `langDomain: fw` applies `fwFilePrefix` to the file names.
 

@@ -138,8 +138,11 @@ The target runs eight steps:
   stamped (`TODO_UNMIGRATED_SUBPROJECT`).
 
 Each phase is idempotent. All except Phases A and B also run on a project
-already stamped `yamlFormat: 2`. Because a stamped project exits step 1 with
-0, the rest of the pipeline still finishes a partially migrated tree.
+already stamped `yamlFormat: 2`. A stamped project exits step 1 with 0 only
+when the includes, module-header, langDomain and composed-build phases
+report no manual item and no phase raises. The rest of the pipeline then
+finishes a partially migrated tree. Any item they report halts the run at
+step 1, as for an unstamped project.
 
 ### Composed builds
 
