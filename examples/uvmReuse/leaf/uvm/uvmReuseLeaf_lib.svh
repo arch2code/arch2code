@@ -15,14 +15,19 @@ import a2c_uvm_pkg::*;
 
 // Checks the beats on an output against the beats in, through one leaf or
 // several in series: each word plus every register in offsets, at the
-// mirrored value it had when the beat went in, and last unchanged. A leaf
-// moves a beat from in to out in the same clock, so either monitor may write
-// first; the two sides are paired in order. offsets are uvm_regs, so a parent
-// whose register model holds a leaf in a class of its own binds them too.
-class uvmReuseLeaf_scoreboard extends uvm_component;
+// mirrored value it had when the beat went in, and last unchanged. The two
+// sides are paired in order, whichever monitor writes first: the RTL passes a
+// beat from in to out in the same clock, and the model reads it from in
+// before it writes out. offsets are uvm_regs, so a parent whose register
+// model holds a leaf in a class of its own binds them too. A reset of
+// clk_vif's domain drops the beats not yet paired on both sides, so beats a
+// parent held between in and out at the reset do not shift the pairing after
+// it.
+class uvmReuseLeaf_scoreboard extends uvm_scoreboard implements a2c_reset_aware;
     uvm_analysis_imp_beat_in #(in_item_t, uvmReuseLeaf_scoreboard)   in_export;
     uvm_analysis_imp_beat_out #(out_item_t, uvmReuseLeaf_scoreboard) out_export;
     uvm_reg offsets[$];
+    virtual a2c_clk_if clk_vif;
     int unsigned checked;
     protected uvmReuseBeatSt expected[$];
     protected uvmReuseBeatSt actual[$];
@@ -39,15 +44,15 @@ class uvmReuseLeaf_scoreboard extends uvm_component;
         uvmReuseBeatSt e = it.data;
         foreach (offsets[k]) e.word = uvmReuseWordT'(e.word + offsets[k].get_mirrored_value());
         expected.push_back(e);
-        compare();
+        pair_beats();
     endfunction
 
     function void write_beat_out(out_item_t it);
         actual.push_back(it.data);
-        compare();
+        pair_beats();
     endfunction
 
-    protected function void compare();
+    protected function void pair_beats();
         while (expected.size() != 0 && actual.size() != 0) begin
             uvmReuseBeatSt e = expected.pop_front();
             uvmReuseBeatSt a = actual.pop_front();
@@ -57,6 +62,22 @@ class uvmReuseLeaf_scoreboard extends uvm_component;
             end
             checked++;
         end
+    endfunction
+
+    virtual task run_phase(uvm_phase phase);
+        if (clk_vif == null) begin
+            `uvm_fatal("A2C_CFG", $sformatf("%s: clk_vif is not set", get_full_name()))
+        end
+        a2c_run_reset_aware(clk_vif, this);
+    endtask
+
+    // Nothing to restart at a reset: on_reset() does the work.
+    virtual task run_from_reset();
+    endtask
+
+    virtual function void on_reset();
+        expected.delete();
+        actual.delete();
     endfunction
 
     virtual function void check_phase(uvm_phase phase);
@@ -76,6 +97,7 @@ class uvmReuseLeaf_packet_seq extends uvm_sequence #(in_item_t);
     int unsigned max_words = 8;
     int unsigned max_gap;
     int unsigned lens[$];
+    int unsigned idle;
 
     `uvm_object_utils(uvmReuseLeaf_packet_seq)
 
@@ -100,12 +122,15 @@ class uvmReuseLeaf_packet_seq extends uvm_sequence #(in_item_t);
                 in_item_t it = in_item_t::type_id::create("it");
                 bit       is_last = i == lens[p] - 1;
                 start_item(it);
-                if (!it.randomize() with { data.last == local::is_last; gap <= local::max_gap; }) begin
+                // rdy_vld_item's soft gap == 0 would win over a bound alone.
+                if (!it.randomize() with { disable soft gap; data.last == local::is_last; gap <= local::max_gap; }) begin
                     `uvm_error("SEQ", "randomize failed")
                 end
+                idle += it.gap;
                 finish_item(it);
             end
         end
+        `uvm_info("SEQ", $sformatf("%0d beats sent with %0d idle clocks before them", beats(), idle), UVM_LOW)
     endtask
 endclass : uvmReuseLeaf_packet_seq
 

@@ -42,20 +42,22 @@ package uvmReuseLeaf_uvm_test_pkg;
         virtual function void connect_phase(uvm_phase phase);
             super.connect_phase(phase);
             sb.offsets.push_back(regmodel.offset);
+            sb.clk_vif = clk_vif;
             in_agent.mon.ap.connect(sb.in_export);
             out_agent.mon.ap.connect(sb.out_export);
             if (dual_dut) begin
                 model_sb.offsets.push_back(regmodel.offset);
+                model_sb.clk_vif = clk_vif;
                 in_agent.model_mon.ap.connect(model_sb.in_export);
                 out_agent.model_mon.ap.connect(model_sb.out_export);
             end
         endfunction
 
-        // Programs a random offset through the library's configuration
-        // sequence.
+        // Programs a random nonzero offset through the library's configuration
+        // sequence, so a leaf that skips the add fails the scoreboard.
         task configure();
             uvmReuseLeaf_config_seq seq = uvmReuseLeaf_config_seq::type_id::create("config_seq");
-            seq.offset = $urandom_range((1 << regmodel.offset.get_n_bits()) - 1);
+            seq.offset = $urandom_range((1 << regmodel.offset.get_n_bits()) - 1, 1);
             seq.model  = regmodel;
             seq.start(null);
         endtask

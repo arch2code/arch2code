@@ -51,30 +51,34 @@ package uvmReuseChain_uvm_test_pkg;
             super.connect_phase(phase);
             out_sb.offsets.push_back(regmodel.uLeafA.offset);
             out_sb.offsets.push_back(regmodel.uLeafB.offset);
+            out_sb.clk_vif = clk_vif;
             in_agent.mon.ap.connect(out_sb.in_export);
             out_agent.mon.ap.connect(out_sb.out_export);
             if (mid_sb != null) begin
                 mid_sb.offsets.push_back(regmodel.uLeafA.offset);
+                mid_sb.clk_vif = clk_vif;
                 in_agent.mon.ap.connect(mid_sb.in_export);
                 mid_agent.mon.ap.connect(mid_sb.out_export);
             end
             if (model_sb != null) begin
                 model_sb.offsets = out_sb.offsets;
+                model_sb.clk_vif = clk_vif;
                 in_agent.model_mon.ap.connect(model_sb.in_export);
                 out_agent.model_mon.ap.connect(model_sb.out_export);
             end
         endfunction
 
-        // uLeafA is the leaf's w8 variant in both tops, so its register block
-        // is that package's class and the package's configuration sequence
-        // programs it. uLeafB's block is this package's own class, written
-        // directly.
+        // Each offset is nonzero, so a leaf that skips the add fails the
+        // scoreboards. uLeafA is the leaf's w8 variant in both tops, so its
+        // register block is that package's class and the package's
+        // configuration sequence programs it. uLeafB's block is this
+        // package's own class, written directly.
         task configure();
             uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_config_seq seq = uvmReuseLeaf_w8_uvm_pkg::uvmReuseLeaf_config_seq::type_id::create("config_seq");
-            seq.offset = $urandom_range((1 << regmodel.uLeafA.offset.get_n_bits()) - 1);
+            seq.offset = $urandom_range((1 << regmodel.uLeafA.offset.get_n_bits()) - 1, 1);
             seq.model  = regmodel.uLeafA;
             seq.start(null);
-            write_reg(regmodel.uLeafB.offset, $urandom_range((1 << regmodel.uLeafB.offset.get_n_bits()) - 1));
+            write_reg(regmodel.uLeafB.offset, $urandom_range((1 << regmodel.uLeafB.offset.get_n_bits()) - 1, 1));
         endtask
 
         // Sends packets through the leaf library's sequence and, with declare
