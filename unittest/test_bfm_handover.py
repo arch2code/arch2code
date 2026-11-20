@@ -252,12 +252,6 @@ for fam, srcLines, dstLines, srcOrder, dstOrder in ACK_BFMS:
     ]
 
 MEM_RESET = "reads rst_n only before the first reset, never in its loop"
-AHB_SAMPLE = ("samples HWDATA, and sends a write's request, on the edge after its address phase, so every write "
-              "takes a wait state. This is a limit of reading RTL signals only at an edge, not a defect a later "
-              "change to this BFM removes. HWDATA is on the wire from the timestep the data phase starts, and "
-              "reading it there needs an event that fires once the RTL has settled in that timestep. SystemC "
-              "cannot see pending HDL activity under Xcelium or VCS, so that event needs a per-simulator VPI "
-              "callback")
 BUS_RESET = "never reads rst_n after the first reset, so a transfer in flight at the reset is lost or completes later"
 APB_SRC_RESET = ("apb_bfm.h:44-70 reads rst_n only where it samples a setup phase. A reset that cuts off a "
                  "transfer after the model has answered loses the answer, and the model serves the RTL's repeat "
@@ -267,16 +261,9 @@ EXPECTED_FAILURES += [
     XFail(('apb',), 'src', ('served once',), resetDelayed, 'RTL 4/3, model 4', APB_SRC_RESET),
     XFail(('apb',), 'src', ('values',), resetDelayed, None, APB_SRC_RESET),
     XFail(('apb',), 'src', ('an error reaches the RTL on its own transfer',), resetDelayed, '[0, 0, 0]', APB_SRC_RESET),
-    XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:138-188 {BUS_RESET}"),
-    XFail(('ahb',), 'src', ('throughput',), anyCase, '[1, 2] edges',
-          f"ahb_bfm.h:82-84 {AHB_SAMPLE}. A read takes no wait state"),
-    XFail(('ahb',), 'src', ('src latency',), lambda c: c.rtl == 'always', '+10 ns', f"ahb_bfm.h:83 {AHB_SAMPLE}"),
-    XFail(('ahb',), 'src', ('src latency',), lambda c: c.rtl == 'parked', '+5 ns', f"ahb_bfm.h:83 {AHB_SAMPLE}"),
-    XFail(('ahb',), 'src', ('src read latency',), anyCase, '+10 ns',
-          f"the read's address phase waits out the wait state of the write before it, as ahb_bfm.h:83 {AHB_SAMPLE}. "
-          "Line 98 takes the read on the first edge that samples HREADY high"),
+    XFail(('ahb',), 'dst', ('served once', 'values'), inReset, None, f"ahb_bfm.h:139-189 {BUS_RESET}"),
     XFail(('ahb',), 'src', ('served once', 'values', 'an error reaches the RTL on its own transfer'), inReset, None,
-          f"ahb_bfm.h:74-100 {BUS_RESET}; line 98 takes an address phase on a reset edge and sends it to the model"),
+          f"ahb_bfm.h:75-101 {BUS_RESET}; line 99 takes an address phase on a reset edge and sends it to the model"),
     XFail(('mem',), 'dst', ('served once',), inReset, 'RTL 2/2, model 4',
           f"memory_bfm.h:83 {MEM_RESET}: 89-97 drive operations 2 and 3 on reset edges, where the RTL takes "
           "neither, and the model's calls return"),
@@ -591,9 +578,12 @@ def busChecks(case, ev):
               f"model completes {[t for _, t in rets]}, RTL completion edges {[t for _, t in ack]}, expected {want}",
               f"{lag // PERIOD:+d} clock")
     if case.rtl in ('always', 'parked') and case.delay == 0:
-        # Operation 0 is the first write, and operation 1 the first read.
+        # Operation 0 is the first write, and operation 1 the first read. An ahb write's HWDATA goes on the
+        # wire in the data phase, after the edge that takes the address phase, so the BFM reads it at the
+        # falling edge after that.
         for name, k in (('src latency', 0), ('src read latency', 1)):
-            first = max(req[k][1] + PERIOD, rcalls[k][1])
+            hwdata = PERIOD // 2 if case.family == 'ahb' and k == 0 else 0
+            first = max(req[k][1] + PERIOD + hwdata, rcalls[k][1])
             check(case, name, rcvs[k][1] == first,
                   f"RTL request {req[k][1]}, model asks {rcalls[k][1]}, model gets it {rcvs[k][1]}, expected {first}",
                   f"{(rcvs[k][1] - first) // 1000:+d} ns")
