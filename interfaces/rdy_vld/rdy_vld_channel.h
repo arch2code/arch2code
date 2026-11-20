@@ -251,6 +251,7 @@ public:
 
 protected:
     T    m_value;           // the data
+    T    m_transferred;     // the beat update() moved to the reader
     T    m_read_value;      // post transaction read value during clocking
     T    m_write_value;     // pre transaction write value during clocking
 
@@ -282,6 +283,10 @@ protected:
     // Primary channel override base class implementation
     void update() override {
         if (m_ready && m_valid && !m_offered) {
+            // The writer and the reader wake on the same event, in either
+            // order. A BFM writer may offer its next beat before the reader
+            // runs, so read() returns this copy, not m_value.
+            m_transferred = m_value;
             m_valid = false;
             m_ready = false;
             m_channel_sync_event.notify(SC_ZERO_TIME);
@@ -334,7 +339,7 @@ inline void rdy_vld_channel<T>::read( T& val_ )
     m_read_entered_event.notify();
     sc_prim_channel::request_update();
     sc_core::wait(m_channel_sync_event);
-    val_ = m_value;
+    val_ = m_transferred;
     m_value_written = false;
     int64_t tag;
     if (m_get_struct_value) {
