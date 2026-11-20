@@ -19,8 +19,8 @@ A src model that waits on setExternalEvent() and reads only an active port
 (rtl=arb) must not deadlock, and moves as fast as a model that waits in
 read(). The BFM offers it a beat at the falling edge after vld rises, so the
 RTL takes the first beat at the next rising edge. In rtl=arbreset such a
-model must not see a beat that reset took off the wire, and in rtl=arbdrop one that the
-RTL lowered vld on with no handshake.
+model must not see a beat that reset took off the wire, and in rtl=arbdrop a
+beat the RTL dropped with no handshake.
 
 Every run also checks that it ends without a hang or a Q_ASSERT, that order
 holds and no beat is lost, and, with no delay, that no model call returns on
@@ -139,7 +139,7 @@ B_DROP = ("axi_write_bfm.h:163-168 takes the model's B on a reset edge and drops
 DUMMY_W = ("axi_write_bfm.h:127-145 drains the burst of the last AW at reset: it sends the model a zero W beat, "
            "with that AW's ID, for each beat left, and the model reads them as data. This is a defect in the reset "
            "drain, left for the reset work")
-TAKE_IN_RESET = f"rdy_vld_src_driver.h:89-93 {RESET_SRC}"
+TAKE_IN_RESET = f"rdy_vld_src_driver.h:93-97 {RESET_SRC}"
 R_TAKE_IN_RESET = f"axi_read_bfm.h:235 adds no reset handling, and {TAKE_IN_RESET}"
 B_TAKE_IN_RESET = f"axi_write_bfm.h:290 adds no reset handling, and {TAKE_IN_RESET}"
 DST_RULE_1 = ('dst write returns never run ahead of handshakes', 'dst write returns at its handshake edge')
@@ -378,13 +378,13 @@ def handshakeChecks(case, ev, deltas, output):
               f"isActive() mid-clock after a reset edge at {[t for _, t in ev.get('rstact', [])]}")
     if case.rtl == 'arbdrop':
         # The model sees the beat active half a clock before the RTL lowers
-        # vld. The BFM sees vld low at the next rising edge and withdraws
-        # the beat, so it is not active half a clock after that edge.
+        # vld. The BFM sees vld low at the next falling edge and withdraws
+        # the beat, so it is not active then.
         drops, act = ev.get('drop', []), {t for _, t in ev.get('act', [])}
         check(case, 'the RTL drops a beat offered to the model', bool(drops) and drops[0][1] - PERIOD // 2 in act,
               f"drops {drops}, active {sorted(act)}")
         if drops:
-            gap = drops[0][1] + PERIOD + PERIOD // 2
+            gap = drops[0][1] + PERIOD // 2
             check(case, 'an arbitrating reader sees no beat the RTL dropped', gap not in act,
                   f"drop at {drops[0][1]}, active at {gap}: {gap in act}")
     hsTimes = [t for _, t in hs]

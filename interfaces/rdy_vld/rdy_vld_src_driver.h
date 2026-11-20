@@ -62,6 +62,10 @@ public:
                     m_unpack(data);
                     m_ch->offer(data);
                     offered = true;
+                } else if (offered && !m_vld) {
+                    // The RTL dropped an offered beat with no handshake.
+                    m_ch->withdraw();
+                    offered = false;
                 }
                 m_rdy = m_ch->get_rdy();
                 continue;
