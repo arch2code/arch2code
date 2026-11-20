@@ -43,7 +43,7 @@ Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same 
     *   A busy, done, valid, permission or count carried as a level.
     *   A custom interface type adopted because `status` lost a value.
 
-    The fix is a transaction (`req_ack_if`, `notify_ack_if`, `push_ack_if` or `rdy_vld_if`). `design-architecture.md`, section "`status` carries state, never control", maps each case. Exempt a value where the consumer only needs the current value, never every change, such as configuration, mode, an enable, a lock, lifecycle state or a register mirror, even when it gates a decision. Also exempt a level that only rises until reset, such as a fatal alert, whose single rise one place turns into an event, and the block that turns a pin-level boundary input, such as GPIO, into transactions.
+    The fix is a transaction (`req_ack_if`, `notify_ack_if`, `push_ack_if`, `pop_ack_if` or `rdy_vld_if`). `design-architecture.md`, section "`status` carries state, never control", maps each case. Exempt a value where the consumer only needs the current value, never every change, such as configuration, mode, an enable, a lock, lifecycle state or a register mirror, even when it gates a decision. Also exempt a level that only rises until reset, such as a fatal alert, whose single rise one place turns into an event, and the block that turns a pin-level boundary input, such as GPIO, into transactions.
 *   **Generated modules.** Do not review the generated register handler (`<block>_regs` by default, `<block>Regs` in the examples) or the router module, which is named after the router block. Review only the hand-written RTL.
 *   **Module end.** The module ends with `endmodule: <module_name>`.
 
