@@ -525,7 +525,7 @@ ahbDecode:
 	make -C $(AHBDECODE_DIR)/rtl lint -j
 	make -C $(AHBDECODE_DIR)/rundir -j all
 	$(RUN_LIMIT) make -C $(AHBDECODE_DIR)/rundir run
-	$(RUN_LIMIT) make -C $(AHBDECODE_DIR)/rundir run-vl
+	$(RUN_LIMIT) make -C $(AHBDECODE_DIR)/rundir -j run-vl
 
 .PHONY : mixed
 mixed: mixed-db
