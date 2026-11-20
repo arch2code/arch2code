@@ -573,7 +573,9 @@ struct handoverBase : sc_module
     sc_event started;
     bool modelReading = false;
     sc_event firstRequest;
-    // An arb model's port: watch binds arbEv as its external event.
+    // An arb model's port: watch binds arbEv as its external event. The r, w
+    // and b models use the channel's inner port, since the AXI API offers
+    // isActive() only on the address channel.
     std::function<void()> watch;
     std::function<bool()> active;
     sc_event arbEv;

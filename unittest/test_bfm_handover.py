@@ -18,9 +18,9 @@ at that edge.
 A src model that waits on setExternalEvent() and reads only an active port
 (rtl=arb) must not deadlock. The BFM offers it a beat at the first edge that
 samples vld, and ready rises only once the model is in read(), so every beat
-takes one clock more: one beat per two clocks. With a delay the BFM offers
-the next beat as the delayed send returns, which keeps that rate. In
-rtl=arbreset such a model must not see a beat that reset took off the wire.
+takes one clock more: one beat per two clocks. With a delay it moves at the
+same rate as a model that waits in read(). In rtl=arbreset such a model must
+not see a beat that reset took off the wire.
 
 Every run also checks that it ends without a hang or a Q_ASSERT, that order
 holds and no beat is lost, and, with no delay, that no model call returns on
@@ -134,8 +134,8 @@ R_DRAIN = ("axi_read_bfm.h:120-148 drops the R beat on the wire at reset and ret
 B_DROP = ("axi_write_bfm.h:163-168 takes the model's B on a reset edge and drops it, and 176-183 drops the B "
           "on the wire at reset")
 DUMMY_W = ("axi_write_bfm.h:127-145 drains the burst of the last AW at reset: it sends the model a zero W beat, "
-           "with that AW's ID, for each beat left. The model reads them as data. That is how the drain works, not "
-           "a fault in this run")
+           "with that AW's ID, for each beat left, and the model reads them as data. This is a defect in the reset "
+           "drain, left for the reset work")
 TAKE_IN_RESET = f"rdy_vld_src_driver.h:64-68 {RESET_SRC}"
 R_TAKE_IN_RESET = f"axi_read_bfm.h:235 adds no reset handling, and {TAKE_IN_RESET}"
 B_TAKE_IN_RESET = f"axi_write_bfm.h:290 adds no reset handling, and {TAKE_IN_RESET}"
@@ -367,7 +367,6 @@ def handshakeChecks(case, ev, deltas, output):
               f"first reset edge {r0}, vld {ev.get('rstvld', [])}, vld and ready {ev.get('rsths', [])}")
         check(case, 'an arbitrating reader sees no beat reset took off the wire', not ev.get('rstact'),
               f"isActive() mid-clock after a reset edge at {[t for _, t in ev.get('rstact', [])]}")
-        return
     hsTimes = [t for _, t in hs]
     hsValues, retValues = [v for v, _ in hs], [v for v, _ in rets]
     check(case, ORDER, hsValues == IN_ORDER and retValues == IN_ORDER,
@@ -463,7 +462,7 @@ def handshakeChecks(case, ev, deltas, output):
             inFlight = [hv for hv, h in hs for rv, r in rets if hv == rv and h < r0 < r]
             check(case, 'the reset starts while a delayed model call blocks', bool(inFlight),
                   f"first reset edge {r0}, hs={hs} model={rets}")
-    elif case.dir == 'src' and case.rtl in ('reset', 'resetlate'):
+    if case.dir == 'src' and case.rtl in ('reset', 'resetlate'):
         # A src BFM has ready high at a reset edge unless the edge falls between
         # a handshake and the return of that beat's delayed model call. Ready
         # is low then, so the reset meets the next beat with vld alone. A
