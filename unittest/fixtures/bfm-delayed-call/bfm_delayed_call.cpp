@@ -659,7 +659,9 @@ struct handoverBase : sc_module
                 while (true) {
                     wait( clk.posedge_event() );
                     bool resetEdge = !rst_n;
-                    // A delta later, after a BFM offer at the falling edge.
+                    // This observer and the BFM wake in the same falling-edge
+                    // delta, in either order. Reading a delta later sees the
+                    // BFM's offer whichever ran first.
                     wait( clk.negedge_event() );
                     wait( SC_ZERO_TIME );
                     if (resetEdge && active()) { logEv( "rstact", 0 ); }
