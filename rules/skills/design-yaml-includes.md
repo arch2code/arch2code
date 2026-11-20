@@ -38,7 +38,7 @@ If `a.yaml` includes `b.yaml`, `b.yaml` includes `c.yaml`, and `c.yaml` includes
 
 ## What each file generates
 
-A file generates context files only when it declares `constants:`, `types:`, `enums:` or `structures:`. A file that declares only other sections, such as `interfaces:`, `ipParameters:`, `blocks:`, `instances:` or connections, produces no context file, and no generated code imports it. Entries inside `ipParameters:` do not count.
+A file generates context files only when it declares `constants:`, `types:`, `enums:` or `structures:`, or holds a router whose `addressBlock:` group addresses at least one instance. A file that declares only other sections, such as `interfaces:`, `ipParameters:`, `blocks:`, `instances:` or connections, produces no context file, and no generated code imports it. Entries inside `ipParameters:` do not count.
 
 | Artifact | Location | Name |
 | :--- | :--- | :--- |

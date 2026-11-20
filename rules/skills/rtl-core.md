@@ -121,26 +121,26 @@ end
 Every project can write an FSM as a plain `case` with the state in a flop macro:
 
 ```systemverilog
-typedef enum logic [1:0] {RDY, WORK, DONE} fsmStateT;
-`DFFR_INST(fsmStateT, state, RDY)
+// fooStateT is an enum type in the types: section of the block's YAML file, with values FOO_RDY, FOO_WORK and FOO_DONE.
+`DFFR_INST(fooStateT, state, FOO_RDY)
 
 always_comb begin
     n_state = state;
     outVld = 1'b0;
     case (state)
-        RDY: begin
+        FOO_RDY: begin
             if (start) begin
-                n_state = WORK;
+                n_state = FOO_WORK;
             end
         end
-        WORK: begin
+        FOO_WORK: begin
             outVld = 1'b1;
             if (outAck) begin
-                n_state = DONE;
+                n_state = FOO_DONE;
             end
         end
-        DONE: begin
-            n_state = RDY;
+        FOO_DONE: begin
+            n_state = FOO_RDY;
         end
         default: `qAssertFatal(0, "Default clause should not be reached")
     endcase
@@ -149,32 +149,35 @@ end
 
 For an FSM on a non-default clock, declare the state with `DFFR_INST_DOM`.
 
+YAML enum values are package-level names shared across the context, so give each FSM's values a distinct prefix. Number them 0 to N-1 in declaration order, because under `QS_ONEHOT_FSM` `fsmDefs.svh` uses each value as a bit index, sizes the state vector from the last value and resets to bit 0.
+
 **A2C Pro FSM macros.** `fsmDefs.svh` ships only with A2C Pro (`builder/pro/common/systemVerilog`, on the Verilator path through `a2cPro.f`). It runs on the default domain only.
-*   Name the enum `statesT`. The include derives `stateT`, declares `state` and `nState`, and adds the state flop, reset to the first enum value. Do not declare `state` or `nState` yourself.
+*   Alias the YAML enum type as `statesT`. The include derives `stateT`, declares `state` and `nState`, and adds the state flop, reset to the first enum value. Do not declare `state` or `nState` yourself.
 *   Define `QS_ONEHOT_FSM` for one-hot encoding. The default is encoded.
-*   `` `pushState(ST) `` and `` `popState `` use `pushState` and `nPushState`, which the include does not declare. Declare `stateT pushState, nPushState;`, flop them with `` `DFFR(pushState, nPushState, <a valid state>) ``, and default `nPushState = pushState;` in the `always_comb`. The reset value must be a state in the FSM's encoding. When encoded, use a state name such as `RDY`. Under `QS_ONEHOT_FSM`, use a one-hot value such as `stateT'(1)`, the first state. `stateT'(0)` is no state there.
+*   `` `pushState(ST) `` and `` `popState `` use `pushState` and `nPushState`, which the include does not declare. Declare `stateT pushState, nPushState;`, flop them with `` `DFFR(pushState, nPushState, <a valid state>) ``, and default `nPushState = pushState;` in the `always_comb`. The reset value must be a state in the FSM's encoding. When encoded, use a state name such as `FOO_RDY`. Under `QS_ONEHOT_FSM`, use a one-hot value such as `stateT'(1)`, the first state. `stateT'(0)` is no state there.
 
 ```systemverilog
-typedef enum logic [1:0] {RDY, WORK, DONE} statesT;
+// fooStateT is the YAML enum type. fsmDefs.svh needs the name statesT.
+typedef fooStateT statesT;
 `include "fsmDefs.svh"
 
 always_comb begin
     nState = state;
     outVld = 1'b0;
     `fsmCase
-        `fsmState(RDY) begin
+        `fsmState(FOO_RDY) begin
             if (start) begin
-                `nxtState(WORK)
+                `nxtState(FOO_WORK)
             end
         end
-        `fsmState(WORK) begin
+        `fsmState(FOO_WORK) begin
             outVld = 1'b1;
             if (outAck) begin
-                `nxtState(DONE)
+                `nxtState(FOO_DONE)
             end
         end
-        `fsmState(DONE) begin
-            `nxtState(RDY)
+        `fsmState(FOO_DONE) begin
+            `nxtState(FOO_RDY)
         end
         default: `qAssertFatal(0, "Default clause should not be reached")
     `fsmEndCase
@@ -183,7 +186,7 @@ end
 
 `` `testState(ST) `` tests the current state.
 
-For several FSMs in one module, scope each one in `if (1) begin: gen_<fsm> ... end: gen_<fsm>`. Each scope then has its own enum, `state` and `n_state` (or `nState`).
+For several FSMs in one module, scope each one in `if (1) begin: gen_<fsm> ... end: gen_<fsm>`. Each scope then has its own `state` and `n_state`. With the A2C Pro macros it has its own `statesT` alias of a YAML enum, `state` and `nState`.
 
 ### 6. Combinational logic
 
@@ -214,7 +217,7 @@ end
 | Modules, ports, instances, YAML types and constants | Generated. Keep the YAML spelling. | `twoClkTable`, `uTwoClkTableRegs`, `twoClkDataT`, `TWO_CLK_TICK_DIV` |
 | Hand-written signals | camelCase, as in the examples and the Pro library | `sweepAddr`, `statsValid` |
 | `localparam` constants | `UPPER_SNAKE_CASE` | `EXTA_SEED` |
-| Local types | camelCase, `T` suffix, or `St` for a struct | `fsmStateT`, `lutEntrySt` |
+| Local types, only for an arithmetic intermediate such as an accumulator, and the `statesT` alias (review-rtl, Types). No local structs. | camelCase, `T` suffix | `accT` |
 | Enum values | `UPPER_SNAKE_CASE` | `RDY`, `WORK` |
 | Next state of an `_INST` flop | `n_<name>`, declared by the macro | `n_sweepAddr` |
 | Next state for a raw macro | `nxt_<name>`, declared by you | `nxt_rdData` |

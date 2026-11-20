@@ -8,7 +8,7 @@ description: Guide for using standard interface protocols (rdy_vld, push_ack, re
 Drive and read the standard arch2code interfaces in hand-written SystemVerilog.
 
 ## Ports come from YAML
-The generator declares every interface port, interface instance and memory instance from the YAML, inside the generated region. Do not declare them by hand. To add or change a port, edit the YAML connection and regenerate (`design-architecture.md`). Your logic goes after `// GENERATED_CODE_END`.
+The generator declares every interface port, every interface instance between YAML child instances, and every memory instance from the YAML, inside the generated region. Do not declare them by hand. A local interface instance that connects your logic to a library module is yours to declare (see `rtl-datapath.md`). To add or change a port, edit the YAML connection and regenerate (`design-architecture.md`). Your logic goes after `// GENERATED_CODE_END`.
 
 ## Instructions
 
