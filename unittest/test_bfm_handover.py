@@ -578,7 +578,7 @@ def busChecks(case, ev):
             check(case, 'throughput', gap == MIN_GAP[case.family],
                   f"a posted write then a read: RTL sees them {gap} ps apart, protocol minimum {MIN_GAP[case.family]}",
                   f"{gap // PERIOD} edges")
-            NUMBERS.append(f"{case.family} dst rtl=always: request gap {gap} ps; model call {calls[0][1]} ps, "
+            NUMBERS.append(f"{case.family} dst rtl={case.rtl}: request gap {gap} ps; model call {calls[0][1]} ps, "
                            f"RTL sees the request {req[0][1]} ps, completes it {ack[0][1]} ps")
         return
     rcalls, rcvs = ev.get('rcall', []), ev.get('rcv', [])
