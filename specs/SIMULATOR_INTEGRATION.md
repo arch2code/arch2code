@@ -1873,12 +1873,12 @@ Both run scripts pass every argument that starts with `+` to the simulator, so p
 A mismatch report names the comparator, the pair and, where the comparator keys its items, the key:
 
 ```
-UVM_ERROR .../a2c_uvm_pkg.sv(785) @ 13000: uvm_test_top.env.stream_out_agent.model_cmp [A2C_MODEL_CMP] uvm_test_top.env.stream_out_agent.model_cmp: pair 5: DUT '{data:'{pixels:'ha090807}, frame:'{eol:'h0, sof:'h0, eof:'h0}}, model '{data:'{pixels:'ha090806}, frame:'{eol:'h0, sof:'h0, eof:'h0}}; DUT item sampled at 12500, model item at 10500; fields that differ, lhs DUT and rhs model: item.data: lhs = 'h50484038 : rhs = 'h50484030
+UVM_ERROR .../a2c_uvm_pkg.sv(785) @ 13000: uvm_test_top.env.stream_out_agent.model_cmp [A2C_MODEL_CMP] uvm_test_top.env.stream_out_agent.model_cmp: pair 5: DUT '{data:'h50484038, last:'h0}, model '{data:'h50484030, last:'h0}; DUT item sampled at 12500, model item at 10500; fields that differ, lhs DUT and rhs model: item.data: lhs = 'h50484038 : rhs = 'h50484030
 ```
 
 - `pair <n>` counts the comparator's pairs from 1, in the order it compared them. On an in-order comparator the pair is the n-th item of each lane, or of each key.
 - `sampled at` gives `$realtime` when each item reached the comparator, which is when the lane's monitor sampled the transaction and published it. It is printed in the units of the report's `@` time, the simulator's precision, ps in a bench built with `-timescale 1ns/1ps`. The `@` time is UVM's `$time`, rounded to whole time units, so in the example the DUT item sampled at 12.5 ns is reported `@ 13000`. Each lane has its own time because the two lanes run apart. Find the DUT lane's transaction on the port's interface at that time, and the model lane's on the `<port>_model` interface. A status comparator gives the time of each lane's latest value at the stable point.
-- `fields that differ` lists each field of the item that differs as `<item name>.<field>`, with the DUT value as `lhs` and the model value as `rhs`, joined with `; `. A field with X or Z differs from one without. A struct field prints as its packed value, so `item.data` above holds the pixels and the frame markers together. The AXI items list beats as `data[<i>]`, `resp[<i>]` or `strb[<i>]` and a length difference as `beats`.
+- `fields that differ` lists each field of the item that differs as `<item name>.<field>`, with the DUT value as `lhs` and the model value as `rhs`, joined with `; `. A field with X or Z differs from one without. A struct field prints as its packed value. The AXI items list beats as `data[<i>]`, `resp[<i>]` or `strb[<i>]` and a length difference as `beats`.
 
 An unpaired-item report gives the first leftover item with its sample time, the time to start from when a lane stopped producing.
 
