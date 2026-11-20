@@ -14,6 +14,13 @@
 // raises vld, so a model that reads it then raises ready in time for the next
 // rising edge. The RTL's outputs from the rising edge have settled half a
 // clock later, and the protocol holds vld and the data until the handshake.
+//
+// The falling-edge offer assumes vld and the data come from flops on this
+// clock's rising edge. An output with a combinational path from an input
+// driven in that timestep, or launched by another clock such as one the DUT
+// divides, is offered at the next rising edge instead, and that timing may
+// differ by simulator. Data and order do not change, because the take samples
+// the wires again at the rising edge.
 template <class T>
 class rdyVldSrcDriver {
 
