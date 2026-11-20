@@ -72,9 +72,11 @@ public:
     virtual bool get_rdy() const = 0;
     // Notified as each read() starts, so a BFM can raise rdy in that timestep.
     virtual const sc_event& readEnteredEvent() const = 0;
-    // A BFM shows a beat the RTL holds: isActive() becomes true, but read()
+    // A BFM shows a beat the RTL holds. isActive() becomes true, but read()
     // returns only on the write() that follows.
     virtual void offer( const T& ) = 0;
+    // A BFM takes back an offered beat the RTL dropped, as at reset.
+    virtual void withdraw( void ) = 0;
     virtual void setTimedDelayPtr(std::shared_ptr<timedDelayBase> pTimedDelay) = 0;
 
 protected:
@@ -196,6 +198,7 @@ public:
     { return ( m_ready ); }
     virtual const sc_event& readEnteredEvent() const override { return m_read_entered_event; }
     virtual void offer( const T& ) override;
+    virtual void withdraw( void ) override;
 
     virtual bool isActive() override { return(m_valid); }
     virtual bool isNotActive() override { return(!m_valid); }
@@ -529,8 +532,18 @@ void rdy_vld_channel<T>::offer( const T& val_ )
     m_value = val_;
     m_valid = true;
     m_offered = true;
+    m_valid_event.notify();
     if (m_external_arb) {
         m_external_event_ptr->notify(SC_ZERO_TIME);
+    }
+}
+
+template <class T>
+void rdy_vld_channel<T>::withdraw( void )
+{
+    if (m_offered) {
+        m_valid = false;
+        m_offered = false;
     }
 }
 
