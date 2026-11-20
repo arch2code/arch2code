@@ -113,6 +113,7 @@ public:
                     {
                         std::lock_guard<std::mutex> lock(m_pending_mutex);
                         m_pending_w_beats = static_cast<int>(aw_data.awlen) + 1;
+                        m_pending_w_id = aw_data.awid;
                     }
                     // Hold awready low while a delayed send blocks.
                     hdl_if_p->awready = 0;
@@ -143,14 +144,16 @@ public:
                 hdl_if_p->wready = 0;
                 // Unblock axi_write_in port_socket waiting on receiveDataCycle.
                 int left = 0;
+                ID wid;
                 {
                     std::lock_guard<std::mutex> lock(m_pending_mutex);
                     left = m_pending_w_beats;
+                    wid = m_pending_w_id;
                     m_pending_w_beats = 0;
                 }
                 for (int i = 0; i < left; ++i) {
                     axiWriteDataSt<DATA_T, STRB_T, WU, ID, IDW> dummy{};
-                    dummy.wid = 0;
+                    dummy.wid = wid;
                     dummy.wlast = (i == left - 1);
                     if_p->sendDataCycle(dummy);
                 }
@@ -224,7 +227,9 @@ private:
 
     axi_write_channel<ADDR_T, DATA_T, STRB_T, AWU, WU, BU, ID, IDW> * m_chnl;
     std::mutex m_pending_mutex;
+    // The burst of the last AW: W beats still to come, and its ID.
     int m_pending_w_beats = 0;
+    ID m_pending_w_id{};
 
 };
 
