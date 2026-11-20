@@ -41,6 +41,8 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 ### A send returns at the handshake
 A `rdy_vld`, `axi4_stream` or AXI send (`write`, `sendInfo`, `sendAddr`, `sendData`, `sendResp` and their `Cycle` forms) blocks until the receiver takes the value. When the receiver is RTL, the BFM returns it at the clock edge where the RTL takes the beat. A burst sent with `writeClocked` returns when the RTL takes the burst's first beat.
 
+A model that reads a port only while `isActive()` is true moves one beat per two clocks against RTL. The BFM shows it a beat at the first edge that samples it, and the RTL hands the beat over only at the edge after the model calls `read()`. A model that waits in `read()` moves one beat per clock.
+
 A model that sends A and then does something the RTL needs before it can accept A deadlocks against that RTL. For example, the model writes a command and then writes the data, but the RTL takes the command only once the data is there. That is a model bug. Do the other work first, or in another thread.
 
 ### `status`

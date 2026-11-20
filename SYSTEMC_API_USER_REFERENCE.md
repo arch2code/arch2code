@@ -497,11 +497,14 @@ void consumer::consumerInRdyVld(void)
 
 #### BFM Side
 
-The rdy_vld, axi4_stream and AXI BFMs use three more calls to hand a beat over at the RTL's handshake edge. Models do not call them.
+The rdy_vld, axi4_stream and AXI BFMs use four more calls to hand a beat over at the RTL's handshake edge. Models do not call them.
 
-- `inPort->peek(data)` - Copies the value a writer is blocked on, or the next beat of a burst, and leaves the writer blocked. A dst BFM drives `vld` with it in the timestep of the model's send, then takes the value with `read()` or `readClocked()` at the handshake edge.
+- `inPort->peek(data)` - Copies the value a blocked writer sends, without taking it. A burst's first beat waits for the burst's last `writeClocked()`, and the writer stays blocked until the RTL takes that beat. The later beats of the burst come from the read buffer at once, because the writer has already returned. A dst BFM drives `vld` with the copy in the timestep of the model's send, or of a burst's last `writeClocked()`, then takes it with `read()` or `readClocked()` at the handshake edge.
 - `outPort->readEnteredEvent()` - Notified as each `read()` starts. A src BFM sets `rdy` from `get_rdy()` when it fires, so `rdy` rises in the timestep of the model's `read()`.
 - `outPort->offer(data)` - Shows a beat the RTL holds while the model is not reading. `isActive()` becomes true and the external event fires, so a model that reads only an active port sees it. `read()` returns only on the `write()` that follows at the handshake edge.
+- `outPort->withdraw()` - Takes back an offered beat the RTL dropped, as when reset takes `vld` down, so `isActive()` is false again.
+
+A model that reads a port only while `isActive()` is true, through `setExternalEvent()`, moves one beat per two clocks against RTL. The BFM offers a beat at the first edge that samples it, and `rdy` rises only once the model is in `read()`, so the RTL hands the beat over an edge later. With a delay, the BFM offers the next beat as the delayed send returns, which keeps that rate. A model that waits in `read()` moves one beat per clock.
 
 The AXI and axi4_stream BFMs reach these calls through the channel's public inner rdy_vld ports, such as `m_addr_in` and `m_tx_out`.
 
