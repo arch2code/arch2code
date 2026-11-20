@@ -17,16 +17,19 @@
 // and returns in the delta where the RTL samples it, so a pin written next
 // changes after the edge. It returns true if it waited.
 //
-// This assumes the clock keeps a steady period, and holds from its third
-// change. sc_clock and the wrapper's free-running clock are always steady.
+// This assumes the clock keeps a steady period from its fourth change.
+// sc_clock and the wrapper's free-running clock are always steady.
 // The gated lockstep clock is steady only between gating changes. When gating
 // starts after the clock has free-run, its first gated change comes one
 // lockstep step early, and when the sync link is lost the clock free-runs
-// from that moment. For the two changes after such a step, settle() can miss
-// a change due in this timestep, so the RTL sees a pin at that edge, or wait
-// for a change that is not due, which holds the pin to the next change. Reset
-// is released when gating starts, so the first calls out of reset can fall in
-// this window.
+// from that moment. Within the first three changes after such a step,
+// settle() mispredicts twice. It can miss a change due in this timestep, so
+// the RTL sees a pin at that edge, or wait for a change that is not due, which
+// holds the pin to the next change. Reset is released when gating starts, so
+// the first calls out of reset can fall in this window. A model stays out of
+// it by making its first pin-driving call no earlier than two full clocks
+// after reset release. After link loss the partner is gone, so only the local
+// run is affected.
 class bfmClockEdge : public sc_module {
 
 public:
