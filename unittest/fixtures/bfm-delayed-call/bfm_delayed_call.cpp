@@ -496,7 +496,9 @@ void runProbe( int delayNs, const std::string &mode )
 //           sits on the wire across an edge), resetlate (reset, with the
 //           reset an edge later, from 65 to 85 ns) and arb (always, with a
 //           model that waits on setExternalEvent() and calls read() only
-//           while isActive(); rv, axis, ar and aw)
+//           while isActive(); rv, axis, ar, r, aw, w and b), arbreset (arb
+//           with a busy model and a reset that meets a beat offered to it;
+//           rv, axis, ar and aw)
 //           A bus runs four operations, write, read, write, read: always,
 //           reset, slow (the RTL completer adds two wait states, or the
 //           RTL master two idle edges), error (apb and ahb: operations 1
@@ -510,13 +512,15 @@ void runProbe( int delayNs, const std::string &mode )
 // A lane starts on the edge at or before the model's first send (dst), or on
 // the first edge the RTL may offer a beat (src), so the B lane meets the hold
 // and the reset too.
-// The probe prints one line per event, "ev <kind> <value> <ps>":
+// The probe prints one line per event, "ev <kind> <value> <ps> <delta>", where
+// delta is sc_delta_count() and orders events in one timestep:
 //   call, ret  a model call starts and returns; ret carries the value read
 //   vld        the wire shows vld with this beat
 //   hs         the RTL takes or hands over a beat on this edge
 //   rst        an edge the mid-run reset covers
 //   rsths      a src RTL sees vld and ready high on a reset edge, with this beat
 //   rstvld     a src RTL has vld high on a reset edge, with this beat
+//   rstact     an arbreset model sees isActive() mid-clock after a reset edge
 //   req, ack   non-handshake RTL: it starts an operation, or the operation
 //              completes on this edge
 //   rerr       a bus RTL sees the completion's error response
@@ -542,7 +546,8 @@ struct runCfg {
 
 void logEv( const char *kind, std::uint64_t value )
 {
-    std::printf( "ev %s %llu %llu\n", kind, (unsigned long long)value, (unsigned long long)sc_time_stamp().value() );
+    std::printf( "ev %s %llu %llu %llu\n", kind, (unsigned long long)value, (unsigned long long)sc_time_stamp().value(),
+                 (unsigned long long)sc_delta_count() );
 }
 
 bool pastNs( int ns ) { return sc_time_stamp() >= sc_time( ns, SC_NS ); }
@@ -582,6 +587,8 @@ struct handoverBase : sc_module
     }
 
     void waitEdge() { wait( clk.posedge_event() ); }
+
+    bool arb() const { return cfg.rtl == "arb" || cfg.rtl == "arbreset"; }
 
     // The hold and the mid-run reset count from the edge at or before the
     // lane's first send or offer.
@@ -626,9 +633,9 @@ struct handoverBase : sc_module
                 wait( cfg.rtl == "always" ? 5 : 15, SC_NS );
             }
             modelReading = true;
-            if (cfg.rtl == "arb") { watch(); }
+            if (arb()) { watch(); }
             for (int k = 0; k < BEATS; k++) {
-                while (cfg.rtl == "arb" && !active()) { wait( arbEv ); }
+                while (arb() && !active()) { wait( arbEv ); }
                 logEv( "call", k );
                 logEv( "ret", recv() );
                 if (cfg.busyNs) { wait( cfg.busyNs, SC_NS ); }
@@ -638,6 +645,16 @@ struct handoverBase : sc_module
             sc_spawn( [this, l, go] { combSender( l, go ); } );
         } else {
             sc_spawn( [this, l, go] { sender( l, go ); } );
+        }
+        if (cfg.rtl == "arbreset") {
+            sc_spawn( [this] {
+                while (true) {
+                    wait( clk.posedge_event() );
+                    bool resetEdge = !rst_n;
+                    wait( clk.negedge_event() );
+                    if (resetEdge && active()) { logEv( "rstact", 0 ); }
+                }
+            } );
         }
         sc_spawn( [l] { monitor( l ); } );
     }
@@ -1027,6 +1044,8 @@ struct rSrc : handoverBase
         timed = &ch;
         out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
         sc_spawn( [this] { accept( hdl.arvalid, hdl.arready, &arTaken ); } );
+        watch = [this] { ch.m_data_in->setExternalEvent( &arbEv ); };
+        active = [this] { return ch.m_data_in->isActive(); };
         measureSrc( rLane( hdl ), [this] { out->sendAddr( makeAr( 0x1000, BEATS - 1 ) ); }, [this] {
             rT r;
             out->receiveDataCycle( r );
@@ -1171,6 +1190,8 @@ struct wSrc : wrSrcBase
             if (cfg.family == "wfirst") { wait( 60, SC_NS ); }
             issue( hdl.awvalid, hdl.awready, 1, [this]( int ) { driveAw( hdl, 1, 0x1000, BEATS - 1 ); }, &awSent );
         } );
+        watch = [this] { ch.m_data_in->setExternalEvent( &arbEv ); };
+        active = [this] { return ch.m_data_in->isActive(); };
         measureSrc( wLane( hdl ), [this] { awT a; in->receiveAddr( a ); }, [this] {
             wT w;
             in->receiveDataCycle( w );
@@ -1223,6 +1244,8 @@ struct bSrc : handoverBase
         sc_spawn( [this] { wait( 33, SC_NS ); for (int i = 0; i < BEATS; i++) { out->sendDataCycle( makeW( i, i, true ) ); } } );
         sc_spawn( [this] { accept( hdl.awvalid, hdl.awready ); } );
         sc_spawn( [this] { accept( hdl.wvalid, hdl.wready, &wTaken ); } );
+        watch = [this] { ch.m_resp_in->setExternalEvent( &arbEv ); };
+        active = [this] { return ch.m_resp_in->isActive(); };
         measureSrc( bLane( hdl ), {}, [this] {
             bT b;
             out->receiveResp( b );
@@ -1987,10 +2010,12 @@ struct extregSrc : levelBase
 // 55 ns after, so it lands while a delayed model call blocks, and their
 // resetlate runs cover the edge after. The memory runs finish their four
 // operations by 45 ns, so their reset starts at 25 ns, with operations 2 and
-// 3 still to go.
+// 3 still to go. An arbreset run's reset meets a beat offered to the busy
+// model: 65 ns after with no delay, 45 ns with a delay.
 int resetAfterNs( const runCfg &c )
 {
     if (c.family == "mem") { return 25; }
+    if (c.rtl == "arbreset") { return c.delayNs > 0 ? 45 : 65; }
     bool delayedSrc = c.dir == "src" && c.delayNs > 0;
     if (delayedSrc && (c.family == "rv" || c.family == "axis" || c.family == "ar" || c.rtl == "resetlate")) {
         return 65;
@@ -2008,7 +2033,8 @@ struct handoverTop : sc_module
 
     SC_HAS_PROCESS( handoverTop );
     handoverTop( sc_module_name n, const runCfg &c ) :
-        sc_module( n ), clk( "clk", 10, SC_NS ), dut( "dut", c ), midReset( c.rtl == "reset" || c.rtl == "resetlate" )
+        sc_module( n ), clk( "clk", 10, SC_NS ), dut( "dut", c ),
+        midReset( c.rtl == "reset" || c.rtl == "resetlate" || c.rtl == "arbreset" )
     {
         dut.clk( clk ); dut.rst_n( rst_n );
         SC_THREAD( run );

@@ -12,12 +12,15 @@ the model reading back to back, there is one handshake per clock. dst drives
 vld in the timestep of the model's send and the RTL takes the first beat at
 the next edge. src hands the first beat over at the first edge after the
 model calls read() with vld up. A read that starts in an edge's own timestep,
-woken by time, runs ahead of that edge's processes, so the RTL may take the
-beat at that edge.
+woken by time, runs ahead of that edge's processes, so the RTL takes the beat
+at that edge.
 
 A src model that waits on setExternalEvent() and reads only an active port
-(rtl=arb) must not deadlock. The BFM shows it the beat at the first edge that
-samples vld, so its first beat may take one clock more.
+(rtl=arb) must not deadlock. The BFM offers it a beat at the first edge that
+samples vld, and ready rises only once the model is in read(), so every beat
+takes one clock more: one beat per two clocks. With a delay the BFM offers
+the next beat as the delayed send returns, which keeps that rate. In
+rtl=arbreset such a model must not see a beat that reset took off the wire.
 
 Every run also checks that it ends without a hang or a Q_ASSERT, that order
 holds and no beat is lost, and, with no delay, that no model call returns on
@@ -114,7 +117,10 @@ BUS_MODES = {'dst': ('always', 'slow', 'reset', 'error'), 'src': ('always', 'par
 # memory, status, raw and external_reg channels ignore setTimed(), so they run at delay 0 only.
 UNTIMED = ('mem',) + LEVEL
 # A model that waits on setExternalEvent() and reads only an active port.
-CASES += [Case(f, 'src', 'arb', 0, 'allowed', d) for f in ('rv', 'axis', 'ar', 'aw') for d in DELAYS]
+CASES += [Case(f, 'src', 'arb', 0, 'allowed', d) for f in ('rv', 'axis', 'ar', 'r', 'aw', 'w', 'b') for d in DELAYS]
+# The same model, busy 25 ns after each read, and a reset that meets a beat
+# offered to it.
+CASES += [Case(f, 'src', 'arbreset', 25, 'allowed', d) for f in ('rv', 'axis', 'ar', 'aw') for d in DELAYS]
 CASES += [Case(f, dr, m, 0, 'allowed', d) for f in BUS for dr in BUS_MODES for m in BUS_MODES[dr] for d in DELAYS
           if not (m == 'error' and f == 'mem') and not (m == 'slow' and f == 'mem' and dr == 'dst')
           and not (f in UNTIMED and d > 0)]
@@ -143,7 +149,8 @@ ACK_RULE_1 = "src handshake only after the model's ack"
 ACK_RETURN = "src handshake on the edge after the model's ack"
 DONE = 'probe runs to completion'
 NO_ASSERT = 'no Q_ASSERT stops the run'
-ARB_FIRST = 'an arbitrating reader gets the first beat at most one clock late'
+ARB_FIRST = 'an arbitrating reader gets the first beat one clock late'
+ARB_RATE = 'an arbitrating reader moves one beat per two clocks'
 
 
 def anyCase(case):
@@ -164,6 +171,10 @@ def resetDelayed(case):
 
 def resetLate(case):
     return case.rtl == 'resetlate'
+
+
+# The src families whose delayed reset the fixture moves off the default 45 ns.
+MOVED_RESET = ('rv', 'axis', 'ar', 'aw', 'w')
 
 
 # A row marks checks that fail today: (families, direction, checks, applies
@@ -330,10 +341,12 @@ def liveEdge(t, resetEdges):
 
 
 def events(output):
-    ev = {}
-    for kind, value, ps in re.findall(r'^ev (\w+) (\d+) (\d+)$', output, re.M):
+    """Each kind's (value, ps) list, and its sc_delta_count() list."""
+    ev, deltas = {}, {}
+    for kind, value, ps, delta in re.findall(r'^ev (\w+) (\d+) (\d+) (\d+)$', output, re.M):
         ev.setdefault(kind, []).append((int(value), int(ps)))
-    return ev
+        deltas.setdefault(kind, []).append(int(delta))
+    return ev, deltas
 
 
 def beatsHow(values):
@@ -345,8 +358,16 @@ def beatsHow(values):
     return '+'.join(faults) or 'reordered'
 
 
-def handshakeChecks(case, ev, output):
+def handshakeChecks(case, ev, deltas, output):
     hs, calls, rets, vld = (ev.get(k, []) for k in ('hs', 'call', 'ret', 'vld'))
+    if case.rtl == 'arbreset':
+        r0 = min(t for _, t in ev['rst'])
+        check(case, 'the reset meets a beat offered to the model',
+              r0 in {t for _, t in ev.get('rstvld', [])} - {t for _, t in ev.get('rsths', [])},
+              f"first reset edge {r0}, vld {ev.get('rstvld', [])}, vld and ready {ev.get('rsths', [])}")
+        check(case, 'an arbitrating reader sees no beat reset took off the wire', not ev.get('rstact'),
+              f"isActive() mid-clock after a reset edge at {[t for _, t in ev.get('rstact', [])]}")
+        return
     hsTimes = [t for _, t in hs]
     hsValues, retValues = [v for v, _ in hs], [v for v, _ in rets]
     check(case, ORDER, hsValues == IN_ORDER and retValues == IN_ORDER,
@@ -389,7 +410,11 @@ def handshakeChecks(case, ev, output):
     elif judged:
         # A read that starts in an edge's timestep, woken by time, runs ahead
         # of that edge's processes, so the RTL sees its ready at that edge.
-        unwaited = [i for i, t in enumerate(hsTimes) if i >= len(calls) or calls[i][1] > t]
+        # This relies on the RTL sampling rdy in the posedge delta, as dst
+        # relies on it to drive vld in the timestep of the model's send.
+        callDeltas, hsDeltas = deltas.get('call', []), deltas.get('hs', [])
+        unwaited = [i for i, t in enumerate(hsTimes) if i >= len(calls) or calls[i][1] > t
+                    or (calls[i][1] == t and callDeltas[i] >= hsDeltas[i])]
         check(case, SRC_RULE_1, not unwaited,
               f"handshakes with no read waiting: {unwaited}, reads={[t for _, t in calls]} hs={hsTimes}",
               f"first at beat {unwaited[0]}" if unwaited else '')
@@ -401,12 +426,13 @@ def handshakeChecks(case, ev, output):
             check(case, SRC_COUNT, len(rets) == len(hs),
                   f"{len(rets)} reads returned, {len(hs)} handshakes")
     if case.rtl == 'arb' and hs and vld:
-        # The BFM offers the beat at the first edge that samples vld, and
-        # only then does the model call read().
-        first = nextEdge(vld[0][1])
-        check(case, ARB_FIRST, hsTimes[0] in (first, first + PERIOD),
-              f"vld {vld[0][1]}, first handshake {hsTimes[0]}, first edge after vld {first}")
+        # The BFM offers each beat at the first edge that samples it, and
+        # only then does the model call read() and raise ready.
+        first = nextEdge(vld[0][1]) + PERIOD
+        check(case, ARB_FIRST, hsTimes[0] == first,
+              f"vld {vld[0][1]}, first handshake {hsTimes[0]}, expected {first}")
         gaps = sorted({b - a for a, b in zip(hsTimes, hsTimes[1:])})
+        check(case, ARB_RATE, gaps == [2 * PERIOD], f"handshake gaps {gaps} ps")
         NUMBERS.append(f"{case.family} src rtl=arb delay={case.delay}: handshake gap {gaps} ps; vld {vld[0][1]} ps, "
                        f"first handshake {hsTimes[0]} ps")
     if case.rtl in FULL_RATE and case.delay == 0 and case.busy == 0 and case.bp == 'allowed':
@@ -425,7 +451,19 @@ def handshakeChecks(case, ev, output):
             check(case, 'src latency', hsTimes[0] == first,
                   f"read {calls[0][1]}, vld {vld[0][1]}, first handshake {hsTimes[0]}, expected {first}",
                   f"{(hsTimes[0] - first) // PERIOD:+d} clock")
-    if case.dir == 'src' and case.rtl in ('reset', 'resetlate'):
+    if case.dir == 'src' and case.rtl in ('reset', 'resetlate') and case.delay > 0 and case.family in MOVED_RESET:
+        # The fixture times these resets to a phase, so a timing change that
+        # moves the reset off it fails here.
+        r0 = min(t for _, t in ev['rst'])
+        if case.rtl == 'resetlate' or case.family in ('rv', 'axis', 'ar'):
+            check(case, 'the reset starts on an edge with vld and ready high',
+                  r0 in {t for _, t in ev.get('rsths', [])},
+                  f"first reset edge {r0}, vld and ready {ev.get('rsths', [])}")
+        else:
+            inFlight = [hv for hv, h in hs for rv, r in rets if hv == rv and h < r0 < r]
+            check(case, 'the reset starts while a delayed model call blocks', bool(inFlight),
+                  f"first reset edge {r0}, hs={hs} model={rets}")
+    elif case.dir == 'src' and case.rtl in ('reset', 'resetlate'):
         # A src BFM has ready high at a reset edge unless the edge falls between
         # a handshake and the return of that beat's delayed model call. Ready
         # is low then, so the reset meets the next beat with vld alone. A
@@ -697,13 +735,13 @@ def test_bfm_handover():
                 asserted = re.search(r'^probe assert (.*)$', output, re.M)
                 how = re.sub(r'\((?:\S*/)?([^/:]+):\d+\)', r'(\1)', asserted.group(1)) if asserted else f"exit {status}"
                 check(case, NO_ASSERT, status == 0 and not asserted, f"status {status}, {how}", how)
-                ev = events(output)
+                ev, deltas = events(output)
                 if case.family in BUS:
                     busChecks(case, ev)
                 elif case.family in LEVEL:
                     levelChecks(case, ev)
                 else:
-                    handshakeChecks(case, ev, output)
+                    handshakeChecks(case, ev, deltas, output)
             if len(FAILURES) > before:
                 print(output)
         print("\n  Throughput and latency today (RTL always ready or valid, model back to back, no delay):")
