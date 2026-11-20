@@ -1,6 +1,7 @@
 #ifndef BFMCLOCKEDGE_H
 #define BFMCLOCKEDGE_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see
+// https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
 
@@ -14,9 +15,18 @@
 // them predicts the next one. settle() returns at once unless a change is due
 // in this timestep and has not happened yet. Then it waits for that change,
 // and returns in the delta where the RTL samples it, so a pin written next
-// changes after the edge. It returns true if it waited. This assumes the clock keeps a steady period, as the
-// wrapper's clocks do. A clock that skips a predicted change delays the pin to
-// the next change.
+// changes after the edge. It returns true if it waited.
+//
+// This assumes the clock keeps a steady period, and holds from its third
+// change. sc_clock and the wrapper's free-running clock are always steady.
+// The gated lockstep clock is steady only between gating changes. When gating
+// starts after the clock has free-run, its first gated change comes one
+// lockstep step early, and when the sync link is lost the clock free-runs
+// from that moment. For the two changes after such a step, settle() can miss
+// a change due in this timestep, so the RTL sees a pin at that edge, or wait
+// for a change that is not due, which holds the pin to the next change. Reset
+// is released when gating starts, so the first calls out of reset can fall in
+// this window.
 class bfmClockEdge : public sc_module {
 
 public:
