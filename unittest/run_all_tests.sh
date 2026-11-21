@@ -765,6 +765,12 @@ python3 test_reg_bus_error_responses.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: regBusErrorResponses captures each ext array element's own pslverr on a write"
+echo "------------------------------------------------------------------------"
+python3 test_reg_bus_error_ext_array.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: generated RTL register block reads 32'hBADD_C0DE and drops writes past a memory's variant depth"
 echo "------------------------------------------------------------------------"
 python3 test_regs_rtl_mem_depth.py || FAILED=1

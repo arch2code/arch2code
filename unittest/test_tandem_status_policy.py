@@ -36,13 +36,13 @@ from pysrc.processYaml import projectOpen
 def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra='', in_extra='',
           ro_reg_extra='', rw_reg_extra='', ro_rc_extra='', rw_rc_extra='', own_reg_extra='',
           wrap_out_extra='', leaf_ro_extra='', leaf_ext_extra='', leaf_rw_extra='', leaf_mem_extra='',
-          ext_reg_extra='', ext_rc_extra='', wide_ext_extra=None, ext_tb_extra=None):
+          ext_reg_extra='', ext_rc_extra='', wide_ext_extra=None, ext_tb_extra=None, leaf_arr_extra=None):
     """Each *_extra is appended inside one row's inline dict, e.g. ', tandem: warn'.
     A fan_extra adds a second row from uSrcA's statIf, which getBlockData rejects as a
     duplicate port, so only a case make db rejects uses it. A wide_ext_extra adds a
     64-bit ext register to regLeaf, which make db rejects as wider than the bus. An
     ext_tb_extra connects a second ext register to an instance of rtlOnly, which has
-    hasMdl: false."""
+    hasMdl: false. A leaf_arr_extra adds an ro array register of four elements to regLeaf."""
     tbInst = '' if ext_tb_extra is None else "    uRegTb:     { container: regOwner, instanceType: rtlOnly }\n"
     tbReg = '' if ext_tb_extra is None else (
         '    - { register: extTb, regType: ext, block: regOwner, structure: cfgRegSt, desc: "ext to tb" }\n')
@@ -51,6 +51,9 @@ def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra
     wide = '' if wide_ext_extra is None else (
         '    - { register: wideExt, regType: ext, block: regLeaf, structure: wideRegSt, desc: "wide ext"'
         + wide_ext_extra + ' }\n')
+    arr = '' if leaf_arr_extra is None else (
+        '    - { register: leafArr, regType: ro, block: regLeaf, structure: cfgRegSt, count: 4, desc: "leaf ro array"'
+        + leaf_arr_extra + ' }\n')
     fan = '' if fan_extra is None else (
         "    - { interface: statIf, src: uSrcA, dst: uSinkB" + fan_extra + " }\n")
     preamble = APB_PREAMBLE.replace('structures:\n', """structures:
@@ -111,7 +114,7 @@ registers:
     - { register: leafExt, regType: ext, block: regLeaf, structure: cfgRegSt, desc: "leaf ext" """ + leaf_ext_extra + """ }
     - { register: leafMem, regType: memory, block: regLeaf, structure: cfgRegSt, addressStruct: apbAddrSt, wordLines: 8, desc: "leaf memory" """ + leaf_mem_extra + """ }
     - { register: extReg, regType: ext, block: regOwner, structure: cfgRegSt, desc: "connected ext" """ + ext_reg_extra + """ }
-""" + wide + tbReg + """
+""" + wide + arr + tbReg + """
 registerConnections:
     - { register: roReg, block: regOwner, instance: uRegLeaf""" + ro_rc_extra + """ }
     - { register: rwReg, block: regOwner, instance: uRegLeaf""" + rw_rc_extra + """ }
@@ -155,6 +158,29 @@ def accept_reads(label, expected, **rows):
         got = None if reads is None else {reg['register']: reg['policy'] for reg in reads['registers']}
         ok = got == expected and (reads is None or reads['port'] == 'apbReg')
         print(f"{'PASS' if ok else 'FAIL'}: {label}" + ('' if ok else f": expected {expected}, got {reads}"))
+        RESULTS.append(ok)
+    finally:
+        cleanup([project_path, db_path] + arch_paths)
+
+
+def accept_array_reads(label):
+    """tandem: warn on regLeaf's ro array register gives one read entry per element, named
+    leafArr[k], at the register's offset plus k element strides."""
+    try:
+        db_path, project_path, arch_paths = build_database(_arch(leaf_arr_extra=', tandem: warn'))
+    except RuntimeError as exc:
+        print(f"FAIL: {label}: {exc}")
+        RESULTS.append(False)
+        return
+    try:
+        prj = projectOpen(db_path)
+        reg = next(r for r in prj.data['registers'].values() if r['register'] == 'leafArr')
+        expected = [{'register': f'leafArr[{k}]', 'offset': reg['offset'] + reg['stride'] * k, 'size': 2,
+                     'policy': 'warn'} for k in range(4)]
+        got = prj.getBlockData(find_block(prj, 'regLeaf')[0])['tandemRegisterReads']['registers']
+        ok = reg['stride'] > 0 and got == expected
+        print(f"{'PASS' if ok else 'FAIL'}: {label}"
+              + ('' if ok else f": stride {reg['stride']}, expected {expected}, got {got}"))
         RESULTS.append(ok)
     finally:
         cleanup([project_path, db_path] + arch_paths)
@@ -221,6 +247,7 @@ def run_all_tests():
                      {'leafExt': resolved}, leaf_ext_extra=f', tandem: {value}')
     accept_reads("tandem: on an ro and an ext register of one leaf", {'leafRo': 'off', 'leafExt': 'warn'},
                  leaf_ro_extra=', tandem: off', leaf_ext_extra=', tandem: warn')
+    accept_array_reads("tandem: warn on an ro array register covers each of its four elements")
 
     all_src = {k: v.format(v='fatal') for k, v in both.items()}
     reject("an unknown word", ["tandem: loud", "not a tandem status-compare policy"],

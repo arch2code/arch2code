@@ -2515,16 +2515,27 @@ class projectOpen:
         # The registers whose firmware reads a Tandem run compares by their
         # tandem: policy, at the offsets and address mask the block's register
         # handler decodes (blockRegs.py), or None when the block has none.
+        # Each element of an array register is its own entry, <reg>[k].
         policies = self.tandemRegisterReads.get(ret['qualBlock'])
         if policies is None:
             ret['tandemRegisterReads'] = None
             return
+        registers = []
+        for reg in ret['registers'].values():
+            if reg['register'] not in policies:
+                continue
+            policy = policies[reg['register']]
+            if reg['countValue'] is None:
+                registers.append({'register': reg['register'], 'offset': reg['offset'], 'size': reg['maxBytes'],
+                                  'policy': policy})
+                continue
+            registers.extend({'register': f"{reg['register']}[{k}]", 'offset': reg['offset'] + k * reg['stride'],
+                              'size': reg['maxBytes'], 'policy': policy}
+                             for k in range(reg['countValue']))
         ret['tandemRegisterReads'] = {
             'port': ret['addressDecode']['registerBusPort'],
             'addressMask': (1 << ret['addressDecode']['addressBits']) - 1,
-            'registers': [{'register': reg['register'], 'offset': reg['offset'], 'size': reg['maxBytes'],
-                           'policy': policies[reg['register']]}
-                          for reg in ret['registers'].values() if reg['register'] in policies]}
+            'registers': registers}
 
     def getBDAddressDecode(self, ret):
         # Is this block an apbDecode router that performs APB bus routing?

@@ -316,7 +316,7 @@ An `ro` or `ext` register that no `registerConnections` row connects lives insid
 | `warn` or a positive number | Logged as `register read level mismatch ... (not asserted)` and counted in `Status tee mismatches`. The run goes on. A number is not fatal here, because a read has no window to wait out. |
 | `final` or `off` | Not compared. |
 
-Firmware always gets the primary's data and error response. A PSLVERR or HRESP mismatch, and a write, compare as before. The block must be a leaf with both `hasMdl` and `hasRtl`. `make db` rejects the key on a register owned by a block that cannot run in Tandem.
+Firmware always gets the primary's data and error response. A PSLVERR or HRESP mismatch, and a write, compare as before. The block must be a leaf with both `hasMdl` and `hasRtl`. `make db` rejects the key on a register owned by a block that cannot run in Tandem. On an array register (`count:`) the key applies to every element.
 
 On a write-one-to-clear register, `warn` waives only the read compare. A clear that lands between the two sides' sets still leaves them different, so the block must order its clears against its sets as the RTL does, for example with a synchLock site (A2C Pro).
 
