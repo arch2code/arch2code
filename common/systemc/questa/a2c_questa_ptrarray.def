@@ -1,0 +1,18 @@
+// The ptrarray<T*> specializations Questa's SystemC headers instantiate in
+// their own inline code. systemc.h in this directory declares each one
+// `extern template`, and questa_sc_main.cpp, compiled by sccom, defines them.
+// A C++20 module unit that instantiates ptrarray for another SystemC T fails
+// to compile with "declaration of 'm_default_init_size' in module ... follows
+// declaration in the global module"; add that T here. A T declared in a
+// C++20 module cannot be named here (SIMULATOR_INTEGRATION.md section 2.3).
+A2C_QUESTA_PTRARRAY(const sc_core::sc_event*)
+A2C_QUESTA_PTRARRAY(sc_core::sc_event*)
+A2C_QUESTA_PTRARRAY(sc_core::sc_event_finder*)
+A2C_QUESTA_PTRARRAY(sc_core::sc_interface*)
+A2C_QUESTA_PTRARRAY(sc_core::sc_method_process*)
+A2C_QUESTA_PTRARRAY(sc_core::sc_thread_process*)
+A2C_QUESTA_PTRARRAY(sc_core::sc_port_base*)
+A2C_QUESTA_PTRARRAY(sc_core::sc_signal_in_if<bool>*)
+A2C_QUESTA_PTRARRAY(sc_core::sc_signal_in_if<sc_dt::sc_logic>*)
+A2C_QUESTA_PTRARRAY(sc_core::sc_signal_inout_if<bool>*)
+A2C_QUESTA_PTRARRAY(sc_core::sc_signal_inout_if<sc_dt::sc_logic>*)
