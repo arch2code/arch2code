@@ -1891,14 +1891,6 @@ class projectOpen:
         ports = list()
         for portGroup in ret['ports'].values():
             for portData in portGroup.values():
-                if portData['arrayCountValue'] is not None:
-                    printError(
-                        f"Block '{ret['blockInfo']['block']}' declares hasUvm: true and its port "
-                        f"'{portData['name']}' takes a whole register array, an array of "
-                        f"{portData['arrayCountValue']} interfaces. The UVM testbench gives each port "
-                        f"one agent on one interface, so it cannot drive an interface-array port. "
-                        f"Connect the array element by element with index:, or clear hasUvm.")
-                    exit(warningAndErrorReport())
                 intfData = intf_gen_utils.get_intf_data(portData['connection'], self)
                 intfType = intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)
                 intfDef = ret['interface_defs'][intfType]
@@ -6174,6 +6166,20 @@ class projectCreate:
                     f"of '{block}' in ports:, and its register bus in registerPorts:.")
                 failed = True
                 continue
+            # A registerConnections row without index gives the block the
+            # whole register; for an array register that port is an array of
+            # interfaces.
+            arrayPorts = sorted({row['register'] for row in self.flatData['registerConnections'].values()
+                                 if self.flatData['instances'][row['instanceKey']]['instanceTypeKey'] == blockKey
+                                 and row['index'] == ''
+                                 and self.flatData['registers'][row['registerBlockKey']]['count'] != ''})
+            for name in arrayPorts:
+                printError(
+                    f"{where} but its port '{name}' takes a whole register array, an array of "
+                    f"interfaces. The UVM testbench gives each port one agent on one interface, so "
+                    f"it cannot drive an interface-array port. Connect the array element by element "
+                    f"with index:, or clear hasUvm.")
+                failed = True
             domain = tree.blocks[blockKey]
             outputs = ([f"clock '{name}'" for name, decl in domain.clocks.items() if decl.direction == 'output']
                        + [f"reset '{name}'" for name, decl in domain.resets.items() if decl.direction == 'output'])
@@ -12126,8 +12132,8 @@ class projectCreate:
         access."""
         blockRow = self.flatData['blocks'][blockKey]
         names = set(blockRow.get('ports', dict())) | set(blockRow.get('registerPorts', dict()))
-        for fileRows in self.data['connectionsends'].values():
-            names.update(end['portName'] for end in fileRows.values() if end['instanceTypeKey'] == blockKey)
+        for conn in self.flatData['connections'].values():
+            names.update(end['portName'] for end in conn['ends'].values() if end['instanceTypeKey'] == blockKey)
         instances = self.flatData['instances']
         for cm in self.flatData['connectionMaps'].values():
             if cm['blockKey'] == blockKey:

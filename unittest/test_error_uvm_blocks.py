@@ -77,6 +77,34 @@ ARCH = os.path.join('yaml', 'uvmBlocks.yaml')
 CHILD_ARCH = os.path.join('child', 'yaml', 'ubChild.yaml')
 CHILD_ROOT_ARCH = os.path.join('yaml', 'uvmBlocksChild.yaml')
 ROOT_PROJECT = os.path.join('prj', 'yaml', 'uvmBlocksProject.yaml')
+
+
+def owned_register_edits(row, extra=(), index=None):
+    """Fixture edits that give uDut a registerConnections port: ubTb owns the
+    register row and connects it to uDut. A register connects only to a
+    child instance of its owner, and a container that owns registers and
+    holds a register-bus consumer needs its own router, so ubTb moves under a
+    new top, ubTop, beside the router and the CPU, and uDut leaves the
+    register bus. index connects one element of an array register."""
+    return [(ROOT_PROJECT, [('topInstance: ubTb\n', 'topInstance: ubTop\n')]),
+            (ARCH, list(extra) + [
+                ('blocks:\n    ubTb:\n',
+                 'blocks:\n    ubTop:\n        desc: "Register test top"\n        hasMdl: false\n'
+                 '        hasTb: false\n        hasRtl: false\n        hasVl: false\n    ubTb:\n'),
+                ('        registerPorts:\n            ubRegs: { interface: ubRegs }\n', ''),
+                ('    ubTb:    { container: ubTb, instanceType: ubTb,     instGroup: top }\n',
+                 '    ubTop:   { container: ubTop, instanceType: ubTop,   instGroup: top }\n'
+                 '    uTb:     { container: ubTop, instanceType: ubTb,    instGroup: top, addressGroup: top }\n'),
+                ('    uDut:    { container: ubTb, instanceType: ubDut,    instGroup: top, addressGroup: top }\n',
+                 '    uDut:    { container: ubTb, instanceType: ubDut,    instGroup: top }\n'),
+                ('    uCpu:    { container: ubTb, instanceType: ubCpu,    instGroup: top }\n',
+                 '    uCpu:    { container: ubTop, instanceType: ubCpu,    instGroup: top }\n'),
+                ('    uRouter: { container: ubTb, instanceType: ubRouter, instGroup: top }\n',
+                 '    uRouter: { container: ubTop, instanceType: ubRouter, instGroup: top }\n'),
+                ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+                 f'    - {{ {row}, block: ubTb }}\n\nregisterConnections:\n'
+                 f'    - {{ register: {row.split(",")[0].split(":")[1].strip()}, block: ubTb, instance: uDut'
+                 + (f', index: {index}' if index is not None else '') + ' }\n')])]
 CHILD_ROOT_PROJECT = os.path.join('prj', 'yaml', 'uvmBlocksChildProject.yaml')
 
 WHERE = "Block 'ubDut' (file ../../yaml/uvmBlocks.yaml) declares hasUvm: true"
@@ -288,14 +316,11 @@ REJECTED = [
               ('addressGroup: top }', 'addressGroup: top, resets: { rtl_dut: rst_n } }')])],
      [WHERE, "its reset 'rtl_dut' has the name of the completion pin 'rtl_dut'"]),
     ('a register connection port named like a completion pin', ROOT_PROJECT,
-     [(ARCH, [('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
-               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
-              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
-               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
-               '    - { register: uvm_done, regType: rw, block: ubSink, structure: ubSt, desc: "Sink config" }\n\n'
-               'registerConnections:\n'
-               '    - { register: uvm_done, block: ubSink, instance: uDut }\n')])],
+     owned_register_edits('register: uvm_done, regType: rw, structure: ubSt, desc: "Sink config"'),
      [WHERE, "its port 'uvm_done' has the name of the completion pin 'uvm_done'"]),
+    ('a port taking a whole register array', ROOT_PROJECT,
+     owned_register_edits('register: sinkCfg, regType: rw, structure: ubSt, desc: "Sink config", count: 2'),
+     [WHERE, "its port 'sinkCfg' takes a whole register array, an array of interfaces"]),
     ('a port named like the report server variable', ROOT_PROJECT,
      [(ARCH, [('            in:  {', '            srv: {'), ('dstport: in,', 'dstport: srv,')])],
      [WHERE, "its port 'srv' has the name of the report server variable 'srv'"]),
@@ -503,13 +528,7 @@ ACCEPTED = [
 # (name, project file, [(yaml file, edits)], {generated file: [lines]})
 GENERATED = [
     ('a status register connection port', ROOT_PROJECT,
-     [(ARCH, [('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
-               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
-              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
-               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
-               '    - { register: sinkCfg, regType: rw, block: ubSink, structure: ubSt, desc: "Sink config" }\n\n'
-               'registerConnections:\n'
-               '    - { register: sinkCfg, block: ubSink, instance: uDut }\n')])],
+     owned_register_edits('register: sinkCfg, regType: rw, structure: ubSt, desc: "Sink config"'),
      {os.path.join('uvm', 'ubDut_uvm_pkg.sv'): [
          'typedef status_agent #(.data_t(ubSt)) sinkCfg_agent_t;',
          'typedef virtual status_if #(.data_t(ubSt)) sinkCfg_vif_t;',
@@ -524,17 +543,17 @@ GENERATED = [
          '.sinkCfg_data(sinkCfg.data),',
          'uvm_config_db#(ubDut_uvm_pkg::sinkCfg_vif_t)::set(null, "uvm_test_top.*", "sinkCfg", sinkCfg);']}),
     ('a one-bit status register connection port', ROOT_PROJECT,
-     [(ARCH, [('    ubWordT:', '    ubFlagT: { width: 1, desc: "Flag" }\n    ubWordT:'),
-              ('    ubAddrSt:', '    ubFlagSt:\n        flag: { varType: ubFlagT, desc: "Flag" }\n    ubAddrSt:'),
-              ('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
-               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
-              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
-               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
-               '    - { register: sinkFlag, regType: rw, block: ubSink, structure: ubFlagSt, desc: "Sink flag" }\n\n'
-               'registerConnections:\n'
-               '    - { register: sinkFlag, block: ubSink, instance: uDut }\n')])],
+     owned_register_edits('register: sinkFlag, regType: rw, structure: ubFlagSt, desc: "Sink flag"',
+                          [('    ubWordT:', '    ubFlagT: { width: 1, desc: "Flag" }\n    ubWordT:'),
+                           ('    ubAddrSt:', '    ubFlagSt:\n        flag: { varType: ubFlagT, desc: "Flag" }\n    ubAddrSt:')]),
      {os.path.join('uvm', 'ubDut_uvm_tb.sv'): [
          'output bit sinkFlag_data,']}),
+    ('a port taking one element of a register array', ROOT_PROJECT,
+     owned_register_edits('register: sinkCfg, regType: rw, structure: ubSt, desc: "Sink config", count: 2', index=1),
+     {os.path.join('uvm', 'ubDut_uvm_pkg.sv'): [
+         'typedef status_agent #(.data_t(ubSt)) sinkCfg_agent_t;'],
+      os.path.join('uvm', 'ubDut_uvm_tb.sv'): [
+         'status_if #(.data_t(uvmBlocks_package::ubSt)) sinkCfg();']}),
     ('a memoryConnections port', ROOT_PROJECT,
      [(ARCH, [('    ubWordT:', '    ubIdxT: { width: 4, desc: "Table index" }\n    ubWordT:'),
               ('    ubAddrSt:', '    ubIdxSt:\n        idx: { varType: ubIdxT, desc: "Table index" }\n    ubAddrSt:'),
@@ -554,13 +573,7 @@ GENERATED = [
       os.path.join('verif', 'ubDut_hdl_sv_wrapper.sv'): [
          'memory_xcheck tbl_xcheck (.clk(clk), .rst_n(rst_n), .intf(tbl));']}),
     ('an external register connection port', ROOT_PROJECT,
-     [(ARCH, [('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
-               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
-              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
-               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
-               '    - { register: sinkExt, regType: ext, block: ubSink, structure: ubSt, desc: "Sink external" }\n\n'
-               'registerConnections:\n'
-               '    - { register: sinkExt, block: ubSink, instance: uDut }\n')])],
+     owned_register_edits('register: sinkExt, regType: ext, structure: ubSt, desc: "Sink external"'),
      {os.path.join('uvm', 'ubDut_uvm_pkg.sv'): [
          'typedef external_reg_agent #(.data_t(ubSt)) sinkExt_agent_t;',
          'typedef virtual external_reg_if #(.data_t(ubSt)) sinkExt_vif_t;',
