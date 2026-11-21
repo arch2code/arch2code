@@ -57,7 +57,7 @@ assign rwArrPick = rwArrData[rwArrSel];
 
 `rwArrIdxT` stands for an index type you declare in YAML with `widthLog2minus1: REGARR_N`. The examples declare none. When the count is not a power of two, the block's logic keeps the index below the count.
 
-Lint and synthesis support for interface-array ports varies by tool. Verilator lints and simulates the examples. Check your synthesis tool before you depend on an interface-array port at a block boundary. The VCS and Xcelium flows have no register-array coverage.
+Lint and synthesis support for interface-array ports varies by tool. Verilator lints and simulates the examples. Check your synthesis tool before you depend on an interface-array port at a block boundary. The VCS, Xcelium and Questa flows have no register-array coverage.
 
 ### 2. Register clock domain
 The handler runs on the block's register clock and reset. For a top-down leaf, these are the leaf's synchronous input reset bound to the serving router's bus reset, and the clock that owns that reset. A `registerPorts:` row can name them instead. `design-register-decode.md` covers both.

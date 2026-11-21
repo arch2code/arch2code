@@ -1,6 +1,6 @@
 ---
 name: run-regression-tests
-description: Authoritative Arch2Code workflow for creating, editing, running, filtering, and triaging regression tests with regrLauncher.py and project make targets, including the VCS and Xcelium snapshot regressions. Use when the user mentions regression tests, regrLauncher.py, regression JSON files, make regr, simulator snapshots, DUT_TOPOLOGIES, CI regressions, labels, seeds, or JUnit regression reports.
+description: Authoritative Arch2Code workflow for creating, editing, running, filtering, and triaging regression tests with regrLauncher.py and project make targets, including the VCS, Xcelium and Questa snapshot regressions. Use when the user mentions regression tests, regrLauncher.py, regression JSON files, make regr, simulator snapshots, DUT_TOPOLOGIES, CI regressions, labels, seeds, or JUnit regression reports.
 ---
 # Skill: Run regression tests
 
@@ -83,10 +83,10 @@ A regression file is JSON with three sections: `session`, `build` and `run`.
 5.  An RTL test needs `VL_DUT=1` in the build command and `--vlInst <path>` in its arguments; see `verify-cosimulation`. A tandem test also needs `--vlType model|verif` and `--vlTandem`; see `run-tandem` (A2C Pro).
 6.  Give tests labels to select them by. `examples/apbDecode` uses `mdl` and `hdl`.
 
-## Simulator regressions (VCS, Xcelium)
-The Verilator flow runs every test on one binary. VCS and Xcelium fix the SystemC/HDL topology when they elaborate the snapshot, so these flows build one snapshot per DUT topology, and a dispatcher picks the snapshot from each test's arguments. The builder has the snapshot build targets but no simulator regression target. A project writes its own regression file per simulator, for example `regr_<project>_vcs.json`, and `regrLauncher.py` runs it like any other regression file. A project may wrap that launch in a target of its own `rundir/Makefile`.
+## Simulator regressions (VCS, Xcelium, Questa)
+The Verilator flow runs every test on one binary. VCS, Xcelium and Questa fix the SystemC/HDL topology (Questa its HDL side only) when they elaborate the snapshot, so these flows build one snapshot per DUT topology, and a dispatcher picks the snapshot from each test's arguments. The builder has the snapshot build targets but no simulator regression target. A project writes its own regression file per simulator, for example `regr_<project>_vcs.json`, and `regrLauncher.py` runs it like any other regression file. A project may wrap that launch in a target of its own `rundir/Makefile`.
 
-1.  **Environment.** Set the simulator environment before `make`. The builder requires `VCS_HOME` and the `SYSTEMC_*` roots under `USE_VCS`, `XCELIUM_TOOLS` and `XRUN_GCC_VERS` under `USE_XCELIUM`, and the Boost settings under both. A builder layer or site setup can require more. `manage-build` lists the variables per flow and the single-snapshot build targets.
+1.  **Environment.** Set the simulator environment before `make`. The builder requires `VCS_HOME` and the `SYSTEMC_*` roots under `USE_VCS`, `XCELIUM_TOOLS` and `XRUN_GCC_VERS` under `USE_XCELIUM`, `QUESTA_HOME` under `USE_QUESTA`, and the Boost settings under each. A builder layer or site setup can require more. `manage-build` lists the variables per flow and the single-snapshot build targets.
 2.  **Build command.** The session builds `run_model` plus one snapshot per listed topology. The regression file holds the topology list, one `build.command+` entry per block:
 
     ```json
@@ -100,10 +100,10 @@ The Verilator flow runs every test on one binary. VCS and Xcelium fix the System
     }
     ```
 
-    Xcelium uses `make -j8 USE_XCELIUM=1 xrun_snapshots`. An entry is `<inst>:<cfg>[,<cfg>]...`, where `<inst>` is the `--vlInst` path and `<cfg>` is `verif`, `verif:tandem` or `model:tandem`. The builder default is `$(HDL_TOP_MODULE):verif,verif:tandem`, and the regression file's `DUT_TOPOLOGIES+=` entries replace it. The project `rundir/Makefile` must not define `DUT_TOPOLOGIES`.
+    Xcelium uses `make -j8 USE_XCELIUM=1 xrun_snapshots`, Questa `make -j8 USE_QUESTA=1 questa_snapshots`. An entry is `<inst>:<cfg>[,<cfg>]...`, where `<inst>` is the `--vlInst` path and `<cfg>` is `verif`, `verif:tandem` or `model:tandem`. The builder default is `$(HDL_TOP_MODULE):verif,verif:tandem`, and the regression file's `DUT_TOPOLOGIES+=` entries replace it. The project `rundir/Makefile` must not define `DUT_TOPOLOGIES`.
 3.  **Configurations a block needs.** Take them from the block's tests. `--vlType verif` needs `verif`. `--vlType verif --vlTandem` needs `verif:tandem`. `--vlType model --vlTandem` needs `model:tandem`, because the tandem wrapper constructs a second model instance that the plain model snapshot does not hold. Tests without `--vlInst`, and model tests without `--vlTandem`, run on `run_model` and need no entry. Leave out the configurations a block's tests do not use.
-4.  **Run command.** Keep one run command that names the base binary through the dispatcher: `../builder/dutRun.py build/run <testbench>` for VCS and `../builder/dutRun.py build_xrun/run <testbench>` for Xcelium. The dispatcher maps the test's `--vlInst`, `--vlType` and `--vlTandem` to `<base>_<inst>_<type>[_tandem]` or `<base>_model`. A test whose snapshot is missing fails with `dutRun: no snapshot <binary>`. Fix it by adding the configuration to the block's `DUT_TOPOLOGIES+=` line, never by building the snapshot by hand.
-5.  **Rules.** Add the simulator rules file after `default.json`. `vcs.json` classifies `Error-[...]` and `Fatal-[...]` lines, and `xcelium.json` classifies `*E,` and `*F,` lines. Keep them in `rundir/` next to `default.json`.
+4.  **Run command.** Keep one run command that names the base binary through the dispatcher: `../builder/dutRun.py build/run <testbench>` for VCS, `../builder/dutRun.py build_xrun/run <testbench>` for Xcelium and `../builder/dutRun.py build_questa/run <testbench>` for Questa. The dispatcher maps the test's `--vlInst`, `--vlType` and `--vlTandem` to `<base>_<inst>_<type>[_tandem]` or `<base>_model`. A test whose snapshot is missing fails with `dutRun: no snapshot <binary>`. Fix it by adding the configuration to the block's `DUT_TOPOLOGIES+=` line, never by building the snapshot by hand.
+5.  **Rules.** Add the simulator rules file after `default.json`. `vcs.json` classifies `Error-[...]` and `Fatal-[...]` lines, `xcelium.json` classifies `*E,` and `*F,` lines, and `questa.json` classifies `** Error` and `** Fatal` lines (`SIMULATOR_INTEGRATION.md` section 5.6). Keep them in `rundir/` next to `default.json`.
 6.  **Jobs.** Set `session.jobs` to the number of simulator runtime licences available. A run beyond that waits for a licence until the test times out. Do not pass `-j` to `regrLauncher.py` for a simulator regression, because `-j` overrides `session.jobs`.
 7.  **Adding a block.** Add its test groups under `model_tests` and `hdl_tests` as for the Verilator regression, then add one `DUT_TOPOLOGIES+=<inst>:<cfg>,...` line to `build.command+` in each simulator regression file. A new `unstable` label or delay variant needs no topology change.
 

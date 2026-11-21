@@ -19,7 +19,7 @@ getVlTopBoundaryPins() looks up a pin's width there.
 2. An interface's eval-derived hdlparam (AXI4-Stream tstrb_t/tkeep_t, a byte
    count computed from tdata_t) must track the SELECTED TOP's resolved
    payload width, not the structure's nominal (default-value) width. At a
-   1-byte top it stays a vector pin, so Verilator, VCS and Xcelium all bind it
+   1-byte top it stays a vector pin, so Verilator, VCS, Xcelium and Questa all bind it
    as sc_bv<1>, the type the hand-written BFM reads.
 
 A third cell covers a signal whose signalType names a type (external_reg

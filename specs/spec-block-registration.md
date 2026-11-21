@@ -97,7 +97,7 @@ to run wins.
 | Retain-marked static: socket shell of a non-templated block | `<block>Socket` as `<block>_socket`, variant `""` only | `<block>Socket.cppm`: `constructorSocket.py::constructorInitSocket` | `register_<block>Socket()` called by an `A2C_REGISTRATION_RETAIN` static in an anonymous namespace |
 | Retain-marked static: testbench | `<tb>Testbench_model` in the factory; `<tb>Config` in `testBenchConfigFactory` | `testbench.py` (`sec_tb_class_init_template`, `sec_tb_config_registration_template`) | Same retain-marked static |
 | Registrar: child with own `params:` (`hasOwnParams`) | `<child>_model` per Config, plus `_socket` when `hasSkt` | `<child>Registrar.cppm` of the assembling project (`templates/systemc/blockRegistrar.py`) | `static _<child>_registrar` instance in an anonymous namespace |
-| VL registrar: child with `hasVl` | `<child>_verif` per Config | `<child>VlRegistrar.cpp` of the assembling project (`templates/systemc/vlRegistrar.py`) | Same, inside `#if defined(VERILATOR) \|\| defined(VCS_DUT) \|\| defined(XCELIUM_DUT)` |
+| VL registrar: child with `hasVl` | `<child>_verif` per Config | `<child>VlRegistrar.cpp` of the assembling project (`templates/systemc/vlRegistrar.py`) | Same, inside `#if defined(VERILATOR) \|\| defined(VCS_DUT) \|\| defined(XCELIUM_DUT) \|\| defined(QUESTA_DUT)` |
 | Retain-marked static: Pro tandem | `<block>_tandem` per Config; a templated block takes its keys from the `verifRegistrations` of this project's pairs, else `PROJECTNAME` | `base/<block>Tandem.cpp` (Pro `constructorTandem.py`) | `register_<suffix>()` functions called by `A2C_REGISTRATION_RETAIN` statics, all in an anonymous namespace |
 
 A self-registering static of a block, socket shell or testbench registers under the

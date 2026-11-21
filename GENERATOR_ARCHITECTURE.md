@@ -1012,9 +1012,9 @@ registrar pair), `A2C_VL_SV_<top>` names the physical `.sv` holding it,
 that `make lint` resolves through `HDL_TOP_MODULE`. Each top verilates into its
 own `--Mdir`. A separate generator mode, `arch2code.py --vlBoundary`
 (`pysrc/vlBoundaryGen.py`), reads the manifest and the per-top widths in
-`VLTOPS` and writes `.gen/vl/<top>.portmap` and `.gen/vl/<top>_xcelium.h`
-whole, with no user region. `make gen` runs it only for the VCS and Xcelium
-flows. See `specs/spec-verilated-wrappers.md` and
+`VLTOPS` and writes `.gen/vl/<top>.portmap`, `.gen/vl/<top>_xcelium.h` and
+`.gen/vl/<top>_questa.h` whole, with no user region. `make gen` runs it only
+for the VCS, Xcelium and Questa flows. See `specs/spec-verilated-wrappers.md` and
 `specs/SIMULATOR_INTEGRATION.md`.
 
 A `hasUvm` block's UVM testbench files sit in the `uvm` segment, whose
