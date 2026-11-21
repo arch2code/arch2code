@@ -71,7 +71,8 @@ def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra
     return (preamble + """
 blocks:
 """ + render_plain_block('top', '        hasRtl: false\n') + render_router('apbDecode', 'top')
-            + render_plain_block('srcLeaf') + render_plain_block('sinkLeaf') + render_plain_block('wrap')
+            + render_plain_block('srcLeaf') + render_plain_block('sinkLeaf') + render_plain_block('regSink')
+            + render_plain_block('wrap')
             + render_plain_block('regOwner') + render_plain_block('tbSrc', '        hasRtl: false\n')
             + render_plain_block('regLeaf') + """    rtlOnly:
         desc: "RTL-only block"
@@ -88,7 +89,7 @@ instances:
     uWrap:      { container: top, instanceType: wrap }
     uInner:     { container: wrap, instanceType: srcLeaf }
     uRegOwner:  { container: top, instanceType: regOwner, addressGroup: top }
-    uRegLeaf:   { container: regOwner, instanceType: sinkLeaf }
+    uRegLeaf:   { container: regOwner, instanceType: regSink }
     uOwnLeaf:   { container: top, instanceType: regLeaf, addressGroup: top }
 """ + tbInst + """
 connections:
@@ -132,7 +133,7 @@ def accept(label, expected, **rows):
     try:
         prj = projectOpen(db_path)
         got = {block: prj.getBlockData(find_block(prj, block)[0])['tandemStatusPolicy']
-               for block in ('srcLeaf', 'sinkLeaf', 'wrap', 'regOwner')}
+               for block in ('srcLeaf', 'sinkLeaf', 'regSink', 'wrap', 'regOwner')}
         ok = got == expected
         print(f"{'PASS' if ok else 'FAIL'}: {label}" + ('' if ok else f": expected {expected}, got {got}"))
         RESULTS.append(ok)
@@ -178,7 +179,7 @@ def reject(label, needles, **rows):
         cleanup([project_path, db_path] + arch_paths)
 
 
-NONE = {'srcLeaf': {}, 'sinkLeaf': {}, 'wrap': {}, 'regOwner': {}}
+NONE = {'srcLeaf': {}, 'sinkLeaf': {}, 'regSink': {}, 'wrap': {}, 'regOwner': {}}
 
 
 def policy(**blocks):
@@ -198,19 +199,19 @@ def run_all_tests():
     accept("tandem: 12.5 is a 12.5 ns level window", policy(srcLeaf={'statIf': 12.5}),
            **{k: v.format(v=12.5) for k, v in both.items()})
     accept("tandem: on a registerConnections row of an ro register",
-           policy(sinkLeaf={'roReg': 'final'}), ro_rc_extra=', tandem: final')
+           policy(regSink={'roReg': 'final'}), ro_rc_extra=', tandem: final')
     accept("tandem: on an ro registers row applies to its registerConnections ports",
-           policy(sinkLeaf={'roReg': 'off'}), ro_reg_extra=', tandem: off')
+           policy(regSink={'roReg': 'off'}), ro_reg_extra=', tandem: off')
     accept("the same tandem: on the registers row and its registerConnections row",
-           policy(sinkLeaf={'roReg': 'warn'}), ro_reg_extra=', tandem: warn', ro_rc_extra=', tandem: warn')
+           policy(regSink={'roReg': 'warn'}), ro_reg_extra=', tandem: warn', ro_rc_extra=', tandem: warn')
     for value, resolved in (('fatal', 'fatal'), ('warn', 'warn'), ('final', 'final'), ('off', 'off'),
                             ('250', 250.0)):
         accept(f"tandem: {value} on a connected ext registers row applies to its external_reg port",
-               policy(sinkLeaf={'extReg': resolved}), ext_reg_extra=f', tandem: {value}')
+               policy(regSink={'extReg': resolved}), ext_reg_extra=f', tandem: {value}')
     accept("tandem: on a registerConnections row of an ext register",
-           policy(sinkLeaf={'extReg': 'final'}), ext_rc_extra=', tandem: final')
+           policy(regSink={'extReg': 'final'}), ext_rc_extra=', tandem: final')
     accept("the same tandem: on an ext registers row and its registerConnections row",
-           policy(sinkLeaf={'extReg': 'warn'}), ext_reg_extra=', tandem: warn', ext_rc_extra=', tandem: warn')
+           policy(regSink={'extReg': 'warn'}), ext_reg_extra=', tandem: warn', ext_rc_extra=', tandem: warn')
     accept_reads("a leaf with no tagged register has no read table", None)
     for value, resolved in (('fatal', 'fatal'), ('warn', 'warn'), ('final', 'final'), ('off', 'off'),
                             ('250', 250.0)):

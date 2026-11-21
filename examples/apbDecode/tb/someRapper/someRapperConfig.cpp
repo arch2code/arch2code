@@ -31,7 +31,8 @@ public:
         // The cpu registers against this name and the testController sequences it.
         // Must run before sc_start().
         testController::GetInstance().set_test_names({
-            "test_apbDecode"
+            "test_apbDecode",
+            "test_reg_cpu_arr"
         });
 
         //create hierarchy

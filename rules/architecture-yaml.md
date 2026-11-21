@@ -142,6 +142,7 @@ Declare `ipParameters` in the block's own file or in a file it sees through `inc
 - Derived constants/types inherit maximums from referenced parameterizable constants.
 - A file with no regular `constants:`, `types:`, `enums:` or `structures:` entry gets no context module, so a type it declares under `ipParameters:` has no model declaration. Give such a file at least one regular entry.
 - Address allocation reserves a parameterizable register or memory at its worst case. A row's width comes from its structure's `maxBitwidth`. A `wordLines` that names a parameterizable constant or a block parameter sizes with the `maxValue` of the backing `ipParameters` constant, not the largest variant binding, and `make db` rejects a variant that binds the parameter above that `maxValue`. See `design-register-decode.md` §5.
+- An array register's `count:` and a `registerConnections:` row's `index:` are never parameterizable. Each is an integer or a constant that is not parameterizable, and `make db` rejects a block parameter as `count:`. An array has one size and an element one position in every variant. `design-architecture.md` (Register connections) gives the array forms and rules.
 
 ## Common Pitfalls
 
