@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=ip --parent=ip_top
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "ip_hdl_sc_wrapper.h"
@@ -12,6 +12,9 @@
 #elif defined(VCS_DUT)
 #include "ip_variant0_hdl_sv_wrapper.h"
 #include "ipBridge_ip_variant1_hdl_sv_wrapper.h"
+#elif defined(QUESTA_DUT)
+#include "ip_variant0_hdl_sv_wrapper_questa.h"
+#include "ipBridge_ip_variant1_hdl_sv_wrapper_questa.h"
 #else
 #include "ip_variant0_hdl_sv_wrapper_xcelium.h"
 #include "ipBridge_ip_variant1_hdl_sv_wrapper_xcelium.h"
@@ -24,6 +27,9 @@ namespace {
 using ip_variant0_hdl_sv_wrapper_dut_t = Vip_variant0_hdl_sv_wrapper;
 using ipBridge_ip_variant1_hdl_sv_wrapper_dut_t = VipBridge_ip_variant1_hdl_sv_wrapper;
 #elif defined(VCS_DUT)
+using ip_variant0_hdl_sv_wrapper_dut_t = ip_variant0_hdl_sv_wrapper;
+using ipBridge_ip_variant1_hdl_sv_wrapper_dut_t = ipBridge_ip_variant1_hdl_sv_wrapper;
+#elif defined(QUESTA_DUT)
 using ip_variant0_hdl_sv_wrapper_dut_t = ip_variant0_hdl_sv_wrapper;
 using ipBridge_ip_variant1_hdl_sv_wrapper_dut_t = ipBridge_ip_variant1_hdl_sv_wrapper;
 #else
@@ -60,5 +66,5 @@ struct _ip_vl_registrar {
 };
 static _ip_vl_registrar _ip_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT || QUESTA_DUT
 // GENERATED_CODE_END

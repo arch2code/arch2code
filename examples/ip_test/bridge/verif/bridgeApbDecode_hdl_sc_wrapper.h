@@ -16,6 +16,8 @@ import ipBridge_bridgeApbDecode.base;
 #include "bridgeApbDecode_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "bridgeApbDecode_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "bridgeApbDecode_hdl_sv_wrapper_questa.h"
 #else
 #include "VbridgeApbDecode_hdl_sv_wrapper.h"
 #endif
@@ -35,7 +37,7 @@ class bridgeApbDecode_hdl_sc_wrapper: public sc_module, public blockBase, public
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     bridgeApbDecode_hdl_sv_wrapper *dut_hdl;
 #else
     VbridgeApbDecode_hdl_sv_wrapper *dut_hdl;
@@ -60,7 +62,7 @@ public:
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new bridgeApbDecode_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VbridgeApbDecode_hdl_sv_wrapper("dut_hdl");

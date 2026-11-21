@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=twoClkDecode --parent=twoClk
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "twoClkDecode_hdl_sc_wrapper.h"
@@ -10,6 +10,8 @@
 #include "VtwoClkDecode_hdl_sv_wrapper.h"
 #elif defined(VCS_DUT)
 #include "twoClkDecode_hdl_sv_wrapper.h"
+#elif defined(QUESTA_DUT)
+#include "twoClkDecode_hdl_sv_wrapper_questa.h"
 #else
 #include "twoClkDecode_hdl_sv_wrapper_xcelium.h"
 #endif
@@ -18,6 +20,8 @@ namespace {
 #if defined(VERILATOR)
 using twoClkDecode_hdl_sv_wrapper_dut_t = VtwoClkDecode_hdl_sv_wrapper;
 #elif defined(VCS_DUT)
+using twoClkDecode_hdl_sv_wrapper_dut_t = twoClkDecode_hdl_sv_wrapper;
+#elif defined(QUESTA_DUT)
 using twoClkDecode_hdl_sv_wrapper_dut_t = twoClkDecode_hdl_sv_wrapper;
 #else
 using twoClkDecode_hdl_sv_wrapper_dut_t = twoClkDecode_hdl_sv_wrapper;
@@ -34,5 +38,5 @@ struct _twoClkDecode_vl_registrar {
 };
 static _twoClkDecode_vl_registrar _twoClkDecode_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT || QUESTA_DUT
 // GENERATED_CODE_END

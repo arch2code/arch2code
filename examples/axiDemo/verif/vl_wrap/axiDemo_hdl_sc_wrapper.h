@@ -16,6 +16,8 @@ import axiDemo.base;
 #include "axiDemo_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "axiDemo_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "axiDemo_hdl_sv_wrapper_questa.h"
 #else
 #include "VaxiDemo_hdl_sv_wrapper.h"
 #endif
@@ -37,7 +39,7 @@ class axiDemo_hdl_sc_wrapper: public sc_module, public blockBase, public axiDemo
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     axiDemo_hdl_sv_wrapper *dut_hdl;
 #else
     VaxiDemo_hdl_sv_wrapper *dut_hdl;
@@ -57,7 +59,7 @@ public:
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new axiDemo_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VaxiDemo_hdl_sv_wrapper("dut_hdl");

@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=apbDecode --parent=ip_top
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "apbDecode_hdl_sc_wrapper.h"
@@ -10,6 +10,8 @@
 #include "VapbDecode_hdl_sv_wrapper.h"
 #elif defined(VCS_DUT)
 #include "apbDecode_hdl_sv_wrapper.h"
+#elif defined(QUESTA_DUT)
+#include "apbDecode_hdl_sv_wrapper_questa.h"
 #else
 #include "apbDecode_hdl_sv_wrapper_xcelium.h"
 #endif
@@ -18,6 +20,8 @@ namespace {
 #if defined(VERILATOR)
 using apbDecode_hdl_sv_wrapper_dut_t = VapbDecode_hdl_sv_wrapper;
 #elif defined(VCS_DUT)
+using apbDecode_hdl_sv_wrapper_dut_t = apbDecode_hdl_sv_wrapper;
+#elif defined(QUESTA_DUT)
 using apbDecode_hdl_sv_wrapper_dut_t = apbDecode_hdl_sv_wrapper;
 #else
 using apbDecode_hdl_sv_wrapper_dut_t = apbDecode_hdl_sv_wrapper;
@@ -34,5 +38,5 @@ struct _apbDecode_vl_registrar {
 };
 static _apbDecode_vl_registrar _apbDecode_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT || QUESTA_DUT
 // GENERATED_CODE_END

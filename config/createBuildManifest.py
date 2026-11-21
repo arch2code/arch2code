@@ -67,12 +67,12 @@ def _writeBuildManifestMk(rootDir, manifest):
         lines.append(f"A2C_VL_SV_{name} := {top['physicalSv']}")
     # Per-top boundary files written by `arch2code.py --vlBoundary` under
     # .gen/vl: the VCS port map (pin widths and SystemC types for
-    # `vlogan -sc_model`) and the Xcelium foreign-module shell header.
+    # `vlogan -sc_model`) and the Xcelium and Questa foreign-module shell headers.
     for top in manifest['vlTops']:
         lines.append(f"A2C_VL_PORTMAP_{top['qualifiedTop']} := {top['portmap']}")
     lines.append(f"A2C_VL_GEN_INC := {os.path.join(genDir, 'vl')}")
     # The compiled registration TUs that include the per-top DUT headers, so
-    # the VCS and Xcelium flows can order them after shell generation.
+    # the VCS, Xcelium and Questa flows can order them after shell generation.
     lines.append(f"A2C_VL_REGISTRAR_SRC := {asList(manifest['vlRegistrarFiles'])}")
     # UVM testbench tops of the harness owner's hasUvm blocks. Only the UVM flow
     # reads these; each top's port map sits beside the RTL tops' under .gen/vl.

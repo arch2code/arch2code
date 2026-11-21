@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=vltSrc --parent=vltTop/../../yaml/vlt.yaml
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "vltSrc_hdl_sc_wrapper.h"
@@ -10,6 +10,8 @@
 #include "VvltSrc_hdl_sv_wrapper.h"
 #elif defined(VCS_DUT)
 #include "vltSrc_hdl_sv_wrapper.h"
+#elif defined(QUESTA_DUT)
+#include "vltSrc_hdl_sv_wrapper_questa.h"
 #else
 #include "vltSrc_hdl_sv_wrapper_xcelium.h"
 #endif
@@ -18,6 +20,8 @@ namespace {
 #if defined(VERILATOR)
 using vltSrc_hdl_sv_wrapper_dut_t = VvltSrc_hdl_sv_wrapper;
 #elif defined(VCS_DUT)
+using vltSrc_hdl_sv_wrapper_dut_t = vltSrc_hdl_sv_wrapper;
+#elif defined(QUESTA_DUT)
 using vltSrc_hdl_sv_wrapper_dut_t = vltSrc_hdl_sv_wrapper;
 #else
 using vltSrc_hdl_sv_wrapper_dut_t = vltSrc_hdl_sv_wrapper;
@@ -34,5 +38,5 @@ struct _vltSrc_vl_registrar {
 };
 static _vltSrc_vl_registrar _vltSrc_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT || QUESTA_DUT
 // GENERATED_CODE_END

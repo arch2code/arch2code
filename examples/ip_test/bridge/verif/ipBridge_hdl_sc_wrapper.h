@@ -16,6 +16,8 @@ import ipBridge.base;
 #include "ipBridge_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "ipBridge_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "ipBridge_hdl_sv_wrapper_questa.h"
 #else
 #include "VipBridge_hdl_sv_wrapper.h"
 #endif
@@ -40,7 +42,7 @@ class ipBridge_hdl_sc_wrapper: public sc_module, public blockBase, public ipBrid
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     ipBridge_hdl_sv_wrapper *dut_hdl;
 #else
     VipBridge_hdl_sv_wrapper *dut_hdl;
@@ -65,7 +67,7 @@ public:
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new ipBridge_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VipBridge_hdl_sv_wrapper("dut_hdl");

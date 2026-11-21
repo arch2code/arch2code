@@ -16,6 +16,8 @@ import ip_test_ip_top.base;
 #include "ip_top_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "ip_top_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "ip_top_hdl_sv_wrapper_questa.h"
 #else
 #include "Vip_top_hdl_sv_wrapper.h"
 #endif
@@ -44,7 +46,7 @@ class ip_top_hdl_sc_wrapper: public sc_module, public blockBase, public ip_topBa
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     ip_top_hdl_sv_wrapper *dut_hdl;
 #else
     Vip_top_hdl_sv_wrapper *dut_hdl;
@@ -65,7 +67,7 @@ public:
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new ip_top_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new Vip_top_hdl_sv_wrapper("dut_hdl");

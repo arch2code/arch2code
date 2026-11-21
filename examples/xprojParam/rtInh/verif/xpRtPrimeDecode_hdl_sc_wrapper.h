@@ -13,6 +13,8 @@ import xpRtInh_xpRtPrimeDecode.base;
 #include "xpRtPrimeDecode_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "xpRtPrimeDecode_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "xpRtPrimeDecode_hdl_sv_wrapper_questa.h"
 #else
 #include "VxpRtPrimeDecode_hdl_sv_wrapper.h"
 #endif
@@ -32,7 +34,7 @@ class xpRtPrimeDecode_hdl_sc_wrapper: public sc_module, public blockBase, public
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     xpRtPrimeDecode_hdl_sv_wrapper *dut_hdl;
 #else
     VxpRtPrimeDecode_hdl_sv_wrapper *dut_hdl;
@@ -55,7 +57,7 @@ public:
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new xpRtPrimeDecode_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VxpRtPrimeDecode_hdl_sv_wrapper("dut_hdl");

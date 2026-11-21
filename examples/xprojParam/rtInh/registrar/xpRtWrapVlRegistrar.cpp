@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=xpRtWrap --parent=xpRtInhTop/../../yaml/xpRtInh.yaml
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "xpRtWrap_hdl_sc_wrapper.h"
@@ -10,6 +10,8 @@
 #include "VxpRtWrap_use_hdl_sv_wrapper.h"
 #elif defined(VCS_DUT)
 #include "xpRtWrap_use_hdl_sv_wrapper.h"
+#elif defined(QUESTA_DUT)
+#include "xpRtWrap_use_hdl_sv_wrapper_questa.h"
 #else
 #include "xpRtWrap_use_hdl_sv_wrapper_xcelium.h"
 #endif
@@ -19,6 +21,8 @@ namespace {
 #if defined(VERILATOR)
 using xpRtWrap_use_hdl_sv_wrapper_dut_t = VxpRtWrap_use_hdl_sv_wrapper;
 #elif defined(VCS_DUT)
+using xpRtWrap_use_hdl_sv_wrapper_dut_t = xpRtWrap_use_hdl_sv_wrapper;
+#elif defined(QUESTA_DUT)
 using xpRtWrap_use_hdl_sv_wrapper_dut_t = xpRtWrap_use_hdl_sv_wrapper;
 #else
 using xpRtWrap_use_hdl_sv_wrapper_dut_t = xpRtWrap_use_hdl_sv_wrapper;
@@ -41,5 +45,5 @@ struct _xpRtWrap_vl_registrar {
 };
 static _xpRtWrap_vl_registrar _xpRtWrap_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT || QUESTA_DUT
 // GENERATED_CODE_END

@@ -16,6 +16,8 @@ import clkGen_rstSync.base;
 #include "rstSync_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "rstSync_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "rstSync_hdl_sv_wrapper_questa.h"
 #else
 #include "VrstSync_hdl_sv_wrapper.h"
 #endif
@@ -32,7 +34,7 @@ class rstSync_hdl_sc_wrapper: public sc_module, public blockBase, public rstSync
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     rstSync_hdl_sv_wrapper *dut_hdl;
 #else
     VrstSync_hdl_sv_wrapper *dut_hdl;
@@ -53,7 +55,7 @@ public:
         rstOut_n("rstOut_n", true),
         clk_half_(sc_time(20, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new rstSync_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VrstSync_hdl_sv_wrapper("dut_hdl");

@@ -1866,6 +1866,10 @@ class projectOpen:
             # <top>_xcelium.h (a2c-owned name; Xcelium generates nothing here).
             'xceliumDutHeader': f'{bodyModule}_xcelium.h',
             'variantXceliumDutHeaders': {v: f'{t}_xcelium.h' for v, t in variantTops.items()},
+            # Questa foreign-module shell: the same class name, header
+            # <top>_questa.h (a2c-owned name; Questa generates nothing here).
+            'questaDutHeader': f'{bodyModule}_questa.h',
+            'variantQuestaDutHeaders': {v: f'{t}_questa.h' for v, t in variantTops.items()},
         }
 
     def getBDUvm(self, ret):
@@ -5892,6 +5896,8 @@ class projectCreate:
                                 'vcsDutHeader': f'{topModule}.h',
                                 'xceliumDutClass': topModule,
                                 'xceliumDutHeader': f'{topModule}_xcelium.h',
+                                'questaDutClass': topModule,
+                                'questaDutHeader': f'{topModule}_questa.h',
                             }, parent['block'], child['block'])
         for pair in pairs.values():
             pair['modelRegistrations'].sort(key=lambda entry: entry['variant'])

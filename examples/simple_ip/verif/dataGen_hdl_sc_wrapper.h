@@ -16,6 +16,8 @@ import simple_ip_dataGen.base;
 #include "dataGen_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "dataGen_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "dataGen_hdl_sv_wrapper_questa.h"
 #else
 #include "VdataGen_hdl_sv_wrapper.h"
 #endif
@@ -35,7 +37,7 @@ class dataGen_hdl_sc_wrapper: public sc_module, public blockBase, public dataGen
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     dataGen_hdl_sv_wrapper *dut_hdl;
 #else
     VdataGen_hdl_sv_wrapper *dut_hdl;
@@ -56,7 +58,7 @@ public:
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new dataGen_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VdataGen_hdl_sv_wrapper("dut_hdl");

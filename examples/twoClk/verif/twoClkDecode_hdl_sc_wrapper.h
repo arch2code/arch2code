@@ -16,6 +16,8 @@ import twoClk_twoClkDecode.base;
 #include "twoClkDecode_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "twoClkDecode_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "twoClkDecode_hdl_sv_wrapper_questa.h"
 #else
 #include "VtwoClkDecode_hdl_sv_wrapper.h"
 #endif
@@ -35,7 +37,7 @@ class twoClkDecode_hdl_sc_wrapper: public sc_module, public blockBase, public tw
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     twoClkDecode_hdl_sv_wrapper *dut_hdl;
 #else
     VtwoClkDecode_hdl_sv_wrapper *dut_hdl;
@@ -58,7 +60,7 @@ public:
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new twoClkDecode_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VtwoClkDecode_hdl_sv_wrapper("dut_hdl");

@@ -16,6 +16,8 @@ import simple_ip.base;
 #include "simple_ip_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "simple_ip_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "simple_ip_hdl_sv_wrapper_questa.h"
 #else
 #include "Vsimple_ip_hdl_sv_wrapper.h"
 #endif
@@ -40,7 +42,7 @@ class simple_ip_hdl_sc_wrapper: public sc_module, public blockBase, public simpl
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     simple_ip_hdl_sv_wrapper *dut_hdl;
 #else
     Vsimple_ip_hdl_sv_wrapper *dut_hdl;
@@ -61,7 +63,7 @@ public:
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new simple_ip_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new Vsimple_ip_hdl_sv_wrapper("dut_hdl");

@@ -16,6 +16,8 @@ import pySocket.base;
 #include "pySocket_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "pySocket_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "pySocket_hdl_sv_wrapper_questa.h"
 #else
 #include "VpySocket_hdl_sv_wrapper.h"
 #endif
@@ -40,7 +42,7 @@ class pySocket_hdl_sc_wrapper: public sc_module, public blockBase, public pySock
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     pySocket_hdl_sv_wrapper *dut_hdl;
 #else
     VpySocket_hdl_sv_wrapper *dut_hdl;
@@ -85,7 +87,7 @@ public:
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new pySocket_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VpySocket_hdl_sv_wrapper("dut_hdl");

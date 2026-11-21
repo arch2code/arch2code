@@ -312,7 +312,8 @@ def render_sc(args, prj, data):
                         basemodule=basemodule,
                         dut_header=concrete['dutHeader'],
                         vcs_dut_header=concrete['vcsDutHeader'],
-                        xcelium_dut_header=concrete['xceliumDutHeader']))
+                        xcelium_dut_header=concrete['xceliumDutHeader'],
+                        questa_dut_header=concrete['questaDutHeader']))
 
     # ports blaster
     mp_sig = dict()
@@ -357,6 +358,8 @@ import {{basemodule}};
 #include "{{vcs_dut_header}}"
 #elif defined(XCELIUM_DUT)
 #include "{{xcelium_dut_header}}"
+#elif defined(QUESTA_DUT)
+#include "{{questa_dut_header}}"
 #else
 #include "{{dut_header}}"
 #endif
@@ -376,7 +379,7 @@ class {{sc_wrapper_class}}: public sc_module, public blockBase, public {{blockna
 public:
 {%- if not is_template %}
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     {{concrete_sv_module}} *dut_hdl;
 #else
     {{concrete_dut_class}} *dut_hdl;
@@ -406,7 +409,7 @@ public:
         {{ sec_ctor_init | indent(8) }}{% endif %}
     {
 {%- if not is_template %}
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new {{concrete_sv_module}}("dut_hdl");
 #else
         dut_hdl = new {{concrete_dut_class}}("dut_hdl");

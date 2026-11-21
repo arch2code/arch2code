@@ -42,7 +42,7 @@ parser.add_argument('--docgen', action='store_true', help='runs document generat
 parser.add_argument('--systemVerilogGenerator', '-sv', action='store_true', help='runs the SystemVerilog generator')
 parser.add_argument('--systemc', '-sc', action='store_true', help='runs SystemC generator')
 parser.add_argument('--newmodule', action='store_true', help='create all the base files for a new module')
-parser.add_argument('--vlBoundary', action='store_true', help='write the per-top HDL boundary files (VCS port map, Xcelium shell) under .gen/vl')
+parser.add_argument('--vlBoundary', action='store_true', help='write the per-top HDL boundary files (VCS port map, Xcelium and Questa shells) under .gen/vl')
 parser.add_argument('--newproject', action='store_true', help='create a new project')
 
 # diagram options

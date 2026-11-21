@@ -16,6 +16,8 @@ import twoClk_twoClkTable.base;
 #include "twoClkTable_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "twoClkTable_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "twoClkTable_hdl_sv_wrapper_questa.h"
 #else
 #include "VtwoClkTable_hdl_sv_wrapper.h"
 #endif
@@ -35,7 +37,7 @@ class twoClkTable_hdl_sc_wrapper: public sc_module, public blockBase, public two
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     twoClkTable_hdl_sv_wrapper *dut_hdl;
 #else
     VtwoClkTable_hdl_sv_wrapper *dut_hdl;
@@ -60,7 +62,7 @@ public:
         clk_half_(sc_time(1, SC_NS) / 2),
         clkSlow_half_(sc_time(3, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new twoClkTable_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VtwoClkTable_hdl_sv_wrapper("dut_hdl");

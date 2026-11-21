@@ -16,6 +16,8 @@ import clkGen.base;
 #include "clkGen_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "clkGen_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "clkGen_hdl_sv_wrapper_questa.h"
 #else
 #include "VclkGen_hdl_sv_wrapper.h"
 #endif
@@ -32,7 +34,7 @@ class clkGen_hdl_sc_wrapper: public sc_module, public blockBase, public clkGenBa
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     clkGen_hdl_sv_wrapper *dut_hdl;
 #else
     VclkGen_hdl_sv_wrapper *dut_hdl;
@@ -54,7 +56,7 @@ public:
         rstRef_n("rstRef_n", true),
         clkRef_half_(sc_time(10, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new clkGen_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VclkGen_hdl_sv_wrapper("dut_hdl");
