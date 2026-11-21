@@ -894,8 +894,9 @@ def sc_pack(handle, args, vars, indent, prj=None):
         out.append(f"{indent}}}")
         # pack() leaves an out-of-range top field unmasked so a bad value fails
         # fast. The assert catches the bits it sets past _bitWidth in the last
-        # digit, which sc_bv requires to be zero.
-        out.append(f"{indent}constexpr int _last = {SC_DIGIT_COUNT} - 1;")
+        # digit, which sc_bv requires to be zero. const, not constexpr: Questa's
+        # SystemC declares SC_DIGIT_SIZE extern, so it is no constant expression.
+        out.append(f"{indent}const int _last = {SC_DIGIT_COUNT} - 1;")
         out.append(f"{indent}Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,")
         out.append(f'{indent}             "{structName}", "a field holds more bits than its type");')
     out.append(f"{indent}return packed_data;")
