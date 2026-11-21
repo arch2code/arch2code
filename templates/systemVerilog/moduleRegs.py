@@ -63,6 +63,7 @@ def render(args, prj, data):
             reg_data['size_value'] = decode_size_value(reg_data, row_is_param)
         else:
             reg_data['addr_const_name'] = address_const_name(data, reg_data, 'register')
+    data['registerElements'] = register_elements(data['registers'])
 
     # Pre-conditioning of the memory data, when existing
     if 'memoriesParent' in data:
@@ -107,6 +108,27 @@ def render(args, prj, data):
         section_03a=section_03a(data),
         section_03b=section_03b(data)
     ))
+
+def register_elements(registers):
+    """The registers the decode serves one by one. An array register gives
+    one row per element, at base + k * stride, with its own local names
+    (<reg>_<k>) and port_ref naming element k of the interface array. The
+    element index is a constant, never a variable."""
+    elements = dict()
+    for reg_key, reg_data in registers.items():
+        if reg_data['countValue'] is None:
+            elements[reg_key] = dict(reg_data, port_ref=reg_data['register'])
+            continue
+        for k in range(reg_data['countValue']):
+            shift = k * reg_data['stride']
+            element = dict(reg_data)
+            element['register'] = f"{reg_data['register']}_{k}"
+            element['port_ref'] = f"{reg_data['register']}[{k}]"
+            element['offset'] = reg_data['offset'] + shift
+            element['segments'] = [(o + shift, u, l, w, d) for (o, u, l, w, d) in reg_data['segments']]
+            element['addr_const_name'] = f"{reg_data['addr_const_name']}_{k}"
+            elements[(reg_key, k)] = element
+    return elements
 
 def address_const_name(data, entry, name_field):
     block_name = entry.get('block', data['blockName'])
@@ -156,7 +178,7 @@ def section_intf_ports(prj, data):
             connectionData = port_data.get('connection', {})
             intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
             intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data)
-            out.append(f"{intf_type}_if.{port_data['direction']} {port_data['name']},")
+            out.append(f"{intf_type}_if.{port_data['direction']} {port_data['name']}{intf_gen_utils.sv_array_suffix(port_data['arrayCount'])},")
 
 
     return string_joiner(out, '\n')
@@ -166,23 +188,33 @@ def section_address_mask(prj, data):
     return f"32'h{mask:_x}"
 
 def section_address_constants(data):
+    # Each entry is a group of (name, value, desc) declarations sorted as one,
+    # so an array's element constants follow the base and stride they use.
     entries = []
     for reg_data in data['registers'].values():
-        entries.append((reg_data['offset'], reg_data['addr_const_name'], sv_hex(reg_data['offset']), reg_data.get('desc', '')))
+        name = reg_data['addr_const_name']
+        group = [(name, sv_hex(reg_data['offset']), reg_data.get('desc', ''))]
         if reg_data.get('regType') == 'memory':
-            entries.append((reg_data['offset'], reg_data['size_const_name'], reg_data['size_value'], 'Decode range size'))
+            group.append((reg_data['size_const_name'], reg_data['size_value'], 'Decode range size'))
+        elif reg_data['countValue'] is not None:
+            group.append((f"{name}_STRIDE", sv_hex(reg_data['stride']), f"{reg_data['register']} element stride"))
+            group += [(f"{name}_{k}", f"{name} + {k} * {name}_STRIDE", f"{reg_data['register']}[{k}]")
+                      for k in range(reg_data['countValue'])]
+        entries.append((reg_data['offset'], name, group))
     for mem_data in data['memories'].values():
-        entries.append((mem_data['offset'], mem_data['addr_const_name'], sv_hex(mem_data['offset']), mem_data.get('desc', '')))
-        entries.append((mem_data['offset'], mem_data['size_const_name'], mem_data['size_value'], 'Decode range size'))
+        entries.append((mem_data['offset'], mem_data['addr_const_name'],
+                        [(mem_data['addr_const_name'], sv_hex(mem_data['offset']), mem_data.get('desc', '')),
+                         (mem_data['size_const_name'], mem_data['size_value'], 'Decode range size')]))
 
     out = []
     seen = set()
-    for _, name, value, desc in sorted(entries, key=lambda item: (item[0], item[1])):
-        if name in seen:
-            continue
-        seen.add(name)
-        comment = f" // {desc}" if desc else ""
-        out.append(f"localparam int unsigned {name} = {value};{comment}")
+    for _, _, group in sorted(entries, key=lambda item: (item[0], item[1])):
+        for name, value, desc in group:
+            if name in seen:
+                continue
+            seen.add(name)
+            comment = f" // {desc}" if desc else ""
+            out.append(f"localparam int unsigned {name} = {value};{comment}")
     return string_joiner(out, '\n')
 
 def segment_addr_expr(addr_const_name, base_offset, segment_offset):
@@ -194,7 +226,7 @@ def segment_addr_expr(addr_const_name, base_offset, segment_offset):
 # Signals declarations, flops and continous assignments
 def section_01(data):
     # Separate regular registers from memory registers
-    regular_regs = {k: v for k, v in data['registers'].items() if v.get('regType') != 'memory'}
+    regular_regs = {k: v for k, v in data['registerElements'].items() if v.get('regType') != 'memory'}
     memory_regs = {k: v for k, v in data['registers'].items() if v.get('regType') == 'memory'}
     
     return (string_joiner(
@@ -261,12 +293,12 @@ def section_01_regs_param(reg_data):
     s += [ f"logic [31:0] {reg_intf}_rword [0:{max_words-1}];" ]
     if reg_data['regType'] == 'rw':
         s += [ f"logic [{max_words-1}:0] {reg_intf}_update;" ]
-        s += [ f"assign {reg_intf}.data = {reg_local};" ]
+        s += [ f"assign {reg_data['port_ref']}.data = {reg_local};" ]
         rst_words = [d for (o, u, l, w, d) in reg_data['segments']]
         s += param_word_generate(reg_intf, struct, width_lp, max_words, 'DFFREN',
                                  f"{regs_intf}.pwdata", reg_local, rst_words=rst_words)
     else: # ro
-        s += [ f"assign {reg_local} = {reg_intf}.data;" ]
+        s += [ f"assign {reg_local} = {reg_data['port_ref']}.data;" ]
         s += param_word_generate(reg_intf, struct, width_lp, max_words, None,
                                  None, reg_local)
     return string_joiner(s, '\n')
@@ -275,7 +307,7 @@ def section_01_regs(reg_data):
     if reg_data['isParameterizable'] and reg_data['regType'] in ('rw', 'ro'):
         return section_01_regs_param(reg_data)
 
-    reg_intf = reg_data['register']
+    reg_port = reg_data['port_ref']
     reg_local = reg_data['register'] + '_reg'
 
     segments_enum = list(enumerate(reg_data['segments']))
@@ -283,11 +315,11 @@ def section_01_regs(reg_data):
     s_1 = [ f"{reg_data['structure']} {reg_local};" ]
 
     if reg_data['regType'] == 'ro':
-        s_2 = [ f"assign {reg_local} = {reg_intf}.data;" ]
+        s_2 = [ f"assign {reg_local} = {reg_port}.data;" ]
     elif reg_data['regType'] == 'rw':
-        s_2 = [ f"assign {reg_intf}.data = {reg_local};" ]
+        s_2 = [ f"assign {reg_port}.data = {reg_local};" ]
     elif reg_data['regType'] == 'ext':
-        s_2 = [ f"assign {reg_local} = {reg_intf}.rdata;" ]
+        s_2 = [ f"assign {reg_local} = {reg_port}.rdata;" ]
     elif reg_data['regType'] == 'memory':
         # Memory registers are handled separately, no assignment needed
         s_2 = []
@@ -401,7 +433,7 @@ def section_01_mems(mem_data):
 # write comb case init
 def section_02a(data):
     # Separate regular registers from memory registers
-    regular_regs = {k: v for k, v in data['registers'].items() if v.get('regType') != 'memory'}
+    regular_regs = {k: v for k, v in data['registerElements'].items() if v.get('regType') != 'memory'}
     memory_regs = {k: v for k, v in data['registers'].items() if v.get('regType') == 'memory'}
     
     return (string_joiner(
@@ -424,8 +456,8 @@ def section_02a_regs(reg_data):
     s_1 = []
 
     if reg_data['regType'] == 'ext':
-        s_1 += [ f"{reg_intf}.write = '0;" ]
-        s_1 += [ f"{reg_intf}.wdata = '0;" ]
+        s_1 += [ f"{reg_data['port_ref']}.write = '0;" ]
+        s_1 += [ f"{reg_data['port_ref']}.wdata = '0;" ]
 
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
@@ -481,7 +513,7 @@ def section_02a_mems(mem_data):
 # write comb case core
 def section_02b(data):
     # Separate regular registers from memory registers
-    regular_regs = {k: v for k, v in data['registers'].items() if v.get('regType') != 'memory'}
+    regular_regs = {k: v for k, v in data['registerElements'].items() if v.get('regType') != 'memory'}
     memory_regs = {k: v for k, v in data['registers'].items() if v.get('regType') == 'memory'}
     
     return (string_joiner(
@@ -520,14 +552,15 @@ def section_02b_regs(reg_data):
             s_1 += [ f"    {reg_local}_update_{n} = 1'b1;" ]
             s_1 += [ "end" ]
         elif reg_data['regType'] == 'ext':
+            reg_port = reg_data['port_ref']
             s_1 += [ f"{addr_expr} : begin" ]
-            s_1 += [ f"    {reg_intf}.write = {1<<n};" ]
+            s_1 += [ f"    {reg_port}.write = {1<<n};" ]
             for s_seg in segments_enum:
                 _, (_, s_u, s_l, _, _) = s_seg
                 if s_seg == seg:
-                    s_1 += [ f"    {reg_intf}.wdata[{s_u}:{s_l}] = {regs_intf}.pwdata[{w-1}:0];" ]
+                    s_1 += [ f"    {reg_port}.wdata[{s_u}:{s_l}] = {regs_intf}.pwdata[{w-1}:0];" ]
                 else:
-                    s_1 += [ f"    {reg_intf}.wdata[{s_u}:{s_l}] = {reg_intf}.rdata[{s_u}:{s_l}];" ]
+                    s_1 += [ f"    {reg_port}.wdata[{s_u}:{s_l}] = {reg_port}.rdata[{s_u}:{s_l}];" ]
             s_1 += [ "end" ]
 
     return string_joiner(s_1, '\n')
@@ -642,7 +675,7 @@ def section_03a_memregs(reg_data):
 
 # read comb case core
 def section_03b(data):
-    regular_regs = {k: v for k, v in data['registers'].items() if v.get('regType') != 'memory'}
+    regular_regs = {k: v for k, v in data['registerElements'].items() if v.get('regType') != 'memory'}
     memory_regs = {k: v for k, v in data['registers'].items() if v.get('regType') == 'memory'}
     
     return (string_joiner(

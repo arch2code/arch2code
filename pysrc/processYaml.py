@@ -1153,6 +1153,18 @@ class projectOpen:
 
         return ret
 
+    def getRegisterAddressRows(self):
+        """Every register row, with countValue for the firmware address header."""
+        return [dict(row, countValue=self.registerArrayValue(row, 'count'))
+                for row in self.data['registers'].values()]
+
+    def registerArrayValue(self, row, field):
+        """The integer a register's count or a registerConnections row's index
+        resolves to, or None when the row leaves the field out."""
+        if row[field] == '':
+            return None
+        return self.getConst(row[field + 'Key'] or row[field], require_int=True)
+
     def resolveTypeWidth(self, typeInfo):
         """Resolve type width to integer from whichever width field is present.
 
@@ -1879,6 +1891,14 @@ class projectOpen:
         ports = list()
         for portGroup in ret['ports'].values():
             for portData in portGroup.values():
+                if portData['arrayCountValue'] is not None:
+                    printError(
+                        f"Block '{ret['blockInfo']['block']}' declares hasUvm: true and its port "
+                        f"'{portData['name']}' takes a whole register array, an array of "
+                        f"{portData['arrayCountValue']} interfaces. The UVM testbench gives each port "
+                        f"one agent on one interface, so it cannot drive an interface-array port. "
+                        f"Connect the array element by element with index:, or clear hasUvm.")
+                    exit(warningAndErrorReport())
                 intfData = intf_gen_utils.get_intf_data(portData['connection'], self)
                 intfType = intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)
                 intfDef = ret['interface_defs'][intfType]
@@ -2821,6 +2841,9 @@ class projectOpen:
 
                     else:  # registers
                         data[obj]['bytes'] = registerBytes(struct)
+                        data[obj]['countValue'] = self.registerArrayValue(objInfo, 'count')
+                        if objInfo['countKey']:
+                            ret['temp']['consts'][objInfo['countKey']] = 0
                         # Check if this is a memory register
                         if objInfo.get('regType') == 'memory':
                             if objInfo.get('wordLinesKey'):
@@ -2948,12 +2971,18 @@ class projectOpen:
         regHandlerKey = ret.get('regHandler', None)
         regHandler = ''
         connected_regs = dict()
+        excludedRegisterEnds = dict()
+        portRowKeys = dict()
+        portCountKeys = dict()
         if regHandlerKey:
             regHandler = self.data['instances'][regHandlerKey]['instance']
         if isRegHandler:
             # for a register handler the registerConnections are in the parent
             block = ret['instances'][next(iter(ret['instances']))]['containerKey']
         for regConn, val in self.data['registerConnections'].items():
+            # A merged row stands for every instance it reaches, so the
+            # per-instance index lives only in ends[*]['indexValue'].
+            connRow = {k: v for k, v in val.items() if k not in ('index', 'indexKey')}
             if val['blockKey'] == block and val['instanceKey'] in containedInstances:
                 reg_name = val['register']
                 connected_regs[reg_name] = 0
@@ -2964,28 +2993,45 @@ class projectOpen:
                 # Track register-based interface types for later processing
                 ret['temp']['registerInterfaceTypes'][ifType] = 0
                 if isRegHandler:
-                    ret['registerPorts'][regConn] = dict(regInfo, **val)
+                    ret['registerPorts'][regConn] = dict(regInfo, **connRow)
+                    ret['registerPorts'][regConn]['isElementPort'] = False
                     ret['registerPorts'][regConn]['direction'] = self.regMapReg.get(ret['registers'][val['registerBlockKey']]['regType'], None)
                     ret['registerPorts'][regConn]['interfaceType'] = ifType
                 else:
                     connKey = regInfo['register']
                     if connKey not in ret['registerConnections']:
-                        output = dict(regInfo, **val)
+                        output = dict(regInfo, **connRow)
                         inst = val['instance']
                         output['ends'] = dict()
-                        output['ends'][inst] =          {'instance': inst,       'portName': reg_name, 'direction': self.regMapBlock[regType]}
-                        output['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg_name, 'direction': self.regMapReg[regType]}
+                        output['ends'][inst] =          {'instance': inst,       'portName': reg_name, 'direction': self.regMapBlock[regType], 'indexValue': self.registerArrayValue(val, 'index')}
+                        output['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg_name, 'direction': self.regMapReg[regType], 'indexValue': None}
                         output['interfaceType'] = ifType
                         output['interfaceName'] = reg_name
                         ret['registerConnections'][connKey] = output
                     else:
                         inst = val['instance']
-                        ret['registerConnections'][connKey]['ends'][inst] = {'instance': inst, 'portName': reg_name, 'direction': self.regMapBlock[regType]}
+                        ret['registerConnections'][connKey]['ends'][inst] = {'instance': inst, 'portName': reg_name, 'direction': self.regMapBlock[regType], 'indexValue': self.registerArrayValue(val, 'index')}
+            if val['blockKey'] == block and val['instanceKey'] in ret['excludedInstances'] and not isRegHandler:
+                regType = ret['registers'][val['registerBlockKey']]['regType']
+                excludedRegisterEnds.setdefault(val['register'], dict())[val['instance']] = {
+                    'instance': val['instance'], 'portName': val['register'], 'direction': self.regMapBlock[regType],
+                    'indexValue': self.registerArrayValue(val, 'index')}
             if val['instanceKey'] in qualBlockInstances:
                 portName = val['register']
                 connected_regs[portName] = 0
                 regInfo = self.data['registers'][val['registerBlockKey']]
-                ret['registerPorts'][portName] = dict(regInfo, **val) # merge the two dicts
+                portCountKeys.setdefault(portName, set()).add(regInfo['countKey'])
+                # Several rows, from one owner or more, can reach one port. The
+                # row with the lowest key describes it, so row order never
+                # changes the port.
+                if portName in portRowKeys and portRowKeys[portName] < regConn:
+                    continue
+                portRowKeys[portName] = regConn
+                ret['registerPorts'][portName] = dict(regInfo, **connRow) # merge the two dicts
+                ret['registerPorts'][portName]['countValue'] = self.registerArrayValue(regInfo, 'count')
+                # One row stands for every instance of the block, and every
+                # row reaching the block on this port takes the same form.
+                ret['registerPorts'][portName]['isElementPort'] = val['index'] != ''
                 regType = regInfo['regType']
                 ret['registerPorts'][portName]['direction'] = self.regMapBlock.get(regType, None)
                 ifType = 'reg_' + regType
@@ -2993,6 +3039,17 @@ class projectOpen:
                 # Track register-based interface types for later processing
                 ret['temp']['registerInterfaceTypes'][ifType] = 0
                 ret['temp']['structs'][regInfo['structureKey']] = 0
+        # A port keeps its count constant only when every owner names the same
+        # one. Otherwise it takes the resolved count, which they agree on.
+        for portName, countKeys in portCountKeys.items():
+            port = ret['registerPorts'][portName]
+            if len(countKeys) > 1:
+                port['count'] = port['countValue']
+                port['countKey'] = ''
+            elif port['countKey']:
+                ret['temp']['consts'][port['countKey']] = 0
+        for connKey, output in ret['registerConnections'].items():
+            output['excludedRegisterEnds'] = excludedRegisterEnds.get(connKey, dict())
         # handle implied register connections. These interfaces connect any unconnected registers to the block
         implied_reg = dict()
         for reg_key, reg_data in ret['registers'].items():
@@ -3015,6 +3072,7 @@ class projectOpen:
                 implied_reg[reg]['interfaceType'] = ifType
                 if isRegHandler:
                     implied_reg[reg]['direction'] = self.regMapReg[regType]
+                    implied_reg[reg]['isElementPort'] = False
                 else:
                     implied_reg[reg]['interfaceName'] = reg
                     implied_reg[reg]['ends'] = dict()
@@ -3033,8 +3091,9 @@ class projectOpen:
                     # end.
                     boundaryKey = ret['qualBlock']
                     boundaryName = ret['blockName']
-                    implied_reg[reg]['ends'][boundaryKey] = {'instance': boundaryName, 'portName': reg, 'direction': self.regMapBlock[regType]}
-                    implied_reg[reg]['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg, 'direction': self.regMapReg[regType]}
+                    implied_reg[reg]['ends'][boundaryKey] = {'instance': boundaryName, 'portName': reg, 'direction': self.regMapBlock[regType], 'indexValue': None}
+                    implied_reg[reg]['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg, 'direction': self.regMapReg[regType], 'indexValue': None}
+                    implied_reg[reg]['excludedRegisterEnds'] = dict()
                 # Track register-based interface types for later processing
                 ret['temp']['registerInterfaceTypes'][ifType] = 0
                 ret['temp']['structs'][reg_data['structureKey']] = 0
@@ -3579,15 +3638,47 @@ class projectOpen:
                         duplicateCheck[channel]['count'] = count + 1
                     else:
                         duplicateCheck[channel] = {'connType': connType, 'connSource': connSource, 'connInfo': connVal, 'conns': {conn: 0}, 'count': 1}
+                    # A register array's channel is an array; a child end
+                    # carries the element it binds in indexValue.
+                    isArray = connSource == 'registerConnections' and connVal['countValue'] is not None
+                    connVal['arrayCount'] = connVal['count'] if isArray else None
+                    connVal['arrayCountValue'] = connVal['countValue'] if isArray else None
                     ret[connType][connSource][conn] = dict(connVal)
                     ret[connType][connSource][conn]['channelCount'] = 1
-                    ret[connType][connSource][conn]['index'] = index
+                    ret[connType][connSource][conn]['channelIndex'] = index
         for channel in duplicateList:
             connType = duplicateCheck[channel]['connType']
             connSource = duplicateCheck[channel]['connSource']
             channelCount = duplicateCheck[channel]['count']
             for conn, connDisambiguate in duplicateCheck[channel]['conns'].items():
                 ret[connType][connSource][conn]['channelCount'] = channelCount
+        for connSource in self.connMapping['connectDouble']:
+            for connVal in ret['connectDouble'][connSource].values():
+                connVal['endsPerChannel'] = self._endsPerChannel(connVal)
+                connVal['srcEndsPerElement'] = self._srcEndsPerElement(connVal)
+
+    @staticmethod
+    def _endsPerChannel(connVal):
+        """The most ends one channel binds. An end with an indexValue binds
+        one element of an array channel and an end without binds every
+        element, so an array's elements may each have two ends while the
+        array has more."""
+        if connVal['arrayCountValue'] is None:
+            return len(connVal['ends'])
+        return max(sum(1 for end in connVal['ends'].values() if end['indexValue'] in (None, k))
+                   for k in range(connVal['arrayCountValue']))
+
+    @staticmethod
+    def _srcEndsPerElement(connVal):
+        """The src ends of each element of a channel, one entry for a scalar
+        channel. An ro array split by index rows has a different child driving
+        each element, and a child left out of a testbench External still names
+        the source of its element."""
+        if connVal['arrayCountValue'] is None:
+            return [[end for end in connVal['ends'].values() if end['direction'] == 'src']]
+        ends = [*connVal['ends'].values(), *connVal['excludedRegisterEnds'].values()]
+        return [[end for end in ends if end['direction'] == 'src' and end['indexValue'] in (None, k)]
+                for k in range(connVal['arrayCountValue'])]
 
 
     def getBDPorts(self, ret):
@@ -3615,6 +3706,7 @@ class projectOpen:
                     self.getBDGetIntfStructs(ret, intfKey=connVal['interfaceKey'])
                 ports[portName] = temp
         for portRow in ports.values():
+            self._stampPortArray(portRow, False)
             domainClock = self.getBDPortDomain(ret, portRow['name'])
             self._stampPortDomain(ret, portRow, domainClock)
         ret['ports']['connections'] = dict(ports)
@@ -3626,6 +3718,7 @@ class projectOpen:
             for conn, connVal in ret[connType].items():
                 self.getBDAddPort(ports, newPorts, connVal[portType['portName']], connVal)
             for portRow in newPorts.values():
+                self._stampPortArray(portRow, connType == 'registerPorts')
                 # A connectionMapPorts row's name is this block's own port
                 # name (instancePortName), which is what portDomains is keyed by.
                 domainClock = self.getBDPortDomain(ret, portRow['name'])
@@ -3637,6 +3730,22 @@ class projectOpen:
             for portRow in group.values():
                 sizes = self.portTransferSizes.get((ret['qualBlock'], portRow['name']))
                 portRow['channelTransferSize'] = sizes['channelBytes'] if sizes else None
+
+    def _stampPortArray(self, portRow, isRegisterPort):
+        """A port that takes a whole register array is an array of interfaces.
+        arrayCount is the count as the YAML spells it when every owner names
+        the same count, otherwise the resolved integer. arrayCountValue is
+        always the resolved integer. Both are None for any other port. A
+        Verilator top pin is a scalar or a packed vector, so pinPrefixes
+        names the flat pin set of each interface the port carries: the port
+        name, or <port>_<k> for element k of an array."""
+        connection = portRow['connection']
+        isArray = (isRegisterPort and connection['countValue'] is not None
+                   and not connection['isElementPort'])
+        portRow['arrayCount'] = connection['count'] if isArray else None
+        portRow['arrayCountValue'] = connection['countValue'] if isArray else None
+        portRow['pinPrefixes'] = ([f"{portRow['name']}_{k}" for k in range(connection['countValue'])]
+                                  if isArray else [portRow['name']])
 
     def _stampPortDomain(self, ret, portRow, domainClock):
         """Stamp a boundary port's domainClock/domainReset. The block's own
@@ -4167,8 +4276,10 @@ class projectOpen:
         # Pin list of the block's HDL verification wrapper with every width
         # bound at the given top's parameter values: one pin per interface
         # signal of each port, in port then signal order, then the block's
-        # clocks and resets in declaration order. A port pin names its port and
-        # signal, and payload is the binding that types it, None otherwise.
+        # clocks and resets in declaration order. A port that is an
+        # interface array has one pin set per element, element by element. A
+        # port pin names its port and signal, and payload is the binding that
+        # types it, None otherwise.
         import pysrc.intf_gen_utils as intf_gen_utils
         structWidths = self.vlTops[topModule]['structWidths']
         typeWidths = self.vlTops[topModule]['typeWidths']
@@ -4186,22 +4297,24 @@ class projectOpen:
             for portData in ret['ports'][portType].values():
                 intfData = intf_gen_utils.get_intf_data(portData['connection'], self)
                 intfDef = ret['interface_defs'][intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)]
-                for row in self.getIntfSignals(intfDef, intfData['structures'], portData['direction']):
-                    match row['kind']:
-                        case 'fixed':
-                            width = row['width']
-                        case 'payload':
-                            width = payloadWidth(row['binding'])
-                        case 'bytes':
-                            binding = row['binding']
-                            width = self.evalHdlParam(
-                                intfDef, row['signalType'],
-                                {binding['structureType']: intfEvalDSL(payloadWidth(binding))})
-                    pins.append({'pin': f"{portData['name']}_{row['signal']}",
-                                 'direction': row['direction'], 'width': width,
-                                 'vector': row['vector'], 'port': portData['name'],
-                                 'signal': row['signal'],
-                                 'payload': row['binding'] if row['kind'] == 'payload' else None})
+                rows = self.getIntfSignals(intfDef, intfData['structures'], portData['direction'])
+                for pinPrefix in portData['pinPrefixes']:
+                    for row in rows:
+                        match row['kind']:
+                            case 'fixed':
+                                width = row['width']
+                            case 'payload':
+                                width = payloadWidth(row['binding'])
+                            case 'bytes':
+                                binding = row['binding']
+                                width = self.evalHdlParam(
+                                    intfDef, row['signalType'],
+                                    {binding['structureType']: intfEvalDSL(payloadWidth(binding))})
+                        pins.append({'pin': f"{pinPrefix}_{row['signal']}",
+                                     'direction': row['direction'], 'width': width,
+                                     'vector': row['vector'], 'port': portData['name'],
+                                     'signal': row['signal'],
+                                     'payload': row['binding'] if row['kind'] == 'payload' else None})
         for name, direction in intf_gen_utils.clock_reset_ports(ret):
             pins.append({'pin': name, 'direction': direction, 'width': 1, 'vector': False,
                          'port': None, 'signal': None, 'payload': None})
@@ -5018,6 +5131,7 @@ class projectCreate:
         self._validateConnectionMapContainers()
         # run any user provided post processing
         self.postYamlExternalScript()
+        self._validateRegisterConnectionForms()
         # create database indexes
         self.generateIndexes()
         # perform all address calculations
@@ -7520,6 +7634,11 @@ class projectCreate:
             # padded `size` only feeds offset bumping. Non-memory registers
             # have no decode size; their row defaults to 0.
             decodeSizeMap = dict()
+            # stride: bytes between the elements of an array register, 0 for
+            # a scalar: the element's decoded footprint rounded up to the
+            # register alignment. An array is allocated and sorted as one unit
+            # of count * stride bytes.
+            strideMap = dict()
             # get everything that needs an address, sorted by block type then entry order. Entry order is maintained
             # to allow engineers to keep consistency of address generation and ensure addresses only change when intended
             if addressType == 'memories':
@@ -7538,6 +7657,7 @@ class projectCreate:
                         blockAddressCurrent[currentBlock] = 0
                 isParam = bool(row['rowIsParam'])
                 width = worstCaseBitwidth(row['width'], row['maxBitwidth'], row['structIsParam'])
+                stride = 0
                 # for register memory type, use the memory objects alignment settings
                 if addressType == 'memories' or (addressType == 'registers' and row['regType'] == 'memory'):
                     alignment = convert_value(self.addressObjects['memories'].get('alignment', 1))
@@ -7571,7 +7691,7 @@ class projectCreate:
                     if alignmentModeValue:
                         size = ((size + alignment - 1) // alignment ) * alignment
                 elif addressType == 'registers':
-                    alignment = convert_value(self.addressObjects['registers'].get('alignment', 1))
+                    alignment = convert_value(self.addressObjects['registers'].get('alignment', 4))
                     alignmentModeValue = True if isinstance(alignment, int) else False
                     # Regular register: width is in bits so convert to bytes and ensure alignment
                     #        bits to bytes              round up to alignment
@@ -7584,10 +7704,14 @@ class projectCreate:
                     # REG_BUS_WIDTH_BYTES bytes of address space (no power-of-2
                     # rounding; that only applies to memory range-match decode).
                     decodeSize = ((bytesPerRow + REG_BUS_WIDTH_BYTES - 1) // REG_BUS_WIDTH_BYTES) * REG_BUS_WIDTH_BYTES
+                    if row['count'] != '':
+                        stride = ((decodeSize + alignment - 1) // alignment) * alignment
+                        size = stride * self._registerArrayConst(self.flatData['registers'][row[keyField]], 'count')['value']
                 else:
                     continue
                 allocateOrder[row[keyField]] = size
                 decodeSizeMap[row[keyField]] = decodeSize
+                strideMap[row[keyField]] = stride
             if sortDescending:
                 # sort data list in ascending order of size
                 data.sort(key=lambda x: allocateOrder[x[keyField]], reverse=True)
@@ -7611,7 +7735,8 @@ class projectCreate:
                 else:
                     blockAddressCurrent[currentBlock] = offset + size
                 decodeSize = decodeSizeMap[row[keyField]]
-                sql = f"UPDATE {addressType} SET offset = {offset}, decodeSize = {decodeSize} WHERE \"{keyField}\" = '{row[keyField]}'" # field is quoted to allow for sql reserved words
+                setStride = f", stride = {strideMap[row[keyField]]}" if addressType == 'registers' else ""
+                sql = f"UPDATE {addressType} SET offset = {offset}, decodeSize = {decodeSize}{setStride} WHERE \"{keyField}\" = '{row[keyField]}'" # field is quoted to allow for sql reserved words
                 g.cur.execute(sql)
 
         # once all addresses are calculated we need to perform space checks
@@ -9067,6 +9192,22 @@ class projectCreate:
         if not self._validateProjectAddressRows(
                 'addressObjects', projRows, allowedFields, 'object'):
             return
+        # The register bus decodes 32-bit words. An alignment that is a
+        # multiple of 4 starts every register on a word, since each register
+        # takes whole alignment units.
+        registers = projRows.get('registers')
+        if registers is not None and 'alignment' in registers:
+            alignment = registers['alignment']
+            if isinstance(alignment, str):
+                alignment = convert_value(alignment)
+            if isinstance(alignment, bool) or not isinstance(alignment, int) or alignment <= 0 \
+                    or alignment % 4:
+                self.logError(
+                    f"In {self.diagnosticLocation(self.projFile, registers.lc)}, addressObjects "
+                    f"registers sets alignment: {alignment!r}. Registers are placed on 32-bit "
+                    f"register-bus words, so the register alignment must be an integer that is a "
+                    f"multiple of 4. Set alignment: 4, 8 or another multiple of 4, or remove it "
+                    f"for the default of 4.")
 
         addressConfig[sectionKey] = projRows
         self.addressObjects = projRows
@@ -11656,7 +11797,348 @@ class projectCreate:
             if not item.get('addressStruct') or item.get('addressStruct') == "":
                 self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, memory register '{registerName}' must have addressStruct field")
 
+        if item['count'] != '':
+            self._validateRegisterCount(item, yamlFile)
+
         return item
+
+    def _registerArrayConst(self, row, field):
+        """The constant row behind a register's count or a registerConnections
+        index, or a non-parameterizable stand-in carrying a literal."""
+        if row[field + 'Key']:
+            return ValueResolver(self).lookupNamedRow(row[field + 'Key'], 'constant')
+        return {'value': row[field], 'isParameterizable': False}
+
+    def _validateRegisterCount(self, item, yamlFile):
+        where = (f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, register "
+                 f"'{item['register']}' of block '{item['block']}'")
+        count = item['count']
+        if item['regType'] == 'memory':
+            self.logError(f"{where} is a regType: memory register and sets count. A memory register "
+                          f"already spans wordLines rows; remove count, or use a regType rw, ro or "
+                          f"ext register for an array.")
+        if self.checkIsParam(item['block'], count, yamlFile):
+            self.logError(f"{where} sets count: {count}, a parameter of block '{item['block']}'. "
+                          f"An array register has one size in every variant, so count must be an "
+                          f"integer or a constant that is not parameterizable.")
+        countConst = self._registerArrayConst(item, 'count')
+        if countConst['isParameterizable']:
+            self.logError(f"{where} sets count: {count}, a parameterizable constant. An array "
+                          f"register has one size in every variant, so count must be an integer or "
+                          f"a constant that is not parameterizable.")
+        value = countConst['value']
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            self.logError(f"{where} sets count: {count}, which resolves to {value!r}. count must "
+                          f"resolve to an integer of at least 1; remove count for a scalar register.")
+
+    def _post_validateRegisterConnection(self, itemkey, item, yamlFile):
+        where = (f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, registerConnections "
+                 f"entry for register '{item['register']}' of block '{item['block']}' to instance "
+                 f"'{item['instance']}'")
+        # The storage key carries the declaring file, so a repeat in another file has another key.
+        for prior in self.flatData['registerConnections'].values():
+            if (prior['registerBlockKey'], prior['instanceKey']) == (item['registerBlockKey'], item['instanceKey']):
+                self.logError(f"{where} repeats the entry at "
+                              f"{self.diagnosticLocation(prior['_context'], prior.get('lc'))}. An instance "
+                              f"takes a register once: the whole register, or one element with "
+                              f"index. Remove one of the two entries.")
+        if item['index'] == '':
+            return item
+        register = self._rowByQualifiedKey('registers', item['registerBlockKey'])
+        if register['count'] == '':
+            self.logError(f"{where} sets index: {item['index']}, but the register declares no "
+                          f"count, so it has no elements. Remove index, or give the register a count.")
+        count = self._registerArrayConst(register, 'count')['value']
+        indexConst = self._registerArrayConst(item, 'index')
+        if indexConst['isParameterizable']:
+            self.logError(f"{where} sets index: {item['index']}, a parameterizable constant. An "
+                          f"element has one position in every variant, so index must be an integer "
+                          f"or a constant that is not parameterizable.")
+        index = indexConst['value']
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < count:
+            self.logError(f"{where} sets index: {item['index']}, which resolves to {index!r}. The "
+                          f"register has count {count}, so index must be an integer from 0 to "
+                          f"{count - 1}.")
+        return item
+
+    def _validateRegisterConnectionForms(self):
+        """Check every registerConnections row of one register together: each
+        row names a child instance of the owner, the instances of one child
+        block take the register the same way, and an ro or ext element has one
+        consumer. Check the names an array creates: its firmware defines and
+        its element names take no other register's, regAccess memory's or
+        port's name."""
+        rowsByRegister = dict()
+        for row in self.flatData['registerConnections'].values():
+            self._validateRegisterConnectionInstance(row)
+            rowsByRegister.setdefault(row['registerBlockKey'], []).append(row)
+        for registerKey, register in self.flatData['registers'].items():
+            rows = rowsByRegister.get(registerKey, [])
+            if rows:
+                self._validateRegisterConnectionRows(register, rows)
+            if register['count'] != '':
+                self._validateRegisterArrayNames(register, rows)
+        self._validateRegisterPortAgreement()
+
+    def _validateRegisterConnectionInstance(self, row):
+        """A registerConnections row wires a register to a child instance of
+        the register's owner. The generator builds the channel inside the
+        owner, so an instance anywhere else keeps its register port unbound."""
+        instance = self.flatData['instances'][row['instanceKey']]
+        if instance['containerKey'] == row['blockKey']:
+            return
+        where = (f"In {self.diagnosticLocation(row['_context'], row.get('lc'))}, registerConnections "
+                 f"entry for register '{row['register']}' of block '{row['block']}'")
+        if instance['container'] == '_topInstance':
+            self.logError(
+                f"{where} names topInstance '{row['instance']}'. A register connects only to a "
+                f"child instance of the block that owns it, and the topInstance, the topmost "
+                f"instance, is in no block. Name an instance contained in '{row['block']}'.")
+        container = self.flatData['blocks'][instance['containerKey']]['block']
+        self.logError(
+            f"{where} names instance "
+            f"'{row['instance']}', which sits in block '{container}', not in '{row['block']}'. "
+            f"A register connects only to a child instance of the block that owns it. Name an "
+            f"instance contained in '{row['block']}', or move '{row['instance']}' into "
+            f"'{row['block']}'.")
+
+    def _validateRegisterPortAgreement(self):
+        """A block's register port, named by the register, is one port for
+        every instance of the block, so every owner that gives the block a
+        register of that name gives it the same regType, structure, count and
+        form, and every instance of the block in a container this project
+        builds takes a register of that name from its own container."""
+        def describe(register, shape, withFile):
+            regType, structureKey, count, isElement = shape
+            if count is None:
+                form = "a scalar"
+            elif isElement:
+                form = f"one element of a {count}-element array"
+            else:
+                form = f"a whole {count}-element array"
+            structure = f"structure '{register['structure']}'"
+            if withFile:
+                _name, structureContext = splitQualifiedKey(structureKey, 'structure')
+                structure += f" declared in {self.diagnosticLocation(structureContext)}"
+            return f"block '{register['block']}' gives it {form}, regType {regType}, {structure}"
+
+        firstByPort = dict()
+        connected = set()
+        takenIn = dict()
+        for row in self.flatData['registerConnections'].values():
+            connected.add((row['instanceKey'], row['register']))
+            register = self.flatData['registers'][row['registerBlockKey']]
+            count = None if register['count'] == '' else self._registerArrayConst(register, 'count')['value']
+            shape = (register['regType'], register['structureKey'], count, row['index'] != '')
+            childKey = self.flatData['instances'][row['instanceKey']]['instanceTypeKey']
+            takenIn.setdefault((childKey, row['register']), set()).add(row['blockKey'])
+            firstRow, firstRegister, firstShape = firstByPort.setdefault(
+                (childKey, row['register']), (row, register, shape))
+            if firstShape == shape:
+                continue
+            child = self.flatData['blocks'][childKey]['block']
+            # Same-named structures from different files print alike without their files.
+            sameName = (firstRegister['structure'] == register['structure']
+                        and firstShape[1] != shape[1])
+            twoFiles = (f" These are two different structures named '{register['structure']}'."
+                        if sameName else "")
+            self.logError(
+                f"In {self.diagnosticLocation(row['_context'], row.get('lc'))}, block '{child}' "
+                f"takes register port '{row['register']}' from two owners that disagree: "
+                f"{describe(firstRegister, firstShape, sameName)} ({self.diagnosticLocation(firstRow['_context'], firstRow.get('lc'))}), "
+                f"and {describe(register, shape, sameName)}.{twoFiles} A block has one port of that "
+                f"name for every instance, so give both registers the same regType, structure and "
+                f"count, and connect both the same way, with index or without. Otherwise rename one register.")
+        # This project builds every container it declares, instantiated or
+        # not. A child project's harness is that project's own build.
+        instances = self.flatData['instances']
+        blocks = self.flatData['blocks']
+        rootProject = self.config.getConfig('PROJECTNAME')
+        inScope = self.reachableInstanceKeys() | {
+            key for key, inst in instances.items()
+            if inst['container'] != '_topInstance'
+            and self.contextOwningProject[blocks[inst['containerKey']]['_context']] == rootProject}
+        instancesByBlock = dict()
+        for key, inst in instances.items():
+            if key in inScope:
+                instancesByBlock.setdefault(inst['instanceTypeKey'], []).append(key)
+        for (childKey, portName), (firstRow, _register, shape) in firstByPort.items():
+            missingKeys = [key for key in instancesByBlock.get(childKey, [])
+                           if (key, portName) not in connected]
+            missing = [instances[key] for key in missingKeys]
+            if not missing:
+                continue
+            child = blocks[childKey]['block']
+            where = ', '.join(f"{inst['instance']} in '{inst['container']}' "
+                              f"({self.diagnosticLocation(inst['_context'], inst.get('lc'))})"
+                              for inst in missing)
+            regType, _structureKey, count, isElement = shape
+            # A whole ro or ext register has one consumer, so a missing
+            # instance beside the one that takes it cannot take it too.
+            singleConsumer = regType in ('ro', 'ext') and not isElement
+            blockedKeys = [key for key in missingKeys if singleConsumer
+                           and instances[key]['containerKey'] in takenIn[(childKey, portName)]]
+            addable = [instances[key]['instance'] for key in missingKeys if key not in blockedKeys]
+            blocked = [instances[key]['instance'] for key in blockedKeys]
+            fixes = []
+            if addable:
+                fixes.append(f"Add a registerConnections row for {', '.join(addable)} that gives "
+                             f"it a register '{portName}' of its own container, with the same "
+                             f"regType, structure and count.")
+            if blocked:
+                if count is None:
+                    what = f"An {regType} register"
+                    split = (f"Make '{portName}' an array with count and give each instance its "
+                             f"own element with an index row")
+                else:
+                    what = f"A whole {regType} array"
+                    split = "Give each instance its own elements with index rows"
+                containers = ', '.join(dict.fromkeys(f"'{instances[key]['container']}'"
+                                                     for key in blockedKeys))
+                fixes.append(f"{what} has one consumer, and in {containers} it is already taken "
+                             f"by another instance of '{child}', so {', '.join(blocked)} cannot "
+                             f"take it. {split}, or use a separate block for {', '.join(blocked)}.")
+            fix = ' '.join(fixes)
+            self.logError(
+                f"In {self.diagnosticLocation(firstRow['_context'], firstRow.get('lc'))}, "
+                f"registerConnections for register '{portName}' of block '{firstRow['block']}' "
+                f"gives block '{child}' register port '{portName}' through instance "
+                f"'{firstRow['instance']}', but instance(s) {where} of block '{child}' take no "
+                f"register '{portName}', so the port stays unbound. Every instance of one block "
+                f"has the same ports. {fix}")
+
+    def _validateRegisterConnectionRows(self, register, rows):
+        instances = self.flatData['instances']
+        name = f"register '{register['register']}' of block '{register['block']}'"
+
+        def where(row):
+            return (f"In {self.diagnosticLocation(row['_context'], row.get('lc'))}, "
+                    f"registerConnections for {name}")
+
+        rowsByChild = dict()
+        for row in rows:
+            rowsByChild.setdefault(instances[row['instanceKey']]['instanceTypeKey'], []).append(row)
+        for childKey, childRows in rowsByChild.items():
+            child = self.flatData['blocks'][childKey]['block']
+            indexed = [row['instance'] for row in childRows if row['index'] != '']
+            whole = [row['instance'] for row in childRows if row['index'] == '']
+            if indexed and whole:
+                self.logError(
+                    f"{where(childRows[0])}: instances of block '{child}' take it in two forms, "
+                    f"with index ({', '.join(indexed)}) and without ({', '.join(whole)}). Every "
+                    f"instance of one block takes a register the same way, so give every row "
+                    f"for block '{child}' an index, or none.")
+        if register['regType'] not in ('ro', 'ext'):
+            return
+        owner = "drives" if register['regType'] == 'ro' else "answers"
+        if register['count'] == '':
+            if len(rows) > 1:
+                self.logError(
+                    f"{where(rows[1])}: instances {', '.join(row['instance'] for row in rows)} "
+                    f"each take the {register['regType']} register. An {register['regType']} "
+                    f"register has one consumer, which {owner} it. Connect it to one instance.")
+            return
+        whole = [row for row in rows if row['index'] == '']
+        indexed = [row for row in rows if row['index'] != '']
+        if whole and indexed:
+            self.logError(
+                f"{where(whole[0])}: instance '{whole[0]['instance']}' takes the whole "
+                f"{register['regType']} array and instance '{indexed[0]['instance']}' takes an "
+                f"element of it. Each element of an {register['regType']} register has one "
+                f"consumer, which {owner} it. Connect the whole array to one instance, or "
+                f"give each element its own index row.")
+        if len(whole) > 1:
+            self.logError(
+                f"{where(whole[1])}: instances {', '.join(row['instance'] for row in whole)} "
+                f"each take the whole {register['regType']} array. Each element of an "
+                f"{register['regType']} register has one consumer, which {owner} it. Connect "
+                f"the array to one instance, or give each instance its own elements with index.")
+        if not indexed:
+            return
+        count = self._registerArrayConst(register, 'count')['value']
+        byIndex = dict()
+        for row in indexed:
+            byIndex.setdefault(self._registerArrayConst(row, 'index')['value'], []).append(row)
+        for index, indexRows in byIndex.items():
+            if len(indexRows) > 1:
+                self.logError(
+                    f"{where(indexRows[1])}: element {index} goes to instances "
+                    f"{', '.join(row['instance'] for row in indexRows)}. Each element of an "
+                    f"{register['regType']} register has one consumer, which {owner} it. Give "
+                    f"element {index} to one instance.")
+        uncovered = [str(index) for index in range(count) if index not in byIndex]
+        if uncovered:
+            self.logError(
+                f"{where(indexed[0])}: element(s) {', '.join(uncovered)} of the "
+                f"{register['regType']} array have no index row. Each element of an "
+                f"{register['regType']} register has one consumer, which {owner} it. Give each "
+                f"of them an index row, or connect the whole array to one instance.")
+
+    def _validateRegisterArrayNames(self, register, rows):
+        """The firmware header spells an array's stride and count as
+        REG_<BLOCK>_<REG>_STRIDE and _COUNT beside REG_<BLOCK>_<OTHER> for
+        every other register and regAccess memory of the block. Element k is
+        named <reg>_<k> in the register handler's RTL localparams and locals,
+        and it is the prefix of a flat Verilator pin set on every block that
+        takes the whole array. So no register or regAccess memory of the
+        owner, and no port of those blocks, may carry an element's name."""
+        location = self.diagnosticLocation(register['_context'], register.get('lc'))
+        array = f"array register '{register['register']}' of block '{register['block']}'"
+        others = dict()
+        for row in self.flatData['registers'].values():
+            if row['blockKey'] == register['blockKey'] and row is not register:
+                others.setdefault(row['register'].upper(), f"register '{row['register']}'")
+        for row in self.flatData['memories'].values():
+            if row['blockKey'] == register['blockKey'] and row['regAccess'] in ('rw', 'ro', 'wo'):
+                others.setdefault(row['memory'].upper(), f"memory '{row['memory']}'")
+        for suffix in ('_STRIDE', '_COUNT'):
+            clash = others.get((register['register'] + suffix).upper())
+            if clash is None:
+                continue
+            define = f"REG_{register['block'].upper()}_{register['register'].upper()}{suffix}"
+            self.logError(
+                f"In {location}, {array} gets the firmware define {define}, which is also the "
+                f"define of {clash} of the same block. Rename one of them.")
+        count = self._registerArrayConst(register, 'count')['value']
+        elements = [f"{register['register']}_{k}" for k in range(count)]
+        for element in elements:
+            clash = others.get(element.upper())
+            if clash is not None:
+                self.logError(
+                    f"In {location}, {array} names its element {element[len(register['register']) + 1:]} "
+                    f"'{element}', which is also the name of {clash} of the same block. Rename one of them.")
+        instances = self.flatData['instances']
+        portBlocks = [instances[row['instanceKey']]['instanceTypeKey'] for row in rows if row['index'] == '']
+        for blockKey in dict.fromkeys(portBlocks):
+            ports = self._blockPortNames(blockKey)
+            for element in elements:
+                if element in ports:
+                    self.logError(
+                        f"In {location}, {array} names its element {element[len(register['register']) + 1:]} "
+                        f"'{element}', which is also the name of port '{element}' of block "
+                        f"'{self.flatData['blocks'][blockKey]['block']}'. Rename one of them.")
+
+    def _blockPortNames(self, blockKey):
+        """The port names of a block: declared ports and registerPorts, the
+        ends of connections on it, both ends of connectionMaps (its own port,
+        and the port a container maps to on its instance), the registers its
+        instances take from their container and the memories its instances
+        access."""
+        blockRow = self.flatData['blocks'][blockKey]
+        names = set(blockRow.get('ports', dict())) | set(blockRow.get('registerPorts', dict()))
+        for fileRows in self.data['connectionsends'].values():
+            names.update(end['portName'] for end in fileRows.values() if end['instanceTypeKey'] == blockKey)
+        instances = self.flatData['instances']
+        for cm in self.flatData['connectionMaps'].values():
+            if cm['blockKey'] == blockKey:
+                names.add(cm['portName'])
+            if instances[cm['instanceKey']]['instanceTypeKey'] == blockKey:
+                names.add(cm['instancePortName'])
+        names.update(row['register'] for row in self.flatData['registerConnections'].values()
+                     if instances[row['instanceKey']]['instanceTypeKey'] == blockKey)
+        names.update(row['memory'] for row in self.flatData['memoryConnections'].values()
+                     if row['instanceKey'] and instances[row['instanceKey']]['instanceTypeKey'] == blockKey)
+        return names
 
     # connections: connection: key, instance: auto, direction: auto, port: optional, connCount: optional
     # this is a complete custom handler, as the key is derived from other fields

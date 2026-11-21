@@ -21,6 +21,8 @@ namespace fw_ns::apbDecode {
 //constants
 inline constexpr uint32_t ASIZE = 29;  // The size of A
 inline constexpr uint32_t DWORD = 32;  // size of a double word
+inline constexpr uint32_t REGARR_N = 4;  // Number of elements of the rwArr and roArr register arrays
+inline constexpr uint32_t ROARR_BIAS = 4096;  // Added to each roArr element blockA derives from rwArr
 inline constexpr uint32_t MEMORYA_WORDS = 19;  // Address wordlines for memory A
 inline constexpr uint32_t MEMORYA_WORDS_LOG2 = 5;  // Address wordlines for memory A log2
 inline constexpr uint32_t MEMORYA_WIDTH = 63;  // Bit width of content for memory A, more than 32, less than 64
@@ -212,6 +214,29 @@ struct aSizeRegSt {
     explicit aSizeRegSt(
         aSizeT index_) :
         index(index_)
+    {}
+
+};
+struct arrRegSt {
+    u16T d; /* [15:0] */ //Register array element payload
+
+    arrRegSt() { memset(this, 0, sizeof(arrRegSt)); }
+
+    static constexpr uint16_t _bitWidth = 16;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint16_t _packedSt;
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, sizeof(_ret));
+        _ret = d;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        d = (u16T)((_src));
+    }
+    explicit arrRegSt(
+        u16T d_) :
+        d(d_)
     {}
 
 };

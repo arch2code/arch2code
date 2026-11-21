@@ -125,7 +125,7 @@ def port_decl_block(prj, data, mp_sig, sc_bv):
         for port, port_data in data['ports'][port_type].items():
             intf_type = port_intf(prj, data, port_data)[1] + '_if'
             intf_dir = port_data['direction']
-            s += f'// {intf_type}.{intf_dir}\n'
+            s += f"// {intf_type}.{intf_dir}{mp_sig[port]['array_suffix']}\n"
             s += ',\n'.join(f"{decl} /*verilator sc_bv*/" if name in sc_bv else decl
                              for decl, name in zip(mp_sig[port]['ports'], mp_sig[port]['names']))
             s += ',\n'
@@ -146,14 +146,14 @@ def intf_reconstruction(prj, data, mp_sig):
         for port, port_data in data['ports'][port_type].items():
             intf_type = port_intf(prj, data, port_data)[1] + '_if'
             intf_dir = port_data['direction']
-            s += f'// {intf_type}.{intf_dir}\n'
+            s += f"// {intf_type}.{intf_dir}{mp_sig[port]['array_suffix']}\n"
             s += mp_sig[port]['intf_decl'] + '\n'*2
             s += '\n'.join(mp_sig[port]['assign'])
             s += '\n'
             s += '\n'
     return s
 
-def dut_instantiation(prj, data, blk_name, blk_param):
+def dut_instantiation(prj, data, mp_sig, blk_name, blk_param):
     s = f"{data['blockSvModuleName']}{blk_param} dut (\n"
     s_1 = ''
     for port_type in data['ports']:
@@ -161,7 +161,7 @@ def dut_instantiation(prj, data, blk_name, blk_param):
             intf_name = port_data['name']
             intf_type = port_intf(prj, data, port_data)[1] + '_if'
             intf_dir = port_data['direction']
-            s_1 += f".{intf_name}({intf_name}), // {intf_type}.{intf_dir}\n"
+            s_1 += f".{intf_name}({intf_name}), // {intf_type}.{intf_dir}{mp_sig[port]['array_suffix']}\n"
     s_1 += ',\n'.join(intf_gen_utils.sv_clock_reset_binds(data)) + '\n'
     s_1 = textwrap.indent(s_1, ' '*4)
     s += s_1 + ');'
@@ -178,8 +178,8 @@ end
     return s
 
 def xcheck_instances(prj, data):
-    # One X/Z checker per port whose interface type ships a UVM agent, on the
-    # port's own clock and reset. A signal typed by an optional payload gets a
+    # One X/Z checker per port whose interface type ships a UVM agent, or per
+    # element of an interface-array port, on the port's own clock and reset. A signal typed by an optional payload gets a
     # CHECK_<SIGNAL> parameter, on only when the port binds that payload: an
     # unbound one is an undriven placeholder. The checkers use four-state
     # values, so the Verilated wrapper leaves them out.
@@ -196,10 +196,10 @@ def xcheck_instances(prj, data):
             checks = [f".CHECK_{signal.upper()}(1'b{int(bound[signalDef['signalType']])})"
                       for signal, signalDef in intf_def['signals'].items()
                       if signalDef['signalType'] in bound]
-            intf_name = port_data['name']
             params = f" #({', '.join(checks)})" if checks else ''
-            lines.append(f"{intf_type}_xcheck{params} {intf_name}_xcheck (.clk({port_data['domainClock']}), "
-                         f".rst_n({port_data['domainReset']}), .intf({intf_name}));")
+            for prefix, intf_ref in intf_gen_utils.sv_pin_prefixes(port_data, port_data['name']):
+                lines.append(f"{intf_type}_xcheck{params} {prefix}_xcheck (.clk({port_data['domainClock']}), "
+                             f".rst_n({port_data['domainReset']}), .intf({intf_ref}));")
     if not lines:
         return ''
     return '\n`ifndef VERILATOR\n' + '\n'.join(lines) + '\n`endif\n'
@@ -244,7 +244,7 @@ def render_body(args, prj, data, mp_sig, blk_name):
     out += textwrap.indent(intf_reconstruction(prj, data, mp_sig), ' '*4)
 
     blk_param = ' #(' + ", ".join([f".{p}({p})" for p in params]) + ')'
-    out += textwrap.indent(dut_instantiation(prj, data, blk_name, blk_param), ' '*4) + '\n'
+    out += textwrap.indent(dut_instantiation(prj, data, mp_sig, blk_name, blk_param), ' '*4) + '\n'
     out += textwrap.indent(xcheck_instances(prj, data), ' '*4)
 
     out += f'\nendmodule : {module_name}\n'
@@ -339,7 +339,7 @@ def render_non_parameterizable(args, prj, data, mp_sig, blk_name):
 
     out += textwrap.indent(intf_reconstruction(prj, data, mp_sig), ' '*4)
 
-    out += textwrap.indent(dut_instantiation(prj, data, blk_name, ''), ' '*4) + '\n'
+    out += textwrap.indent(dut_instantiation(prj, data, mp_sig, blk_name, ''), ' '*4) + '\n'
     out += textwrap.indent(xcheck_instances(prj, data), ' '*4)
 
     out += f'\nendmodule : {module_name}\n'

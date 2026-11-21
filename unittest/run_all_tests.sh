@@ -836,6 +836,30 @@ python3 test_error_ext_register_width.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: a register array or its registerConnections that cannot be built is rejected at make db"
+echo "------------------------------------------------------------------------"
+python3 test_error_register_arrays.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a register array is one address unit, and the views and regAddresses.h describe it"
+echo "------------------------------------------------------------------------"
+python3 test_register_array_layout.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a testbench External re-creates a register array's channel as a vector, with each element's source"
+echo "------------------------------------------------------------------------"
+python3 test_register_array_tb_external.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: split ext and ro arrays generate, a register handler registers in address order, and a child port does not depend on row order"
+echo "------------------------------------------------------------------------"
+python3 test_register_array_generation.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: generated model declares a read-only register read-only"
 echo "------------------------------------------------------------------------"
 python3 test_hw_register_ro_render.py || FAILED=1
