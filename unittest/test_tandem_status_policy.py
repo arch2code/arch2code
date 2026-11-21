@@ -165,7 +165,7 @@ def accept_reads(label, expected, **rows):
 
 def accept_array_reads(label):
     """tandem: warn on regLeaf's ro array register gives one read entry per element, named
-    leafArr[k], at the register's offset plus k element strides."""
+    leafArr[k]. The fixture places leafArr at 0x20 with an 8-byte element stride."""
     try:
         db_path, project_path, arch_paths = build_database(_arch(leaf_arr_extra=', tandem: warn'))
     except RuntimeError as exc:
@@ -174,13 +174,11 @@ def accept_array_reads(label):
         return
     try:
         prj = projectOpen(db_path)
-        reg = next(r for r in prj.data['registers'].values() if r['register'] == 'leafArr')
-        expected = [{'register': f'leafArr[{k}]', 'offset': reg['offset'] + reg['stride'] * k, 'size': 2,
-                     'policy': 'warn'} for k in range(4)]
+        expected = [{'register': f'leafArr[{k}]', 'offset': offset, 'size': 2, 'policy': 'warn'}
+                    for k, offset in enumerate((32, 40, 48, 56))]
         got = prj.getBlockData(find_block(prj, 'regLeaf')[0])['tandemRegisterReads']['registers']
-        ok = reg['stride'] > 0 and got == expected
-        print(f"{'PASS' if ok else 'FAIL'}: {label}"
-              + ('' if ok else f": stride {reg['stride']}, expected {expected}, got {got}"))
+        ok = got == expected
+        print(f"{'PASS' if ok else 'FAIL'}: {label}" + ('' if ok else f": expected {expected}, got {got}"))
         RESULTS.append(ok)
     finally:
         cleanup([project_path, db_path] + arch_paths)

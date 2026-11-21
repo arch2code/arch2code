@@ -15,12 +15,10 @@ element's pslverr.
 """
 
 import os
-import shutil
 import sys
-import tempfile
 
-from _addrctl_helpers import APB_PREAMBLE, render_leaf, render_plain_block, render_router, test_dir
-from _tmp_helpers import close_db
+from _addrctl_helpers import APB_PREAMBLE, render_leaf, render_plain_block, render_router
+from _tmp_helpers import temp_dir
 from test_memory_firmware_access import PROJECT, _arch2code
 
 COUNT = 3
@@ -89,9 +87,9 @@ def write_arm(text, k):
 
 
 def main():
-    fixture = tempfile.mkdtemp(prefix='a2c_ext_arr_err_', dir=test_dir)
     try:
-        text = generate_handler(fixture)
+        with temp_dir(prefix='a2c_ext_arr_err_') as fixture:
+            text = generate_handler(fixture)
         check("assign regs.pslverr = wr_slverr | rd_slverr;" in text, "handler drives PSLVERR")
         for k in range(COUNT):
             arm = write_arm(text, k)
@@ -104,9 +102,6 @@ def main():
             check(not others, f"element {k} arm touches no other element")
     except Exception as exc:
         check(False, str(exc))
-    finally:
-        close_db()
-        shutil.rmtree(fixture, ignore_errors=True)
     if FAILURES:
         print(f"\n  SOME TESTS FAILED ({len(FAILURES)})")
         return 1

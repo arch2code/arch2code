@@ -2524,14 +2524,13 @@ class projectOpen:
         for reg in ret['registers'].values():
             if reg['register'] not in policies:
                 continue
-            policy = policies[reg['register']]
             if reg['countValue'] is None:
-                registers.append({'register': reg['register'], 'offset': reg['offset'], 'size': reg['maxBytes'],
-                                  'policy': policy})
-                continue
-            registers.extend({'register': f"{reg['register']}[{k}]", 'offset': reg['offset'] + k * reg['stride'],
-                              'size': reg['maxBytes'], 'policy': policy}
-                             for k in range(reg['countValue']))
+                elements = [(reg['register'], reg['offset'])]
+            else:
+                elements = [(f"{reg['register']}[{k}]", reg['offset'] + k * reg['stride'])
+                            for k in range(reg['countValue'])]
+            registers.extend({'register': name, 'offset': offset, 'size': reg['maxBytes'],
+                              'policy': policies[reg['register']]} for name, offset in elements)
         ret['tandemRegisterReads'] = {
             'port': ret['addressDecode']['registerBusPort'],
             'addressMask': (1 << ret['addressDecode']['addressBits']) - 1,
