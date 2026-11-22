@@ -33,6 +33,17 @@ using namespace twoClkIp_ns;
 #include "push_ack_bfm.h"
 
 #include "socketSync.h"
+// Time-0 levels of the generated clocks and resets. The 4-state simulators
+// start the clocks low with the resets asserted, so no flop sees a clock edge
+// at time 0 while its reset is X; Verilator keeps a rising clock edge and a
+// reset negedge at time 0, which its 2-state flops need to be reset then.
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
+#define A2C_HDL_CLOCK_START false
+#define A2C_HDL_RESET_BORN false
+#else
+#define A2C_HDL_CLOCK_START true
+#define A2C_HDL_RESET_BORN true
+#endif
 class twoClkSlowSink_hdl_sc_wrapper: public sc_module, public blockBase, public twoClkSlowSinkBase {
 
 public:
@@ -55,7 +66,7 @@ public:
         twoClkSlowSinkBase(name(), variant),
         clkSlow("clkSlow"),
         in_bfm_inst("in_bfm_inst"),
-        rstSlow_n("rstSlow_n", true),
+        rstSlow_n("rstSlow_n", A2C_HDL_RESET_BORN),
         clkSlow_half_(sc_time(3, SC_NS) / 2)
     {
 #if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
@@ -75,7 +86,7 @@ public:
         in_bfm_inst.clk(clkSlow);
         in_bfm_inst.rst_n(rstSlow_n);
 
-        clkSlow.write(true);
+        clkSlow.write(A2C_HDL_CLOCK_START);
         SC_THREAD(clock_gen_clkSlow);
         SC_THREAD(reset_driver_rstSlow_n);
 

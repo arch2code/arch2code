@@ -35,8 +35,11 @@ def sec_clock_half_ctor_init(args, prj, data):
                       f'{SC_TIME_UNIT[row["timeUnit"]]}) / 2)'
                       for row in data['clocks'] if row['direction'] == 'input')
 
-def sec_clock_start(args, prj, data):
-    return '\n'.join(f"{row['clock']}.write(true);"
+def sec_clock_start(args, prj, data, level='true'):
+    # The HDL wrapper passes A2C_HDL_CLOCK_START, defined above its class: high
+    # under Verilator, low under VCS / Xcelium / Questa. The UVM wrapper's
+    # resets are born asserted, so its clocks start high.
+    return '\n'.join(f"{row['clock']}.write({level});"
                      for row in data['clocks'] if row['direction'] == 'input')
 
 def sec_clock_threads(args, prj, data):
@@ -51,9 +54,12 @@ def sec_reset_decl(args, prj, data):
     return '\n'.join(f"sc_signal<bool> {row['reset']};" for row in data['resets'])
 
 def sec_reset_ctor_init(args, prj, data):
-    # Born released: the driver's first write(false) is then a real negedge,
-    # which Verilator's async-reset processes need to see.
-    return ',\n'.join(f'{row["reset"]}("{row["reset"]}", true)' for row in data['resets'])
+    # A2C_HDL_RESET_BORN, defined above the HDL wrapper class. Verilator: born
+    # released, so the driver's first write(false) is a real negedge, which
+    # Verilator's async-reset processes need to see. VCS / Xcelium / Questa:
+    # born asserted, so no flop is clocked while its asynchronous reset is
+    # still X.
+    return ',\n'.join(f'{row["reset"]}("{row["reset"]}", A2C_HDL_RESET_BORN)' for row in data['resets'])
 
 def sec_reset_threads(args, prj, data):
     # An `output` block reset is produced by the DUT and observed, not
@@ -278,7 +284,7 @@ def render_sc(args, prj, data):
             sec_hdl_if_decl=sec_hdl_if_decl(args, prj, data),
             sec_clock_decl=sec_clock_decl(args, prj, data),
             sec_clock_half_decl=sec_clock_half_decl(args, prj, data),
-            sec_clock_start=sec_clock_start(args, prj, data),
+            sec_clock_start=sec_clock_start(args, prj, data, 'A2C_HDL_CLOCK_START'),
             sec_clock_threads=sec_clock_threads(args, prj, data),
             sec_clock_gens=sec_clock_gens(args, prj, data),
             sec_reset_decl=sec_reset_decl(args, prj, data),
@@ -371,6 +377,17 @@ sec_hdl_sc_wrapper_class_template = """\
 {{ sec_bfm_includes }}
 {% endif %}
 #include "socketSync.h"
+// Time-0 levels of the generated clocks and resets. The 4-state simulators
+// start the clocks low with the resets asserted, so no flop sees a clock edge
+// at time 0 while its reset is X; Verilator keeps a rising clock edge and a
+// reset negedge at time 0, which its 2-state flops need to be reset then.
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
+#define A2C_HDL_CLOCK_START false
+#define A2C_HDL_RESET_BORN false
+#else
+#define A2C_HDL_CLOCK_START true
+#define A2C_HDL_RESET_BORN true
+#endif
 {%- if is_template %}
 template <typename DUT_T, typename Config>
 {%- endif %}
