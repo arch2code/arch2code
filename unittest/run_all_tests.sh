@@ -819,6 +819,12 @@ python3 test_hw_register_wide_word_write.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: registerHandler maps a register only at the word offsets the generated RTL decodes"
+echo "------------------------------------------------------------------------"
+python3 test_register_handler_word_decode.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: each word write to a wide hwRegisterIf rw register reaches the child"
 echo "------------------------------------------------------------------------"
 python3 test_hw_register_if_wide_word_write.py || FAILED=1

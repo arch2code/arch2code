@@ -369,7 +369,8 @@ The read value depends on who answers:
 *   **An address in a block's decoded range that no register or memory
     claims.** The block's handler answers with `32'hBADD_C0DE` and drops the
     write. This includes rows the address map reserves past a parameterizable
-    memory's bound depth (§5).
+    memory's bound depth (§5), and every byte offset inside a register that is
+    not one of its 32-bit word offsets, such as `+1` or `+5`.
 *   **Words of a parameterizable register, or bytes of a memory row, above the
     bound variant's width.** These belong to the register or row, so they read
     0 and drop the write.

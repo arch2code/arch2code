@@ -149,10 +149,10 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - Run alone under the D4c prototype, `test_mem_hier_cpu_read` fails, because it reads what blockD's write test stored. The value read changed between runs, which suggests the model memory returns uninitialised data. Not yet confirmed.
 - Source: found on branch 155 during the D4c prototype.
 
-### K31. Unaligned register access differs between model and RTL
+### K31. A non-word offset inside a memory row differs between model and RTL
 
-- `addressMap::contains` (`common/systemc/addressMap.h:104`) matches per byte, while the RTL arms match exact words. A read at REG+1 returns register bits in the model and `32'hBADD_C0DE` in the RTL. They also disagreed before branch 155 (RTL returned 0). APB masters normally align.
-- Source: found on branch 155 during the D2b scope review.
+- `hwMemory::cpu_read` and `cpu_write` (`common/systemc/hwMemory.h`) take `address % ROW_BYTES` as a byte offset and slice `[8*n+31:8*n]` of the packed row. At a non-word offset inside a row, such as ROW+1, the model reads a shifted 32-bit slice of the row, and a write changes the bytes the slice covers. Where the slice runs past the row, `sc_bv` reports an out-of-range error. The generated RTL (`templates/systemVerilog/moduleRegs.py`, the memory arms' `default`) answers such a read with `'0` and drops such a write, with no PSLVERR. Registers no longer have this problem. APB masters normally align.
+- Source: found on branch 155 during the D2b scope review. The register half was fixed later.
 
 ### K32. A Config that sets its test list in its constructor ignores `--test`
 
