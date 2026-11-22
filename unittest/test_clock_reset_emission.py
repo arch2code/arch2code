@@ -1439,16 +1439,46 @@ def check_gated_clock_free_runs_after_link_loss(emitted):
 
 
 def check_reset_signal_per_reset(emitted):
-    """One sc_signal<bool> per resolved reset, born released."""
+    """One sc_signal<bool> per resolved reset, born released under Verilator."""
     text = emitted['verif/fastProd_hdl_sc_wrapper.h']
     for decl in ('sc_signal<bool> rst_n;', 'sc_signal<bool> rstSlow_n;',
                  'sc_signal<bool> rstPico_n;'):
         _expect(text, decl, 'each resolved reset is its own signal',
                 'fastProd SC wrapper')
-    for init in ('rst_n("rst_n", true)', 'rstSlow_n("rstSlow_n", true)',
-                 'rstPico_n("rstPico_n", true)'):
-        _expect(text, init, "a reset is born released so the driver's first "
-                "assertion is a real negedge", 'fastProd SC wrapper')
+    for init in ('rst_n("rst_n", A2C_HDL_RESET_BORN)',
+                 'rstSlow_n("rstSlow_n", A2C_HDL_RESET_BORN)',
+                 'rstPico_n("rstPico_n", A2C_HDL_RESET_BORN)'):
+        _expect(text, init, "a reset is born released under Verilator (the "
+                "driver's first assertion is a real negedge) and asserted "
+                "under VCS / Xcelium", 'fastProd SC wrapper')
+    return True
+
+
+def check_time_zero_levels_per_simulator(emitted):
+    """Each input clock starts at A2C_HDL_CLOCK_START. VCS and Xcelium start the
+    clocks low and the resets asserted, so no 4-state flop is clocked at time 0
+    while its reset is X. Verilator keeps a rising edge and a reset negedge at
+    time 0, which its 2-state flops need to be reset then."""
+    text = emitted['verif/fastProd_hdl_sc_wrapper.h']
+    for clock in ('clk', 'clkSlow', 'clkPico'):
+        _expect(text, f'{clock}.write(A2C_HDL_CLOCK_START);',
+                'each input clock starts at the simulator\'s time-0 level',
+                'fastProd SC wrapper')
+        _refute(text, f'{clock}.write(true);', 'a clock starts at '
+                'A2C_HDL_CLOCK_START, not high under every simulator',
+                'fastProd SC wrapper')
+    block = ('#if defined(VCS_DUT) || defined(XCELIUM_DUT)\n'
+             '#define A2C_HDL_CLOCK_START false\n'
+             '#define A2C_HDL_RESET_BORN false\n'
+             '#else\n'
+             '#define A2C_HDL_CLOCK_START true\n'
+             '#define A2C_HDL_RESET_BORN true\n'
+             '#endif\n')
+    _expect(text, block, 'VCS and Xcelium start clocks low and resets asserted; '
+            'Verilator starts clocks high and resets released', 'fastProd SC wrapper')
+    if text.index(block) > text.index(': public sc_module, public blockBase'):
+        raise AssertionError("fastProd SC wrapper must define the time-0 macros "
+                             "before the class that uses them")
     return True
 
 
@@ -2901,6 +2931,8 @@ def main():
              check_gated_clock_free_runs_after_link_loss),
             ('one sc_signal per reset, born released',
              check_reset_signal_per_reset),
+            ('clocks and resets start at each simulator\'s time-0 level',
+             check_time_zero_levels_per_simulator),
             ('each reset releases after its own releaseCycles edges of its '
              'own clock', check_release_counts_own_clock),
             ('no wrapper releases a reset at an absolute time',

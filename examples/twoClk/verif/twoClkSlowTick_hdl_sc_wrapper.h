@@ -31,6 +31,17 @@ using namespace twoClkIp_ns;
 #include "push_ack_bfm.h"
 
 #include "socketSync.h"
+// Time-0 levels of the generated clocks and resets. The 4-state simulators
+// start the clocks low with the resets asserted, so no flop sees a clock edge
+// at time 0 while its reset is X; Verilator keeps a rising clock edge and a
+// reset negedge at time 0, which its 2-state flops need to be reset then.
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#define A2C_HDL_CLOCK_START false
+#define A2C_HDL_RESET_BORN false
+#else
+#define A2C_HDL_CLOCK_START true
+#define A2C_HDL_RESET_BORN true
+#endif
 class twoClkSlowTick_hdl_sc_wrapper: public sc_module, public blockBase, public twoClkSlowTickBase {
 
 public:
@@ -53,7 +64,7 @@ public:
         twoClkSlowTickBase(name(), variant),
         clkTick("clkTick"),
         out_bfm_inst("out_bfm_inst"),
-        rstTick_n("rstTick_n", true),
+        rstTick_n("rstTick_n", A2C_HDL_RESET_BORN),
         clkTick_half_(sc_time(3, SC_NS) / 2)
     {
 #if defined(VCS_DUT) || defined(XCELIUM_DUT)
@@ -73,7 +84,7 @@ public:
         out_bfm_inst.clk(clkTick);
         out_bfm_inst.rst_n(rstTick_n);
 
-        clkTick.write(true);
+        clkTick.write(A2C_HDL_CLOCK_START);
         SC_THREAD(clock_gen_clkTick);
         SC_THREAD(reset_driver_rstTick_n);
 
