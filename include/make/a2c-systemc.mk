@@ -84,6 +84,21 @@ ifndef QUESTA_HOME
 $(error QUESTA_HOME is not set - point it at the Questa release directory (the one holding bin/vsim and include/systemc) to build with USE_QUESTA)
 endif
 SYSTEMC_INCLUDE = $(QUESTA_HOME)/include/systemc
+# QUESTA_PTRARRAY_COPY=1 builds against a copy of Questa's SystemC include
+# directory, written into the build tree from the install, whose ptrarray.h
+# defines ptrarray<T*>::m_default_init_size in the class (Siemens case
+# #02437403): Clang rejects Questa's out-of-class definition when a port type
+# from a C++20 module meets it in two module units (SIMULATOR_INTEGRATION.md
+# section 2.3). Off by default.
+QUESTA_PTRARRAY_COPY ?= 0
+ifeq ($(QUESTA_PTRARRAY_COPY),1)
+QUESTA_SC_COPY := $(QUESTA_BIN_DIR)/questa_systemc
+$(shell $(A2C_ROOT)/common/systemc/questa/a2c_questa_ptrarray_copy.sh $(QUESTA_HOME)/include/systemc $(QUESTA_SC_COPY) >&2)
+ifneq ($(.SHELLSTATUS),0)
+$(error QUESTA_PTRARRAY_COPY=1: the copy of $(QUESTA_HOME)/include/systemc could not be written)
+endif
+SYSTEMC_INCLUDE = $(QUESTA_SC_COPY)
+endif
 endif
 # /usr/include is already a system dir, and -isystem on it breaks libstdc++'s #include_next.
 CPP_INCLUDES = $(addprefix -isystem,$(filter-out /usr/include,$(BOOST_INCLUDE) $(SYSTEMC_INCLUDE))) -I/usr/local/include
@@ -311,6 +326,12 @@ QUESTA_SC_INC = $(QUESTA_HOME)/include/systemc
 QUESTA_SYSC_DIRS := $(sort $(foreach h,$(wildcard $(QUESTA_SC_INC)/sysc/*/*.h $(QUESTA_SC_INC)/sysc/*/*/*.h),\
 	$(if $(wildcard $(QUESTA_SC_INC)/$(notdir $(h))),$(dir $(h)))))
 CXX_FLAGS += $(foreach d,$(QUESTA_SYSC_DIRS),-fmacro-prefix-map=$(d)=$(QUESTA_SC_INC)/)
+# The copy of QUESTA_PTRARRAY_COPY reaches the same headers by its own paths;
+# they map to Questa's directory alike.
+ifeq ($(QUESTA_PTRARRAY_COPY),1)
+CXX_FLAGS += $(foreach d,$(QUESTA_SYSC_DIRS),-fmacro-prefix-map=$(subst $(QUESTA_SC_INC)/,$(QUESTA_SC_COPY)/,$(d))=$(QUESTA_SC_INC)/) \
+	-fmacro-prefix-map=$(QUESTA_SC_COPY)/=$(QUESTA_SC_INC)/
+endif
 endif
 
 ifdef VL_DUT
@@ -357,7 +378,7 @@ CPP_MODULE_OBJ_FLAGS := $(filter-out -I% -isystem/% -fmacro-prefix-map=%,$(CXX_F
 # prerequisite of every flag-carrying compile rule forces just the affected
 # objects to recompile (and the binary to relink) on a flip, without changing any
 # output path that downstream consumers of build/run depend on.
-BUILD_FLAVOR := $(if $(USE_VCS),vcs-,)$(if $(USE_XCELIUM),xrun-,)$(if $(USE_QUESTA),questa-,)$(if $(VL_DUT),vl$(if $(VL_COV),-cov,),model)
+BUILD_FLAVOR := $(if $(USE_VCS),vcs-,)$(if $(USE_XCELIUM),xrun-,)$(if $(USE_QUESTA),questa-$(if $(filter 1,$(QUESTA_PTRARRAY_COPY)),ptrarray-copy-),)$(if $(VL_DUT),vl$(if $(VL_COV),-cov,),model)
 FLAVOR_STAMP := $(BUILD_DIR)/.build_flavor
 $(shell mkdir -p $(BUILD_DIR); [ "$$(cat $(FLAVOR_STAMP) 2>/dev/null)" = "$(BUILD_FLAVOR)" ] || printf '%s\n' "$(BUILD_FLAVOR)" > $(FLAVOR_STAMP))
 

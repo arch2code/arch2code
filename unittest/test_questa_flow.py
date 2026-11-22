@@ -20,6 +20,10 @@ QUESTA_HOME, so they need no Questa install. Checks:
   into a2c_sc;
 - the parse-time records of the vlog, sccom -link, vopt and vsim arguments do
   not change when a hook holds only blanks;
+- QUESTA_PTRARRAY_COPY=1 compiles against a copy of Questa's include
+  directory whose ptrarray.h defines m_default_init_size in the class, maps
+  the copy's paths for __FILE__, and stops on an unexpected ptrarray.h; unset,
+  it compiles against the install;
 - vopt elaborates a2c_sc.sc_main into the topology's own library with the
   testbench arguments as -sc_arg, the topology's dots spelled __;
 - the run script exports SALT_LICENSE_SERVER, passes each argument as -sc_arg
@@ -38,6 +42,7 @@ QUESTA_HOME, so they need no Questa install. Checks:
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -93,6 +98,65 @@ case "$A2C_STUB" in
   rc3) echo '# ** Note: quit -code 3'; exit 3 ;;
 esac
 """
+
+
+# A stand-in for Questa's ptrarray.h with the lines the copy edits: the
+# pointer specialization's static member, declared in the class and defined
+# out of class.
+FAKE_PTRARRAY = """template <typename T>
+class ptrarray
+{
+  static  int m_default_init_size;
+};
+template <typename T>
+class ptrarray<T*>
+{
+  static      int m_default_init_size;   // default initial size
+};
+template <typename T>
+int ptrarray<T*>::m_default_init_size = 16;
+"""
+
+
+def checkPtrarrayCopy(rundir, work):
+    """QUESTA_PTRARRAY_COPY=1 compiles against a copy of a stand-in Questa
+    include directory whose ptrarray.h defines the member in the class, maps the
+    copy's paths to Questa's for __FILE__, and stops on an unexpected
+    ptrarray.h; QUESTA_PTRARRAY_COPY unset compiles against the install."""
+    problems = []
+    fake = os.path.join(work, 'fakeQuestaCopy')
+    inc = os.path.join(fake, 'include', 'systemc')
+    os.makedirs(os.path.join(inc, 'sysc', 'kernel'), exist_ok=True)
+    for rel, text in (('ptrarray.h', FAKE_PTRARRAY), ('sc_event.h', ''), ('sysc/kernel/sc_event.h', '')):
+        with open(os.path.join(inc, rel), 'w') as f:
+            f.write(text)
+    args = [a for a in QUESTA_ARGS if not a.startswith('QUESTA_HOME=')] + [f'QUESTA_HOME={fake}']
+    copy = os.path.join(rundir, 'build_questa', 'questa_systemc')
+    off = compiles(dryRun(rundir, 'all', *args).stdout)
+    if not off or any(f'-isystem{copy}' in c for c in off) or os.path.exists(copy):
+        problems.append("QUESTA_PTRARRAY_COPY unset still uses or writes the copy")
+    on = dryRun(rundir, 'all', *args, 'QUESTA_PTRARRAY_COPY=1')
+    cxx = compiles(on.stdout)
+    sources = [c for c in cxx if '--precompile' in c or c[c.index('-c') + 1].endswith('.cpp')]
+    if on.returncode != 0 or not sources or any(f'-isystem{copy}' not in c or f'-isystem{inc}' in c for c in sources):
+        problems.append(f"QUESTA_PTRARRAY_COPY=1 does not compile against {copy} (exit {on.returncode}):\n{on.stderr}")
+    maps = {w for c in cxx for w in c if w.startswith('-fmacro-prefix-map=')}
+    for m in (f'-fmacro-prefix-map={copy}/={inc}/', f'-fmacro-prefix-map={copy}/sysc/kernel/={inc}/'):
+        if m not in maps:
+            problems.append(f"QUESTA_PTRARRAY_COPY=1 lacks {m}: {sorted(maps)}")
+    hdr = os.path.join(copy, 'ptrarray.h')
+    text = open(hdr).read() if os.path.isfile(hdr) else ''
+    if 'static constexpr int m_default_init_size = 16;' not in text or 'ptrarray<T*>::m_default_init_size' in text \
+            or text.count('m_default_init_size') != 2 or os.path.islink(hdr) \
+            or os.path.realpath(os.path.join(copy, 'sc_event.h')) != os.path.join(inc, 'sc_event.h'):
+        problems.append(f"the copy's ptrarray.h is not the stand-in with the member in the class:\n{text}")
+    with open(os.path.join(inc, 'ptrarray.h'), 'w') as f:
+        f.write(FAKE_PTRARRAY.replace('= 16;', '= 32;'))
+    shutil.rmtree(copy)
+    bad = dryRun(rundir, 'all', *args, 'QUESTA_PTRARRAY_COPY=1')
+    if bad.returncode == 0 or 'could not be written' not in bad.stderr or os.path.exists(copy):
+        problems.append(f"an unexpected ptrarray.h does not stop QUESTA_PTRARRAY_COPY=1:\n{bad.stderr}")
+    return problems
 
 
 def checkRunScript(rundir, work, binary):
@@ -267,6 +331,8 @@ def main():
         maps = {w for c in compiles(mapped.stdout) for w in c if w.startswith('-fmacro-prefix-map=')}
         if maps != {f'-fmacro-prefix-map={inc}/sysc/kernel/={inc}/'}:
             failures.append(f"Questa header maps are {sorted(maps)}")
+
+        failures += checkPtrarrayCopy(rundir, work)
 
         dotted = dryRun(rundir, 'all', *QUESTA_ARGS, 'VL_INST=a.b')
         if 'opt_a__b_verif' not in dotted.stdout or 'a2c_opt_a__b_verif' not in dotted.stdout:

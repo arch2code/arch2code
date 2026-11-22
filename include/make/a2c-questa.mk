@@ -152,6 +152,8 @@ $(BIN_DIR)/$(BIN): $(QUESTA_STAMP) $(QUESTA_R_OPTS_STAMP)
 
 help::
 	@echo "  QUESTA_HOME                      - Questa release directory, holding bin/vsim (required with USE_QUESTA=1)"
+	@echo "  QUESTA_PTRARRAY_COPY=1           - build against a copy of Questa's SystemC headers whose ptrarray.h defines"
+	@echo "                                     m_default_init_size in the class (Siemens case #02437403); off by default"
 	@echo "  questa_snapshots                 - build run_model and one optimized design per DUT_TOPOLOGIES entry"
 	@echo "                                     (<inst>:<cfg>[,<cfg>]... with cfg = verif|model[:tandem]; normally set from the regression file build command)"
 
