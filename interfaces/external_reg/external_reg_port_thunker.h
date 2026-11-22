@@ -2,8 +2,8 @@
 #ifndef EXTERNAL_REG_PORT_THUNKER_H
 #define EXTERNAL_REG_PORT_THUNKER_H
 
-#include "../../common/systemc/bitTwiddling.h"
-#include "../../common/systemc/q_assert.h"
+#include "bitTwiddling.h"
+#include "q_assert.h"
 #include "external_reg_channel.h"
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <string>

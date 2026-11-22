@@ -2,7 +2,7 @@
 #ifndef STATUS_PORT_THUNKER_H
 #define STATUS_PORT_THUNKER_H
 
-#include "../../common/systemc/bitTwiddling.h"
+#include "bitTwiddling.h"
 #include "status_channel.h"
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <string>

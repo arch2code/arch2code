@@ -2,7 +2,7 @@
 #ifndef RDY_VLD_PORT_THUNKER_H
 #define RDY_VLD_PORT_THUNKER_H
 
-#include "../../common/systemc/bitTwiddling.h"
+#include "bitTwiddling.h"
 #include "rdy_vld_channel.h"
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <string>

@@ -3,7 +3,7 @@
 #define APB_PORT_THUNKER_H
 
 #include "apb_channel.h"
-#include "../../common/systemc/bitTwiddling.h"
+#include "bitTwiddling.h"
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <string>
 
