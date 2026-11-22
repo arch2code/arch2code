@@ -1018,14 +1018,14 @@ A firmware register whose storage lives in the block that owns it, not in the re
 #### Source side (register handler)
 
 **API:**
-- `myPort->reg_write_cmd(value)` - Issues a firmware write. It wakes the owner's `read()` and leaves the readback value unchanged. A test driver that emulates firmware uses this call too
+- `myPort->reg_write_cmd(value)` - Issues a firmware write. It wakes the owner's `read()`, leaves the readback value unchanged, and returns when the owner calls `read()` again. A test driver that emulates firmware uses this call too
 - `myPort->readNonBlocking(value)` - The readback value the owner last published
 - `myPort->write(value)` - Never wakes the owner's `read()`. Do not use it to drive the owner
 
 #### Sink side (owning block)
 
 **API:**
-- `myPort->read(value)` - Blocks until firmware writes and returns the written value
+- `myPort->read(value)` - Blocks until firmware writes and returns the written value. A write made while the owner is elsewhere waits for the next call. The next call completes the write, so publish its readback value first
 - `myPort->update_mirror(value)` - Publishes the value firmware reads back, without waking `read()`
 - `myPort->reg_write(value)` - Publishes the readback value and also wakes `read()`, so do not use it from a block that loops on `read()`
 - `myPort->setExternalEvent(event)` - Hooks a shared event. It fires only on `write()`, never on a firmware write. There is no `isActive()`

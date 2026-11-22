@@ -73,10 +73,11 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 
 ### `external_reg`
 *   **Dst side, the block that owns the register.**
-    *   `read(v)` blocks until firmware writes and returns the written value.
+    *   `read(v)` blocks until firmware writes and returns the written value. A write made while the owner is not in `read()` waits for its next call.
     *   `update_mirror(v)` publishes the value firmware reads back, without waking `read()`.
+    *   The owner's next `read()` call completes the write, as the RTL owner's response by the next clock does. Publish the write's read-back value with `update_mirror(v)` before calling `read()` again. A publish of an unchanged value is fine.
     *   `reg_write(v)` also wakes `read()`, so do not use it to publish from a block that loops on `read()`.
-*   **Src side.** This is normally the generated register handler. It issues `reg_write_cmd(v)` and reads back with `readNonBlocking()`. A test driver emulating firmware uses `reg_write_cmd`. `write()` never wakes the owner's `read()`.
+*   **Src side.** This is normally the generated register handler. It issues `reg_write_cmd(v)` and reads back with `readNonBlocking()`. `reg_write_cmd(v)` returns when the owner completes the write, so a read-back after it sees the owner's value. A test driver emulating firmware uses `reg_write_cmd`. `write()` never wakes the owner's `read()`.
 
 ### `raw`
 `raw` is a last resort. `read()` blocks until a value arrives, and `write()` blocks until the reader takes the value. Use it only at a design boundary to legacy or external IP that has a free-running data bus and no ready, valid or ack wires. Between arch2code blocks, use a handshaked family, and confirm with the user before proposing `raw`. The `raw` entry under "Interfaces & Interface Types" in `ARCH2CODE_AI_RULES.md` explains why.

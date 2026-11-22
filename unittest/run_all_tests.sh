@@ -1233,6 +1233,12 @@ python3 test_external_reg_channel.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: an external_reg write completes only after the owner handles it"
+echo "------------------------------------------------------------------------"
+python3 test_external_reg_owner_ack.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then
     echo "✅ ALL TEST SUITES PASSED!"

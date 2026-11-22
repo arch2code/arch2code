@@ -2,23 +2,25 @@
 """external_reg_dst_bfm delivers every command to the RTL, in order.
 
 The dst BFM turns each reg_write_cmd from the model into a one-cycle `write`
-pulse on the HDL side, then waits a further clock for the registered rdata.
-Firmware may write the same register again before those two clocks are over.
-The channel's read() only sees a command issued while a reader is waiting, so
-the BFM keeps a reader on the channel at all times and queues what it reads.
-Each command then reaches the RTL as its own pulse, in the order issued.
+pulse on the HDL side, then waits a further clock for the registered rdata and
+publishes it. Only then does it return to read(), which completes the
+command, so firmware's next write waits for the RTL to take this one. Each
+command reaches the RTL as its own pulse, in the order issued.
 
 The probe drives back-to-back APB writes through the shipped registerHandler
 and hwRegisterIf into the BFM, with a stub RTL register behind it that logs
 every pulse. Two and three writes must each produce that many pulses with the
 written values, leave the register holding the last one, and read it back.
 
-A reset discards what the BFM has queued. In the reset case three writes are
-queued and rst_n asserts for two clocks right after the first strobe. The RTL
-must see only that first pulse and leave reset holding its reset value, and
-firmware must read that value back. In the in-reset case rst_n starts low and
-firmware writes twice before it rises, the second time in the last reset
-cycle. Neither write may reach the RTL.
+A write issued while rst_n is low is lost, as in the RTL. In the reset case
+firmware writes three times back to back and rst_n asserts for two clocks
+right after the first strobe, so the second and third writes arrive in reset.
+The RTL must see only that first pulse and leave reset holding its reset
+value, and firmware must read that value back. In the in-reset case rst_n
+starts low and firmware writes twice before it rises, the second time in the
+last reset cycle. Neither write may reach the RTL. In the readBack case
+firmware reads the register right after each write, and must get the value
+it wrote, which the RTL publishes a clock after the strobe.
 """
 
 import os
@@ -84,7 +86,8 @@ using regPort = external_reg_out<regSt>;
 
 // CPU, APB channel, registerHandler and hwRegisterIf, up to the register's
 // driver port. The CPU issues `count` back-to-back writes, then reads back.
-// With inReset it writes at 30 ns and 92 ns instead, while rst_n is low.
+// With inReset it writes at 30 ns and 92 ns instead, while rst_n is low. With
+// readBack it reads the register right after each write.
 SC_MODULE( driverSide )
 {
     apb_channel<addrSt, dataSt> bus;
@@ -96,13 +99,15 @@ SC_MODULE( driverSide )
     hwRegisterIf<regSt, regPort, 4, false> ext;
     int count;
     bool inReset;
+    bool readEach;
+    std::vector<std::uint32_t> eachRead;
     std::uint32_t readBack = 0;
     bool done = false;
 
     SC_HAS_PROCESS( driverSide );
-    driverSide( sc_module_name n, int count_, bool inReset_ )
+    driverSide( sc_module_name n, int count_, bool inReset_, bool readEach_ )
       : sc_module( n ), bus( "bus", "tb" ), cpu( "cpu" ), apbIn( "apbIn" ), port( "port" ),
-        log_( name() ), regs( log_ ), ext( &port ), count( count_ ), inReset( inReset_ )
+        log_( name() ), regs( log_ ), ext( &port ), count( count_ ), inReset( inReset_ ), readEach( readEach_ )
     {
         cpu( bus );
         apbIn( bus );
@@ -137,6 +142,11 @@ SC_MODULE( driverSide )
         for (int i = 0; !inReset && i < count; i++) {
             std::uint32_t v = 0x11111111u * (i + 1);
             access( true, v );
+            if (readEach) {
+                std::uint32_t r = 0;
+                access( false, r );
+                eachRead.push_back( r );
+            }
         }
         wait( 300, SC_NS );
         access( false, readBack );
@@ -212,7 +222,8 @@ int sc_main( int argc, char *argv[] )
     std::string mode = argc > 2 ? argv[2] : "";
     bool withReset = mode == "reset";
     bool inReset = mode == "inReset";
-    driverSide drv( "drv", count, inReset );
+    bool readEach = mode == "readBack";
+    driverSide drv( "drv", count, inReset, readEach );
     external_reg_channel<regSt> ch( "ch", "tb" );
     sc_clock clk( "clk", 10, SC_NS );
     sc_signal<bool> rst_n( "rst_n", !inReset );
@@ -251,14 +262,24 @@ int sc_main( int argc, char *argv[] )
     expect( inOrder, std::format( "the RTL sees {} write pulses in order (got{})", pulses, got ) );
     expect( (std::uint32_t)rtl.q.to_uint64() == last, std::format( "the RTL register holds 0x{:08x}", last ) );
     expect( drv.readBack == last, std::format( "firmware reads 0x{:08x} back (got 0x{:08x})", last, drv.readBack ) );
+    if (readEach) {
+        bool each = (int)drv.eachRead.size() == count;
+        std::string reads;
+        for (int i = 0; i < (int)drv.eachRead.size(); i++) {
+            reads += std::format( " 0x{:08x}", drv.eachRead[i] );
+            each = each && drv.eachRead[i] == 0x11111111u * (i + 1);
+        }
+        expect( each, std::format( "a read right after each write returns the value written (got{})", reads ) );
+    }
     std::printf( "failures=%d\\n", failures );
     return failures ? 1 : 0;
 }
 """
 
-CASES = (('1',), ('2',), ('3',), ('3', 'reset'), ('2', 'inReset'))
+CASES = (('1',), ('2',), ('3',), ('3', 'reset'), ('2', 'inReset'), ('3', 'readBack'))
 
-LABELS = {'reset': " with a reset after the first", 'inReset': " while rst_n is low"}
+LABELS = {'reset': " with a reset after the first", 'inReset': " while rst_n is low",
+          'readBack': " each read back at once"}
 
 FAILURES = []
 
@@ -288,7 +309,9 @@ def test_external_reg_dst_bfm():
             output = run.stdout + run.stderr
             before = len(FAILURES)
             check(run.returncode == 0, f"{label}: exits with status 0 (got {run.returncode})")
-            check(output.count('PASS: ') == 4 and 'failures=0' in output, f"{label}: all four checks pass")
+            expected = 5 if 'readBack' in case else 4
+            check(output.count('PASS: ') == expected and 'failures=0' in output,
+                  f"{label}: all {expected} checks pass")
             if len(FAILURES) > before:
                 print(output)
     finally:
