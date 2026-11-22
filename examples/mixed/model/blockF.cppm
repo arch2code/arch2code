@@ -60,7 +60,8 @@ public:
 
     // GENERATED_CODE_END
     // block implementation members
-    void rwWatch(size_t i, status_in<dRegSt>& p);
+    // Checks every rwArr element blockF sees. It runs at each firmware write to extFArr, a transaction blockF takes.
+    void rwArrCheck(void);
     // extFArr model, as the RTL: rdata = last written wdata + fred, so each instance answers with its own offset.
     void extFModel(void);
     // The bits of field d of dRegSt: unpacking all ones masks each field to its own width.
@@ -80,18 +81,15 @@ blockF<Config>::blockF(sc_module_name blockName, const char * variant, blockBase
 {
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
-    for (size_t i = 0; i < REGARR_N; i++) {
-        sc_spawn([this, i]() { rwWatch(i, rwArr[i]); }, sc_gen_unique_name("rwWatch", false));
-    }
     SC_THREAD(extFModel);
     sc_spawn([this]() { dRegSt v; v.d = (ROFARR_SEED + fred) & D_MASK; roFArr->write(v); }, sc_gen_unique_name("roFDrive", false));
 };
 
 template<typename Config>
-void blockF<Config>::rwWatch(size_t i, status_in<dRegSt>& p)
+void blockF<Config>::rwArrCheck(void)
 {
-    while (true) {
-        dRegSt v = p->read();
+    for (size_t i = 0; i < REGARR_N; i++) {
+        dRegSt v = rwArr[i]->readNonBlocking();
         log_.logPrint(std::format("{} rwArr[{}] = 0x{:02x}", this->name(), i, static_cast<unsigned>(v.d)), LOG_ALWAYS);
         // Encodes the stimulus of test_reg_cpu_arr: 0 or RWARR_SEED + i. Another test that writes rwArr fails here.
         if (v.d != 0 && v.d != RWARR_SEED + i) {
@@ -110,6 +108,7 @@ void blockF<Config>::extFModel(void)
     while (true) {
         dRegSt w;
         extFArr->read(w);
+        rwArrCheck();
         r.d = (w.d + fred) & D_MASK;
         extFArr->update_mirror(r);
         log_.logPrint(std::format("{} extFArr write 0x{:02x}", this->name(), static_cast<unsigned>(w.d)), LOG_ALWAYS);

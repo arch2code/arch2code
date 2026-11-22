@@ -33,11 +33,12 @@ uBlockD->rwArr(rwArr[2]);
 ```
 
 *   Call an element as `rwArr[i]->read()`. Each element is its own `status` or `external_reg` port, with the calls in the table below.
-*   To wait on every element, spawn one thread per element, as `blockF` does in its constructor:
+*   Read a `status` element with `rwArr[i]->readNonBlocking()` where the block decides, as for a scalar port. No thread waits on its changes (**review-model** section 3). `blockF` checks every element of `rwArr` when firmware writes its `extFArr`.
+*   An `external_reg` element the block answers needs its own thread blocked in `read()`. Spawn one per element in the constructor, as `blockD` does for `extArr`:
 
     ```cpp
     for (size_t i = 0; i < REGARR_N; i++) {
-        sc_spawn([this, i]() { rwWatch(i, rwArr[i]); }, sc_gen_unique_name("rwWatch", false));
+        sc_spawn([this, i]() { extModel(i, extArr[i]); }, sc_gen_unique_name("extModel", false));
     }
     ```
 

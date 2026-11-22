@@ -35,7 +35,7 @@ An array register (`count:` in YAML) is an interface array with one instance per
 Index an interface array with a constant or a genvar only, never a variable. The index must be known at elaboration, so `rwArr[i]` with `i` a signal, or a plain loop variable in `always_comb`, is an error. Use a `for (genvar ...)` block. In `examples/apbDecode/rtl/blockA.sv`, `blockA` owns both arrays and derives `roArr` from `rwArr`:
 
 ```systemverilog
-for (genvar gi = 0; gi < REGARR_N; gi++) begin : g_roArr
+for (genvar gi = 0; gi < REGARR_N; gi++) begin : gen_roArr
     assign roArr[gi].data.d = rwArr[(gi + 1) % REGARR_N].data.d + u16T'(gi) + u16T'(ROARR_BIAS);
 end
 ```

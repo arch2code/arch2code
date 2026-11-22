@@ -67,7 +67,7 @@ memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt), .PORTA_READ_ONLY(1'b0), .POR
 
     // blockA owns rwArr and roArr and uses the arrays directly.
     // roArr[i] = rwArr[(i+1) % N] + i + ROARR_BIAS, so a wrong element index shows up in the readback.
-    for (genvar gi = 0; gi < REGARR_N; gi++) begin : g_roArr
+    for (genvar gi = 0; gi < REGARR_N; gi++) begin : gen_roArr
         assign roArr[gi].data.d = rwArr[(gi + 1) % REGARR_N].data.d + u16T'(gi) + u16T'(ROARR_BIAS);
     end
 

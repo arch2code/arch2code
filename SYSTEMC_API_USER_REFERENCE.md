@@ -275,7 +275,7 @@ A register the block owns is an `hwRegister` member that the generator declares 
 
 An `hwRegister` has no `->`, no `setExternalEvent` and no `readNonBlocking`.
 
-An array register (`count:` in YAML) is a `std::array` of `hwRegister`, one per element, for example `std::array< hwRegister< arrRegSt, 4 >, REGARR_N > rwArr;`. The generator registers element k at the array's offset plus k times its stride. To react to a write on any element, pass one event to each: `for (auto &r : rwArr) r.registerEvent(&ev);`.
+An array register (`count:` in YAML) is a `std::array` of `hwRegister`, one per element, for example `std::array< hwRegister< arrRegSt, 4 >, REGARR_N > rwArr;`. The generator registers element k at the array's offset plus k times its stride. To act on a firmware write to any element, give each element a write handler: `for (auto &r : rwArr) r.setWriteErrorHandler([this](uint64_t, uint32_t) { onArrWrite(); return false; });`.
 
 **Example - React to firmware writes:**
 
