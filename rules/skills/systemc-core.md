@@ -106,20 +106,23 @@ void myBlock::myThread(void)
 ## 3. Registers and memories
 Declare registers and memories in YAML. The generator emits the `hwRegister` and `hwMemory` members, their registration (`_a2cRegs.addRegister`, `_a2cRegs.addMemory`), the memory `bindPort` calls and the register handler (`regHandler`, `registerHandler(_a2cRegs, ...)`, `SC_THREAD(regHandler)`). Never add a thread on the register bus port.
 
-*   **A register the block owns** is an `hwRegister` member. Read it with `reg.read()`. To react to firmware writes, call `reg.registerEvent(&ev)` once and loop on `wait(ev)`. The block's own `reg.write(v)` notifies the same event. An `hwRegister` holds one event, so a second `registerEvent` replaces the first. It has no `->`, no `setExternalEvent` and no `readNonBlocking`.
+*   **A register the block owns** is an `hwRegister` member. Read it with `reg.read()`. It has no `->`, no `setExternalEvent` and no `readNonBlocking`.
+    *   Act on a firmware write in `reg.setWriteErrorHandler(fn)`. The bus thread calls `fn(byteOffset, word)` after it stores each 32-bit word, so writes take effect in bus order. On an `ro` register the handler runs but nothing is stored.
+    *   On an `rw` register the RTL sees only the stored value, with no write strobe and no error, so the handler only derives state from the value. A refusal, an error code, keeping the old value or any other per-write action needs `regType: ext`. There, return `true` to answer with a bus error, which reaches the bus only when the project sets `regBusErrorResponses`.
+    *   Do not loop on `wait(ev)` after `reg.registerEvent(&ev)` to apply firmware writes. That thread runs after the bus access completes, so a later access can overtake it. **review-model** section 3 has the rule and an example.
 *   **An array register the block owns** (`count:` in YAML) is a `std::array` of `hwRegister`, such as `std::array< hwRegister< arrRegSt, 4 >, REGARR_N > rwArr;` in `examples/apbDecode/model/blockA.cppm`. Index it as `rwArr[i].read()`. To react to a write on any element, pass one event to every element, `for (auto &r : rwArr) r.registerEvent(&ev);`, and loop on `wait(ev)`. An owned `ro` array takes a third template argument, `true`, as in `std::array< hwRegister< arrRegSt, 4, true >, REGARR_N > roArr;` from the same file, and the block drives each element with `roArr[i].write(v)`.
 *   **A memory the block owns** is an `hwMemory` member. Datapath code uses `read(i)`, `write(i, v)` and the RMW calls. `writeNoDelay(i, v)` writes with no access delay, for a thread whose port call already supplies the timing. `operator[]` skips timing and is only for backdoor uses such as logging. Never add a shadow copy. `readRMW(i, magic)` locks row `i` and returns it. Finish with `writeRMW(i, v)` or `releaseRMW(i)`. Give each call site its own `magic` value; in A2C Pro it is the Tandem match key (**systemc-synchlock**). The RMW calls assert unless the constructor body first calls `mem.configureSynch(getAltName(), nullptr)`.
 *   **A memory reached through a `memory` port** (`memory_out`) uses `port->request(isWrite, addr, data)`.
 *   **A local `regType: memory` register** is the one case that needs a hand-written register thread. It serves `<reg>_channel` with `reqReceive` and `complete`, against storage the block declares.
-*   **`status` and `external_reg` ports** each have their own call rules. See the table in **systemc-interfaces**.
+*   **`status` and `external_reg` ports** each have their own call rules. See the table in **systemc-interfaces**. The thread that waits in an `external_reg` `read()` does no other blocking work. It hands each write to a queue or a member and returns to `read()`.
 
 Firmware writes a register wider than 32 bits one word at a time (`+0` holds bits `[31:0]`, `+4` bits `[63:32]`).
-*   In a block model, each word write updates the `hwRegister` and notifies the event passed to `registerEvent()`. A thread woken by the low-word write still sees the old high word. A read-only `hwRegister` ignores firmware writes.
+*   In a block model, each word write updates the `hwRegister` and then calls its write handler with that word's byte offset. The handler for the low word still sees the old high word. A read-only `hwRegister` ignores firmware writes.
 *   In a register handler model, a read-write `hwRegisterIf` issues one `reg_write_cmd` per word write, so the child block sees the new low word next to the old high word.
 
 ## 4. Threads
 *   A thread is a `while (true)` loop registered with `SC_THREAD` in the constructor body.
-*   A loop that blocks in a port call (`read()`, `receiveAddr()`, `request()`) needs no explicit `wait()`. A loop of only non-blocking calls spins, so give it a `wait()`.
+*   A loop waits on an event or a port call. A loop that blocks in a port call (`read()`, `receiveAddr()`, `request()`) needs no explicit `wait()`. A loop of only non-blocking calls spins, so give it a `wait()` on an event, never on time (**review-model** section 3).
 *   A loop whose counter has a YAML type tests for the last value before it increments, the same form as the RTL in `rtl-core.md`. `for (i = 0; i < N; i++)` overflows when N is one past the type's maximum. The C++ typedef is often wider than the YAML width, so the model's loop can end while the same loop in the RTL never does.
 
     ```cpp

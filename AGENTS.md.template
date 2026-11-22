@@ -17,7 +17,7 @@ Before editing, building, testing or verifying, you **must** load the project sk
 | **Types/Structures** | `design-types-structures` (Constants, types, structures) |
 | **YAML Includes** | `design-yaml-includes` (`include:` directives, multi-file architecture) |
 | **Build/Run/File Creation** | `manage-build` (`make` targets, `gen`, `db`, `newmodule`; required before creating implementation files or enabling generated artifacts) |
-| **SystemC Core** | `systemc-core` (Modules, threads, logging) |
+| **SystemC Core** | `systemc-core` (Modules, threads, logging), with `review-model` for the model-writing rules |
 | **SystemC Sync** | `systemc-synchronization` (Shared events, arbitration) |
 | **SystemC Ports** | `systemc-interfaces` (AXI, APB, Rdy/Vld, Push/Ack, Req/Ack) |
 | **SystemC Patterns** | `systemc-patterns` (Producer-Consumer, Register Handler, Multi-Interface) |
@@ -34,7 +34,7 @@ Before editing, building, testing or verifying, you **must** load the project sk
 | **Regression Tests** | `run-regression-tests` (Create, run, filter, and triage regression tests with `regrLauncher.py` and `make regr`, including VCS/Xcelium snapshot regressions) |
 | **Co-Sim** | `verify-cosimulation` (Verilator co-simulation of RTL and SystemC) |
 | **Review RTL** | `review-rtl` (RTL review: conventions, best practices, FUSA, tandem (A2C Pro)) |
-| **Review Model** | `review-model` (Model review: conventions, correctness, tandem (A2C Pro), quality) |
+| **Model Rules / Review Model** | `review-model` (Rules for writing and reviewing models: conventions, transactional ordering, backpressure, tests, quality) |
 
 ## Critical constraints
 1.  **Command Execution**: Use the `make` targets (`make gen`, `make db`, `make newmodule`, `make clean`, `make run`) instead of running `python arch2code.py`, because the targets pass the project file and database and keep the build stamps current. Lint RTL with `make lint` from the project's `rtl/` directory. Project creation is the one exception: run `arch2code.py --newproject` directly, because no makefile exists yet.
@@ -55,11 +55,11 @@ Before editing, building, testing or verifying, you **must** load the project sk
 
 ## Common workflows
 1.  **New Project:** `setup-project`, then continue with New Module.
-2.  **New Module:** `design-architecture` -> `manage-build` (`make newmodule`, then `make gen`) -> `systemc-core` / `rtl-core`.
-3.  **Add Feature:** `design-architecture` (if interface changes) -> `systemc-core` / `systemc-patterns` (model) or `rtl-core` / `rtl-patterns` (RTL).
+2.  **New Module:** `design-architecture` -> `manage-build` (`make newmodule`, then `make gen`) -> `systemc-core` + `review-model` / `rtl-core`.
+3.  **Add Feature:** `design-architecture` (if interface changes) -> `systemc-core` / `systemc-patterns` + `review-model` (model) or `rtl-core` / `rtl-patterns` (RTL).
 4.  **Debug:** `debug` -> `verify-testbench` -> `manage-build` (`make run` from `rundir/`).
 5.  **Convert Model->RTL:** `systemc-to-rtl` -> `rtl-core` / `rtl-patterns`.
-6.  **Convert RTL->Model:** `rtl-to-systemc` -> `systemc-core` / `systemc-patterns` -> `verify-testbench`.
+6.  **Convert RTL->Model:** `rtl-to-systemc` -> `systemc-core` / `systemc-patterns` + `review-model` -> `verify-testbench`.
 7.  **Review:** `review-rtl` (RTL code review) / `review-model` (model code review).
 
 ## Reference
