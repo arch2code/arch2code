@@ -84,7 +84,7 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 Interfaces outside this table come from A2C Pro (`builder/pro/interfaces/`) or the user. Read their channel header for the calls.
 
 ## Timed delays
-`--delay` and `--delayMode` insert delays into a block's interface calls. They exist to expose ordering problems between interfaces in timed and tandem runs. They do not model hardware latency.
+`--delay` and `--delayMode` insert delays into a block's interface calls. They exist to expose ordering problems between interfaces in timed runs and in tandem (A2C Pro). They do not model hardware latency.
 
 The YAML decides which channels take a delay:
 

@@ -59,7 +59,7 @@ rdTagTracker->setLen(rdTag, length);
 rdTagTracker->dealloc(rdTag, getTrackerRefCountDelta());
 ```
 
-Pass `getTrackerRefCountDelta()` to `alloc` and `dealloc`. It halves the reference count step in tandem, where both sides allocate and release the same tag.
+Pass `getTrackerRefCountDelta()` to `alloc` and `dealloc`. It halves the reference count step in tandem (A2C Pro), where both sides allocate and release the same tag.
 
 ### Tracker fields in YAML
 `generator: tracker(<name>)` on a structure field binds the tracker named `<name>` to every channel that carries the structure. The name `length` is reserved and binds no tracker.

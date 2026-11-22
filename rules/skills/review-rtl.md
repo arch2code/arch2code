@@ -1,6 +1,6 @@
 ---
 name: review-rtl
-description: Checklist-driven review of SystemVerilog RTL for arch2code conventions, industry best practices, FUSA, and model-RTL conformity, with awareness of tandem mode's role
+description: Checklist-driven review of SystemVerilog RTL for arch2code conventions, industry best practices, FUSA, and model-RTL conformity, with awareness of tandem mode's role in A2C Pro
 ---
 # Skill: Review RTL
 
@@ -12,19 +12,18 @@ Review a hand-written SystemVerilog module for arch2code conventions, industry p
 *   `rtl-interfaces.md`, `rtl-registers.md`, `rtl-patterns.md` and `systemc-to-rtl.md` cover interfaces, register ports, patterns and conversion.
 *   `run-tandem.md` (A2C Pro) and `verify-cosimulation.md` cover tandem and co-simulation.
 
-## How tandem changes the review
+## How tandem changes the review (A2C Pro)
 Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same stimulus and compares what each sends out. A mismatch on any interface except `status` fails the run. A `status` mismatch only warns unless the run sets `--tandemStatusFatal`. Tandem shows that model and RTL agree on that stimulus. It does not show either is correct, because a bug both share passes. Review with that in mind:
 
-*   Review the algorithm independently: math, rounding, saturation, interpolation.
 *   Treat the interface behaviour as the contract. Pipeline depth and internal signals matter only when they change it.
-*   Do not ask for assertions on things tandem compares, such as "output value in range". Ask for them only on internal invariants tandem cannot see: illegal FSM states, FIFO pointer corruption, arbiter grant conflicts, and counters that control flow, such as credits.
+*   Do not ask for assertions on things tandem compares, such as "output value in range".
 
 ## Instructions
 
 ### 1. Arch2code conventions
 
 *   **Generated regions.** Nothing between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` is hand-edited.
-*   **Flops.** Every flop uses a macro from the `rtl-core.md` table, in its bare, `_CLK` or `_DOM` form. `always_ff` is allowed only on a reset supplier's assertion path.
+*   **Flops.** Every flop uses a macro from the `rtl-core.md` table, in its bare, `_CLK` or `_DOM` form. `always_ff` is allowed only on a reset supplier's assertion path, and (A2C Pro) in a simulation-only `` `ifdef VERILATOR `` block that holds no flop and only calls `synch_lock_arb`.
 *   **Flop clock and reset.** Check each flop's domain:
     *   A bare macro is correct for the default clock, whatever its port is called. The generated region aliases `clk` and `rst_n` onto it. Do not flag a bare macro because the clock port is not named `clk`.
     *   A flop on any other clock uses `_DOM` with that clock and its own reset. PASS.
@@ -44,6 +43,7 @@ Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same 
     *   A custom interface type adopted because `status` lost a value.
 
     The fix is a transaction (`req_ack_if`, `notify_ack_if`, `push_ack_if`, `pop_ack_if` or `rdy_vld_if`). `design-architecture.md`, section "`status` carries state, never control", maps each case. Exempt a value where the consumer only needs the current value, never every change, such as configuration, mode, an enable, a lock, lifecycle state or a register mirror, even when it gates a decision. Also exempt a level that only rises until reset, such as a fatal alert, whose single rise one place turns into an event, and the block that turns a pin-level boundary input, such as GPIO, into transactions.
+*   **Published sites (A2C Pro).** FAIL a `synch_lock_arb` triggered by a status input changing, and one that publishes data, such as a read word or a response code. See `review-model-tandem.md`, section 2.
 *   **Generated modules.** Do not review the generated register handler (`<block>_regs` by default, `<block>Regs` in the examples) or the router module, which is named after the router block. Review only the hand-written RTL.
 *   **Module end.** The module ends with `endmodule: <module_name>`.
 
@@ -63,9 +63,9 @@ Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same 
 ### 3. Functional safety
 
 *   **Reset coverage.** Every flop resets, except where a no-reset macro (`DFFNR`, `DFFNR_INST` and their variants) is justified, such as datapath storage that a valid bit qualifies.
-*   **FSM default.** Every FSM `case` has a `default:` branch with `` `qAssertFatal(0, "...") ``. An illegal state otherwise hangs tandem without naming the cause.
+*   **FSM default.** Every FSM `case` has a `default:` branch with `` `qAssertFatal(0, "...") ``. An illegal state otherwise hangs the simulation, or tandem (A2C Pro), without naming the cause.
 *   **Unreachable states.** Unused state encodings either do not exist or go to a known state.
-*   **Assertions.** Use `qAssertFatal`, `qAssertError` or `qAssertWarning` for the internal invariants listed under "How tandem changes the review". Do not flag a missing assertion that tandem covers.
+*   **Assertions.** Use `qAssertFatal`, `qAssertError` or `qAssertWarning` for internal invariants: illegal FSM states, FIFO pointer corruption, arbiter grant conflicts, and counters that control flow, such as credits. In A2C Pro, do not flag a missing assertion that tandem covers.
 *   **Error propagation.** Error signals from sub-blocks reach an output or are handled.
 *   **Determinism.** Nothing depends on evaluation order between combinational blocks.
 
@@ -74,7 +74,7 @@ Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same 
 *   Read `model/<block>.cppm` next to the RTL.
 *   RTL signal names are recognisable counterparts of the model's variables.
 *   RTL types correspond to the model's C++ types. Flag silent truncation and sign mismatches.
-*   Check the algorithm on its own merits, as described under "How tandem changes the review".
+*   Review the algorithm independently: math, rounding, saturation, interpolation. Model and RTL can share a bug.
 
 ### 5. Output format
 

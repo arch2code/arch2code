@@ -18,7 +18,7 @@ Before editing, building, testing or verifying, you **must** load the project sk
 | **YAML Includes** | `design-yaml-includes` (`include:` directives, multi-file architecture) |
 | **Build/Run/File Creation** | `manage-build` (`make` targets, `gen`, `db`, `newmodule`; required before creating implementation files or enabling generated artifacts) |
 | **SystemC Core** | `systemc-core` (Modules, threads, logging) |
-| **SystemC Sync** | `systemc-synchronization` (Locking, arbitration, events) |
+| **SystemC Sync** | `systemc-synchronization` (Shared events, arbitration) |
 | **SystemC Ports** | `systemc-interfaces` (AXI, APB, Rdy/Vld, Push/Ack, Req/Ack) |
 | **SystemC Patterns** | `systemc-patterns` (Producer-Consumer, Register Handler, Multi-Interface) |
 | **Debug** | `debug` (Trackers, assertions, logging, status reporting) |
@@ -33,8 +33,8 @@ Before editing, building, testing or verifying, you **must** load the project sk
 | **Verification** | `verify-testbench` (Testbenches, scoreboards) |
 | **Regression Tests** | `run-regression-tests` (Create, run, filter, and triage regression tests with `regrLauncher.py` and `make regr`, including VCS/Xcelium snapshot regressions) |
 | **Co-Sim** | `verify-cosimulation` (Verilator co-simulation of RTL and SystemC) |
-| **Review RTL** | `review-rtl` (RTL review: conventions, best practices, FUSA, tandem) |
-| **Review Model** | `review-model` (Model review: conventions, correctness, tandem, quality) |
+| **Review RTL** | `review-rtl` (RTL review: conventions, best practices, FUSA, tandem (A2C Pro)) |
+| **Review Model** | `review-model` (Model review: conventions, correctness, tandem (A2C Pro), quality) |
 
 ## Critical constraints
 1.  **Command Execution**: Use the `make` targets (`make gen`, `make db`, `make newmodule`, `make clean`, `make run`) instead of running `python arch2code.py`, because the targets pass the project file and database and keep the build stamps current. Lint RTL with `make lint` from the project's `rtl/` directory. Project creation is the one exception: run `arch2code.py --newproject` directly, because no makefile exists yet.

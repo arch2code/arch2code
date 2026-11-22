@@ -18,7 +18,7 @@ Hook one event to several ports with `setExternalEvent` and wait on it. After a 
 
 `status`, `external_reg` and `raw` ports can share the event but have no `isActive()`. A `status` port fires it on its first `write()`, on each later `write()` that changes the value, and on every firmware write (`reg_write_cmd`). To tell whether it changed, compare `readNonBlocking()` with the last value the thread saw.
 
-**systemc-synchronization** lists the families, the full pattern and tandem-safe arbitration.
+**systemc-synchronization** lists the families, the full pattern and arbitration.
 
 ## 4. Multi-cycle burst
 A burst moves one large structure over a narrow interface as several beats.
@@ -31,4 +31,4 @@ A burst moves one large structure over a narrow interface as several beats.
 The `multiCycleMode` values are in `builder/base/config/schema.yaml`.
 
 ## 5. Resource tracking
-A tracker tags a transaction from entry to exit and logs its progress. Allocation, logging, deallocation and tandem reference counting are in **debug**.
+A tracker tags a transaction from entry to exit and logs its progress. Allocation, logging, deallocation and tandem (A2C Pro) reference counting are in **debug**.

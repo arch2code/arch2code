@@ -55,7 +55,7 @@ The SC wrapper drives the RTL's input clocks and resets itself. It toggles each 
 ## Tracing
 Add `--vlTrace` to the run command. It writes a VCD of the verilated instance to `simx.vcd` in the run directory. FST is not supported, and no make variable turns tracing on.
 
-## Tandem
+## Tandem (A2C Pro)
 Tandem runs the RTL and the model side by side on the same stimulus and compares their outputs. It adds `--vlTandem` to `--vlInst`, works on leaf blocks only, and needs A2C Pro. A base build fails the run with `Tandem mode not supported`. In A2C Pro, see `run-tandem`.
 
 ## Troubleshooting

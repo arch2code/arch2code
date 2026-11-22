@@ -1,11 +1,11 @@
 ---
 name: systemc-synchronization
-description: Guide for using shared events, synchLock and tandem-safe arbitration in SystemC models for concurrency and shared resources
+description: Guide for using shared events and arbitration in SystemC models, to service several ports from one thread and choose between them as the RTL does
 ---
 # Skill: SystemC synchronization
 
 ## Purpose
-Service several ports from one thread, record arbitration decisions so tandem can replay them, and guard state shared between threads.
+Service several ports from one thread, and choose between them the way the RTL does. Guard shared state with a busy flag or an `sc_event`. In A2C Pro, **systemc-synchlock** records these choices for Tandem.
 
 Where this code goes in `model/<block>.cppm` is in **systemc-core**. The calls on each port family are in **systemc-interfaces**.
 
@@ -47,56 +47,23 @@ void blk::serviceThread(void)
 }
 ```
 
-Which ports are active when the thread wakes depends on timing. In a block that runs in tandem, pass the choice through `arb()` before servicing it, as in the `arb` example in section 2.
+Which ports are active when the thread wakes depends on timing. Choose between them as in section 2.
 
-## 2. `synchLock`
-`synchLock<T>` (default `T = uint64_t`) is a mutex that also records decisions for tandem. Outside tandem, `lock()` and `unlock()` are a plain mutex and `arb(v)` returns `v`. Tandem is an A2C Pro feature. There, two copies of a block run side by side. The first copy to create a lock records each `lock()` and `arb()` value, and the second copy replays them in the same order.
-
-### Creating a lock
-Declare a member and initialize it in the constructor's initializer slot:
+## 2. Arbitration
+The order in which a thread services active ports is a decision. Make it where the RTL arbitrates, with plain code that models the RTL policy, such as priority or round-robin, and branch on the result. Never leave it to thread scheduling order. `src_t` is a YAML enum with the values `SRC_*`, because the RTL declares the grant too.
 
 ```cpp
-// block implementation members
-std::shared_ptr<synchLock<>> stateLock;
-
-// constructor initializers
-        ,stateLock(synchLockFactory<>::getInstance().newLock(getAltName(), "stateLock"))
-```
-
-*   `getAltName()` is the instance's hierarchical name without the tandem level, so both tandem copies build the same key and the factory pairs them.
-*   Lock names must be unique within a block instance. In base a repeated name asserts. In A2C Pro it pairs the two locks as if they were tandem copies.
-*   For a non-integral `T`, the factory logs values with `T::prt()`, so `T` must have one.
-
-### `lock` and `unlock`
-*   `lock(v)` takes the mutex. In tandem, the second copy waits until the first copy's next recorded value equals `v`. The value is the match key, not a debug label, so give each call site its own value.
-*   `unlock()` takes no argument. There is no RAII guard, so unlock on every path out.
-
-```cpp
-stateLock->lock(LOCK_SITE_SCHEDULE);
-writesInFlight++;
-stateLock->unlock();
-```
-
-`LOCK_SITE_SCHEDULE` is a constant the block defines, one per call site.
-
-### `arb`
-*   `arb(v)` records the winner your code chose. It adds no fairness. Outside tandem it returns `v` at once. In tandem, the second copy waits for the first copy's value and returns it, so both copies take the same branch.
-*   Choose the winner with plain code that models the RTL policy, priority or round-robin, then pass it through `arb()` and branch on the result.
-*   Use `arb()` wherever the decision depends on timing.
-
-`srcArb` is a second `synchLock<>` created as above. Keep `arb()` and `lock()` on separate locks, because in tandem one lock's `lock()` and `arb()` calls share a single replay queue. `SRC_*` are constants the block defines.
-
-```cpp
-uint64_t winner = SRC_NONE;
+src_t winner = SRC_NONE;
 if (cmdIn->isActive()) {
     winner = SRC_CMD;
 } else if (dataIn->isActive()) {
     winner = SRC_DATA;
 }
-winner = srcArb->arb(winner);
 switch (winner) {
     case SRC_CMD:  /* service cmdIn */  break;
     case SRC_DATA: /* service dataIn */ break;
     default: break;
 }
 ```
+
+In A2C Pro, pass the winner through `synchLock` `arb()` before the `switch` so Tandem replays the decision (**systemc-synchlock**, A2C Pro).
