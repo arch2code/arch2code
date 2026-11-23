@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmContractCheck.h"
 #include "external_reg_channel.h"
 #include <deque>
 
@@ -29,6 +30,7 @@ public:
     SC_HAS_PROCESS (external_reg_src_bfm);
 
     external_reg_src_bfm(sc_module_name modulename) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -76,6 +78,7 @@ public:
     SC_HAS_PROCESS (external_reg_dst_bfm);
 
     external_reg_dst_bfm(sc_module_name modulename) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(write_reader_thread);
         SC_THREAD(write_driver_thread);
         SC_THREAD(rdata_monitor_thread);

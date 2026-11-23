@@ -121,9 +121,26 @@ module blockF_hdl_sv_wrapper
     );
 
     `ifdef VCS_DEBUG
+    // Module scope, so %m names this module and not the initial block.
+    string a2c_waves_scope;
     initial if ($test$plusargs("fsdbTrace")) begin
-        $fsdbDumpvars($sformatf("%m"), "+all");
+        if (!$value$plusargs("a2c_waves_scope=%s", a2c_waves_scope)) a2c_waves_scope = $sformatf("%m");
+        $fsdbDumpvars(0, "instance=", a2c_waves_scope, "+all");
     end
+    `endif
+
+    `ifndef VERILATOR
+    rdy_vld_xcheck cStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(cStuffIf));
+    rdy_vld_xcheck dStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(dStuffIf));
+    rdy_vld_xcheck dSin_xcheck (.clk(clk), .rst_n(rst_n), .intf(dSin));
+    rdy_vld_xcheck dSout_xcheck (.clk(clk), .rst_n(rst_n), .intf(dSout));
+    status_xcheck rwD_xcheck (.clk(clk), .rst_n(rst_n), .intf(rwD));
+    status_xcheck rwArr_0_xcheck (.clk(clk), .rst_n(rst_n), .intf(rwArr[0]));
+    status_xcheck rwArr_1_xcheck (.clk(clk), .rst_n(rst_n), .intf(rwArr[1]));
+    status_xcheck rwArr_2_xcheck (.clk(clk), .rst_n(rst_n), .intf(rwArr[2]));
+    status_xcheck rwArr_3_xcheck (.clk(clk), .rst_n(rst_n), .intf(rwArr[3]));
+    external_reg_xcheck extFArr_xcheck (.clk(clk), .rst_n(rst_n), .intf(extFArr));
+    status_xcheck roFArr_xcheck (.clk(clk), .rst_n(rst_n), .intf(roFArr));
     `endif
 
 endmodule : blockF_hdl_sv_wrapper

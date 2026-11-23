@@ -88,6 +88,12 @@ A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain $(wildcard $
 # per-dir file wildcards below pick up every .cpp within them.
 PRJ_SRC_DIRS = $(A2C_SC_SRC_DIRS)
 
+# The UVM flow names the snapshot and adds sources, so it comes before both
+# are derived below.
+ifdef USE_UVM
+include $(A2C_ROOT)/include/make/a2c-uvm.mk
+endif
+
 ifndef USE_GCC
 CXX_FLAGS += -fstandalone-debug
 else
@@ -237,6 +243,7 @@ DUT_ELAB_ARGS ?= $(DUT_TESTBENCH) $(if $(VL_INST),--vlInst $(VL_INST) --vlType $
 # instantiates no RTL runs on run_model. See vcs_snapshots and xrun_snapshots.
 DUT_TOPOLOGIES ?= $(HDL_TOP_MODULE):verif,verif:tandem
 comma := ,
+space := $(subst ,, )
 dut_topology_inst = $(firstword $(subst :, ,$(1)))
 dut_topology_expand = $(addprefix $(call dut_topology_inst,$(1)):,$(subst $(comma), ,$(patsubst $(call dut_topology_inst,$(1)):%,%,$(1))))
 DUT_TOPOLOGY_LIST = $(foreach t,$(DUT_TOPOLOGIES),$(call dut_topology_expand,$(t)))

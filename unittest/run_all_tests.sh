@@ -198,6 +198,11 @@ echo "------------------------------------------------------------------------"
 python3 test_hdl_wrapper_member_names.py || FAILED=1
 
 echo ""
+echo "Test Suite 19b3: HDL Wrapper X/Z Checkers"
+echo "------------------------------------------------------------------------"
+python3 test_hdl_wrapper_xcheck.py || FAILED=1
+
+echo ""
 echo "Test Suite 19c: Eval Expression Parser"
 echo "------------------------------------------------------------------------"
 python3 test_eval_expr_parser.py || FAILED=1
@@ -693,6 +698,30 @@ python3 test_bfm_backpressure_checks.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: registeredFifo frees a read slot on the clock after the read, as rdyVldFifo does"
+echo "------------------------------------------------------------------------"
+python3 test_registered_fifo.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: dst BFM pins change only in the high phase; a ready lowered after the sample point fails the run"
+echo "------------------------------------------------------------------------"
+python3 test_bfm_pin_timing.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: axi_write src BFM delivers W beats an HDL master sends before AW"
+echo "------------------------------------------------------------------------"
+python3 test_axi_write_src_bfm_w_first.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: raw_src_bfm fails the run when SystemC misses a clock's word"
+echo "------------------------------------------------------------------------"
+python3 test_raw_src_bfm_missed_edges.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: req_ack and AXI BFMs drop req / hold ready low while a delayed model call blocks"
 echo "------------------------------------------------------------------------"
 python3 test_bfm_delayed_call.py || FAILED=1
@@ -708,6 +737,12 @@ echo ""
 echo "Test Suite ${idx}: watchdog termination of a run with no terminator"
 echo "------------------------------------------------------------------------"
 python3 test_watchdog_no_terminator.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM flow turns off the watchdog stall check"
+echo "------------------------------------------------------------------------"
+python3 test_watchdog_uvm_stall_check.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
@@ -897,6 +932,18 @@ python3 test_regr_rules_path.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: each regression run finds its own run directory in RL_RUN_DIR"
+echo "------------------------------------------------------------------------"
+python3 test_regr_run_dir.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: uvm.json fails a run on UVM error reports and a missing or non-zero summary"
+echo "------------------------------------------------------------------------"
+python3 test_regr_rules_uvm.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: combo-source diagnostics (missing/empty combo sources)"
 echo "------------------------------------------------------------------------"
 python3 test_error_combo_sources.py || FAILED=1
@@ -918,6 +965,36 @@ echo ""
 echo "Test Suite ${idx}: socket shell on a parameterizable block without a model is rejected"
 echo "------------------------------------------------------------------------"
 python3 test_error_socket_parameterized_no_model.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: hasUvm blocks the UVM testbench cannot drive are rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_uvm_blocks.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: interface types flagged uvmAgent ship their agent package"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_agent_companions.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: interface types flagged uvmMaxTransferBytes or uvmIdParam carry the config member"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_max_transfer_bytes_flag.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a DUT's memory src ports carry the paired-mode model credit pins"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_model_credit.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a connection's maxTransferSize sizes the ports of a testbench's DUT"
+echo "------------------------------------------------------------------------"
+python3 test_port_transfer_size.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
@@ -1152,6 +1229,72 @@ echo ""
 echo "Test Suite ${idx}: boundary files and Verilated pins agree for every fixture top"
 echo "------------------------------------------------------------------------"
 python3 test_vl_boundary_widths_build.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM testbench top boundary files mirror their HDL tops"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_boundary_pins.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM view carries port domains and the register model per variant"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_register_view.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM variant packages hold the register model and the env"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_pkg_regmodel.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM register tree of a top that reaches its registers through routers"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_register_tree.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM register model of a routed top, one block per instance"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_pkg_regmodel_routed.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM reuse of child variant packages in a composed root"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_reuse.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM test package scaffold has its layout and working defaults"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_test_pkg.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: dutRun.py runs each test on the snapshot its arguments name"
+echo "------------------------------------------------------------------------"
+python3 test_dut_run.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: seedRepro.py passes and fails on the digests of its two runs"
+echo "------------------------------------------------------------------------"
+python3 test_seed_repro.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: No SystemVerilog ?: picks between two string literals"
+echo "------------------------------------------------------------------------"
+python3 test_sv_string_select.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: The UVM library and generated UVM packages parse under Verilator"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_sv_parse.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

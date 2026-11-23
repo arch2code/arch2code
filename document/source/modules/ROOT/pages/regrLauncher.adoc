@@ -168,6 +168,8 @@ The following variables are expanded in ``command`` and ``args`` attributes when
 
 For cocotb-based run commands, the runner sets ``COCOTB_RESULTS_FILE`` to ``results.xml`` in each job's ``run_<rid>`` directory so parallel jobs do not share a results file under the testbench tree.
 
+Every run command starts in the directory the launcher runs from, with ``RL_RUN_DIR`` in its environment naming the job's ``run_<rid>`` directory. Written in ``command`` or ``args`` it expands to nothing, since the launcher substitutes those before the job starts, so a script the command runs reads it. A UVM run script built with ``UVM_COV=1`` writes its coverage database there (``SIMULATOR_INTEGRATION.md`` section 9.16).
+
 
 === Log Failure Analysis Rules
 

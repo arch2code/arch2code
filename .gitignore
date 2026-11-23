@@ -38,6 +38,7 @@ tests/out/*
 **/rundir/AN.DB/
 **/rundir/csrc/
 **/rundir/vc_hdrs.h
+**/rundir/waves.shm/
 **/rundir/ucli.key
 
 # database files

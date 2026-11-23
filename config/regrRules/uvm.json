@@ -1,0 +1,42 @@
+{
+  "name": "uvm",
+  "description": "UVM report messages",
+  "filters": {
+    "uvm_error": {
+      "description": "UVM_ERROR report, with or without a file location (run_test's own reports have none); the look-ahead skips the summary count line",
+      "re": "^UVM_ERROR (?!:)(?:(?P<file>\\S+) )?@ (?P<time>[^:]+): (?P<path>\\S+) \\[(?P<code>[^\\]]+)\\] (?P<msg>.*)",
+      "msg": "[\\g<code>] \\g<msg>",
+      "file": "\\g<file>",
+      "sev": "error"
+    },
+    "uvm_fatal": {
+      "description": "UVM_FATAL report, with or without a file location (run_test's own reports have none); the look-ahead skips the summary count line",
+      "re": "^UVM_FATAL (?!:)(?:(?P<file>\\S+) )?@ (?P<time>[^:]+): (?P<path>\\S+) \\[(?P<code>[^\\]]+)\\] (?P<msg>.*)",
+      "msg": "[\\g<code>] \\g<msg>",
+      "file": "\\g<file>",
+      "sev": "fatal"
+    },
+    "uvm_summary_count": {
+      "description": "Non-zero UVM_ERROR or UVM_FATAL count in the report summary",
+      "re": "^UVM_(?P<kind>ERROR|FATAL) :\\s+(?P<count>[1-9]\\d*)",
+      "msg": "UVM report summary: \\g<count> UVM_\\g<kind>",
+      "file": null,
+      "sev": "error"
+    },
+    "uvm_summary_missing": {
+      "description": "The log has no UVM report summary, so UVM never reached its report phase",
+      "re": "\\A(?![\\s\\S]*--- UVM Report Summary ---)",
+      "msg": "no UVM report summary in the log",
+      "file": null,
+      "sev": "error"
+    },
+    "seed_repro_fail": {
+      "description": "seedRepro.py's verdict on a seed_repro entry that failed. Last in this file, so another uvm.json match in either run is named first; ahead of default.json and the vendor file, whose reason the run's log then holds",
+      "re": "^A2C_SEED_REPRO FAIL: (?P<msg>.*)",
+      "msg": "seedRepro.py: \\g<msg>",
+      "file": null,
+      "sev": "error"
+    }
+  },
+  "modifiers": {}
+}

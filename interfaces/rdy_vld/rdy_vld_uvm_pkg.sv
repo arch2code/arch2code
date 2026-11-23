@@ -1,0 +1,318 @@
+`ifndef RDY_VLD_UVM_PKG_SV
+`define RDY_VLD_UVM_PKG_SV
+
+`timescale 1ns/1ps
+
+// UVM agent for rdy_vld_if. The role (a2c_role_e) names the side of the
+// interface the agent plays. Pin timing follows a2c_clk_if: drive at
+// drive_edge(), sample at sample_edge().
+//
+// Paired mode. With cfg.model_vif set the agent drives the model DUT's pin set
+// beside the DUT's and monitors it with model_mon. The A2C_SRC driver puts
+// each beat on both lanes at one drive point, and each lane drops vld once its
+// own beat has transferred; the next beat starts when both have. A lane of the
+// A2C_SRC driver that trails the other by lane_skew_cycles clocks, or stalls,
+// is declared dead as for the AXI masters (a2c_lane_watchdog), and the other
+// lane serves the sequence alone. The A2C_DST driver gives both lanes the same
+// rdy. On the A2C_DST role model_cmp compares the beats of the two lanes in
+// order. What the DUT produces that is not compared:
+//   DUT dst port, A2C_SRC agent: `rdy` timing
+//   DUT src port, A2C_DST agent: `vld` timing
+package rdy_vld_uvm_pkg;
+
+    import uvm_pkg::*;
+    `include "uvm_macros.svh"
+    import a2c_uvm_pkg::*;
+
+    class rdy_vld_item #(type data_t = logic) extends uvm_sequence_item;
+        rand data_t  data;
+        // Idle clocks (vld low) the src driver inserts before this beat.
+        rand int unsigned gap;
+        constraint c_gap { soft gap == 0; }
+
+        `uvm_object_param_utils(rdy_vld_item#(data_t))
+
+        function new(string name = "rdy_vld_item");
+            super.new(name);
+        endfunction
+
+        virtual function void do_copy(uvm_object rhs);
+            rdy_vld_item#(data_t) rhs_;
+            super.do_copy(rhs);
+            $cast(rhs_, rhs);
+            data = rhs_.data;
+            gap  = rhs_.gap;
+        endfunction
+
+        // gap is stimulus timing, not payload, so it takes no part in the compare.
+        virtual function bit do_compare(uvm_object rhs, uvm_comparer comparer);
+            rdy_vld_item#(data_t) rhs_;
+            if (!$cast(rhs_, rhs)) return 0;
+            // A field that differs is also passed to comparer, whose
+            // miscompares string then names it.
+            if (data !== rhs_.data) void'(comparer.compare_field("data", data, rhs_.data, $bits(data)));
+            return super.do_compare(rhs, comparer) && (data === rhs_.data);
+        endfunction
+
+        virtual function string convert2string();
+            return $sformatf("%p", data);
+        endfunction
+    endclass : rdy_vld_item
+
+    class rdy_vld_config #(type data_t = logic) extends a2c_agent_config #(virtual rdy_vld_if #(.data_t(data_t)));
+        // The interface declares backpressure: false, so the consumer must
+        // never hold rdy low while vld is high; the monitor reports it if it does.
+        bit          no_backpressure = 0;
+        // dst role: percentage of clocks with rdy high. With burst set, rdy
+        // holds each level for a run of 1 to burst_max clocks, and this is the
+        // percentage of runs that are high.
+        rand int unsigned ready_pct = 100;
+        rand bit          burst = 0;
+        rand int unsigned burst_max = 8;
+
+        constraint c_default { soft ready_pct == 100; soft burst == 0; soft burst_max == 8; }
+        constraint c_valid { ready_pct <= 100; burst -> burst_max >= 1; }
+
+        `uvm_object_param_utils(rdy_vld_config#(data_t))
+
+        function new(string name = "rdy_vld_config");
+            super.new(name);
+        endfunction
+    endclass : rdy_vld_config
+
+    class rdy_vld_driver #(type data_t = logic)
+        extends a2c_lane_driver #(rdy_vld_item#(data_t), virtual rdy_vld_if #(.data_t(data_t)), rdy_vld_config#(data_t));
+        `uvm_component_param_utils(rdy_vld_driver#(data_t))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        // Both lanes take the same rdy, so the model lane needs no record.
+        protected virtual function bit has_replay();
+            return 0;
+        endfunction
+
+        protected virtual function void reset_lane(int l);
+            lane[l].vld  <= 1'b0;
+            lane[l].data <= '0;
+        endfunction
+
+        protected virtual function void raise_request(int l);
+            lane[l].vld  <= 1'b1;
+            lane[l].data <= req.data;
+        endfunction
+
+        protected virtual function void drop_request(int l);
+            lane[l].vld <= 1'b0;
+        endfunction
+
+        protected virtual function bit request_held(int l);
+            return lane[l].vld === 1'b1;
+        endfunction
+
+        protected virtual function bit request_taken(int l);
+            return lane[l].rdy === 1'b1;
+        endfunction
+
+        protected virtual function int unsigned item_gap();
+            return req.gap;
+        endfunction
+
+        virtual function string waiting_for(a2c_lane_e l);
+            return $sformatf("the transfer of %p", req.data);
+        endfunction
+
+        // rdy is driven from time 0, so a backpressure: false sink is ready
+        // on the first clock out of reset. Such a sink never stalls, so
+        // ready_pct and burst do not apply to it.
+        protected virtual task run_dst();
+            bit ready;
+            if (cfg.no_backpressure) begin
+                for (int l = 0; l < lanes; l++) lane[l].rdy <= 1'b1;
+                return;
+            end
+            forever begin
+                ready = policy.next_ready("rdy", cfg.ready_pct, cfg.burst ? cfg.burst_max : 1);
+                for (int l = 0; l < lanes; l++) lane[l].rdy <= ready;
+                cfg.clk_vif.drive_edge();
+            end
+        endtask
+    endclass : rdy_vld_driver
+
+    class rdy_vld_monitor #(type data_t = logic) extends a2c_monitor implements a2c_flow_counts;
+        rdy_vld_config#(data_t)                    cfg;
+        // The lane this monitor samples, cfg.vif or cfg.model_vif.
+        virtual rdy_vld_if #(.data_t(data_t))      vif;
+        uvm_analysis_port #(rdy_vld_item#(data_t)) ap;
+
+        // The counts a2c_rt_checker reads (a2c_flow_counts), from the reset release.
+        protected longint unsigned n_samples;
+        protected longint unsigned n_valid;
+        protected longint unsigned n_ready;
+        protected longint unsigned n_transfers;
+
+        `uvm_component_param_utils(rdy_vld_monitor#(data_t))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            ap = new("ap", this);
+        endfunction
+
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual task run_from_reset();
+            logic vld;
+            logic rdy;
+            data_t data;
+            data_t held;
+            bit    stalled = 0;
+            rdy_vld_item#(data_t) item;
+            cfg.clk_vif.wait_reset_release();
+            forever begin
+                cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
+                vld  = vif.vld;
+                rdy  = vif.rdy;
+                data = vif.data;
+                n_samples++;
+                n_valid     += (vld === 1'b1);
+                n_ready     += (rdy === 1'b1);
+                n_transfers += (vld === 1'b1 && rdy === 1'b1);
+                // A stalled source must hold vld and data until the beat transfers.
+                if (stalled && (vld !== 1'b1 || data !== held)) begin
+                    string what = a2c_select_str(vld !== 1'b1, "vld dropped", "data changed");
+                    `uvm_error("A2C_HOLD", $sformatf("%s: %s before the stalled beat %h transferred", cfg.port_name,
+                                                     what, held))
+                end
+                stalled = (vld === 1'b1 && rdy !== 1'b1);
+                held    = data;
+                // X/Z checks only fire on a 4-state boundary. Across a 2-state
+                // SystemC boundary an X or Z from the DUT arrives as 0.
+                if ($isunknown(vld)) begin
+                    `uvm_error("A2C_XZ", $sformatf("%s: vld is %b after reset release", cfg.port_name, vld))
+                    continue;
+                end
+                if (vld !== 1'b1) continue;
+                if ($isunknown(data)) begin
+                    `uvm_error("A2C_XZ", $sformatf("%s: data has X or Z while vld is high: %h", cfg.port_name, data))
+                end
+                if (rdy !== 1'b1) begin
+                    if (cfg.no_backpressure) begin
+                        `uvm_error("A2C_STALL", $sformatf("%s: rdy is %b while vld is high on a backpressure: false interface", cfg.port_name, rdy))
+                    end
+                    continue;
+                end
+                // Each transfer counts for the joint stall rule (a2c_joint_watch).
+                if (cfg.joint_watch) a2c_joint_watch::handshake();
+                item = rdy_vld_item#(data_t)::type_id::create("item");
+                item.data = data;
+                `uvm_info("A2C_TXN", a2c_txn({get_full_name(), ".", cfg.port_name}, cfg.role, item.convert2string(),
+                                             $sformatf("%0h", data)), UVM_MEDIUM)
+                ap.write(item);
+            end
+        endtask
+
+        virtual function void flow_counts(output longint unsigned samples, output longint unsigned valid,
+                                          output longint unsigned ready, output longint unsigned transfers);
+            samples   = n_samples;
+            valid     = n_valid;
+            ready     = n_ready;
+            transfers = n_transfers;
+        endfunction
+
+        virtual function a2c_clk_vif_t flow_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual function string flow_port();
+            return cfg.port_name;
+        endfunction
+    endclass : rdy_vld_monitor
+
+    class rdy_vld_agent #(type data_t = logic) extends a2c_lane_agent #(virtual rdy_vld_if #(.data_t(data_t)));
+        typedef rdy_vld_item#(data_t)   item_t;
+        typedef rdy_vld_config#(data_t) config_t;
+        typedef a2c_flow_coverage #(item_t) cov_t;
+
+        rdy_vld_config#(data_t)                cfg;
+        rdy_vld_driver#(data_t)                drv;
+        uvm_sequencer #(rdy_vld_item#(data_t)) sqr;
+        rdy_vld_monitor#(data_t)               mon;
+        // Paired mode only. model_cmp exists on the A2C_DST role.
+        rdy_vld_monitor#(data_t)               model_mon;
+        a2c_in_order_comparator #(item_t)      model_cmp;
+
+        // has_coverage only.
+        cov_t cov;
+
+        `uvm_component_param_utils(rdy_vld_agent#(data_t))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(rdy_vld_config#(data_t))::get(this, "", "cfg", cfg)) begin
+                `uvm_fatal("A2C_CFG", "rdy_vld_agent has no cfg")
+            end
+            if (cfg.burst && cfg.burst_max == 0) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s: burst ready needs burst_max of 1 or more", cfg.port_name))
+            end
+            mon = rdy_vld_monitor#(data_t)::type_id::create("mon", this);
+            mon.cfg = cfg;
+            mon.vif = cfg.vif;
+            if (coverage_on()) begin
+                cov = a2c_coverage#(cov_t)::create("cov", this);
+                cov.flow = mon;
+            end
+            if (cfg.model_vif != null) begin
+                model_mon = rdy_vld_monitor#(data_t)::type_id::create("model_mon", this);
+                model_mon.cfg = cfg;
+                model_mon.vif = cfg.model_vif;
+                if (cfg.role == A2C_DST) model_cmp = a2c_in_order_comparator#(item_t)::type_id::create("model_cmp", this);
+            end
+            if (cfg.is_active == UVM_ACTIVE) begin
+                drv = rdy_vld_driver#(data_t)::type_id::create("drv", this);
+                drv.cfg = cfg;
+                if (cfg.role == A2C_SRC) begin
+                    sqr = uvm_sequencer#(rdy_vld_item#(data_t))::type_id::create("sqr", this);
+                end
+            end
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            if (cov != null) mon.ap.connect(cov.analysis_export);
+            if (sqr != null) begin
+                drv.seq_item_port.connect(sqr.seq_item_export);
+            end
+            if (model_cmp != null) begin
+                mon.ap.connect(model_cmp.dut_export);
+                model_mon.ap.connect(model_cmp.model_export);
+            end
+        endfunction
+
+        virtual function lane_cfg_t lane_cfg();
+            return cfg;
+        endfunction
+
+        virtual function a2c_lane_joiner lane_joiner();
+            return drv;
+        endfunction
+
+        virtual function uvm_monitor lane_monitor(a2c_lane_e l);
+            return (l == A2C_DUT_LANE) ? mon : model_mon;
+        endfunction
+
+        virtual function a2c_comparator_base lane_cmp();
+            return model_cmp;
+        endfunction
+    endclass : rdy_vld_agent
+
+endpackage : rdy_vld_uvm_pkg
+
+`endif // RDY_VLD_UVM_PKG_SV

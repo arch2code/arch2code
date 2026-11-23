@@ -227,9 +227,32 @@ module blockD_hdl_sv_wrapper
     );
 
     `ifdef VCS_DEBUG
+    // Module scope, so %m names this module and not the initial block.
+    string a2c_waves_scope;
     initial if ($test$plusargs("fsdbTrace")) begin
-        $fsdbDumpvars($sformatf("%m"), "+all");
+        if (!$value$plusargs("a2c_waves_scope=%s", a2c_waves_scope)) a2c_waves_scope = $sformatf("%m");
+        $fsdbDumpvars(0, "instance=", a2c_waves_scope, "+all");
     end
+    `endif
+
+    `ifndef VERILATOR
+    rdy_vld_xcheck cStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(cStuffIf));
+    rdy_vld_xcheck dee0_xcheck (.clk(clk), .rst_n(rst_n), .intf(dee0));
+    rdy_vld_xcheck dee1_xcheck (.clk(clk), .rst_n(rst_n), .intf(dee1));
+    rdy_vld_xcheck outD_xcheck (.clk(clk), .rst_n(rst_n), .intf(outD));
+    rdy_vld_xcheck inD_xcheck (.clk(clk), .rst_n(rst_n), .intf(inD));
+    req_ack_xcheck btod_xcheck (.clk(clk), .rst_n(rst_n), .intf(btod));
+    status_xcheck rwD_xcheck (.clk(clk), .rst_n(rst_n), .intf(rwD));
+    status_xcheck roBsize_xcheck (.clk(clk), .rst_n(rst_n), .intf(roBsize));
+    memory_xcheck blockBTableExt_xcheck (.clk(clk), .rst_n(rst_n), .intf(blockBTableExt));
+    memory_xcheck blockBTable37Bit_xcheck (.clk(clk), .rst_n(rst_n), .intf(blockBTable37Bit));
+    status_xcheck rwArr_xcheck (.clk(clk), .rst_n(rst_n), .intf(rwArr));
+    external_reg_xcheck extArr_0_xcheck (.clk(clk), .rst_n(rst_n), .intf(extArr[0]));
+    external_reg_xcheck extArr_1_xcheck (.clk(clk), .rst_n(rst_n), .intf(extArr[1]));
+    external_reg_xcheck extArr_2_xcheck (.clk(clk), .rst_n(rst_n), .intf(extArr[2]));
+    external_reg_xcheck extArr_3_xcheck (.clk(clk), .rst_n(rst_n), .intf(extArr[3]));
+    memory_xcheck blockBTable1_xcheck (.clk(clk), .rst_n(rst_n), .intf(blockBTable1));
+    memory_xcheck blockBTableSP_xcheck (.clk(clk), .rst_n(rst_n), .intf(blockBTableSP));
     `endif
 
 endmodule : blockD_hdl_sv_wrapper

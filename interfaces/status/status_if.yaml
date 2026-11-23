@@ -2,6 +2,7 @@
 interface_defs:
   status : 
     timing: fixed
+    uvmAgent: true
     parameters : 
       data_t : { datatype : struct }
     signals: 

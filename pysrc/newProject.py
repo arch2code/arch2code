@@ -144,6 +144,15 @@ gitignoreTemplate = \
 **/compile_commands.json
 **/.clangd
 __pycache__
+# VCS and Xcelium output in the rundir, as make clean removes it
+**/build_xrun/
+**/rundir/AN.DB/
+**/rundir/csrc/
+**/rundir/vc_hdrs.h
+**/rundir/xcelium*.d/
+**/rundir/xrun*.history
+**/rundir/*.log
+**/rundir/waves.shm/
 """
 
 

@@ -115,6 +115,21 @@ public:
         m_external_event_ptr = event;
         m_external_arb = true;
     }
+    // The request a requester has issued and no completer has taken yet. A
+    // write is posted, so its request() has returned, but the requester's
+    // next request() blocks until reqReceive() takes this one. A BFM can show
+    // the request on the HDL pins and take it on the edge the HDL completes it.
+    bool offered( bool &isWrite, R &req, D &data ) const
+    {
+        if (m_req_pending) {
+            isWrite = m_req_is_write;
+            req = m_req_data;
+            if (m_req_is_write) {
+                data = m_data; // a read's m_data holds no request data
+            }
+        }
+        return m_req_pending;
+    }
 
     void trace( sc_trace_file* tf ) const override;
 
