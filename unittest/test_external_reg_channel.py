@@ -216,7 +216,6 @@ SC_MODULE( probe )
         chHook.reg_write( val( 6 ) );
         check( hookMirror.wakes == 2 && hookMirror.value == 6, "reg_write() runs the mirror hook on a change" );
         check( hookCmd.wakes == 2, "reg_write() does not run the command hook" );
-        wait( 1, SC_NS ); // hookReader takes the first reg_write() before the second
         chHook.reg_write( val( 6 ) );
         check( hookMirror.wakes == 2, "reg_write() of the value already there does not run the mirror hook" );
         chHook.write( val( 7 ) );

@@ -887,6 +887,12 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - No example declares this layout; every aligned nested pack in the examples sits at position 0, so the round-trip tests do not reach it. Found by rendering the function in memory with position 64 in a 128-bit parent; not compiled or run.
 - Source: reviewer finding on the branch 155 `pack()` memset fix. Grade: plausible, confirmed by rendering only.
 
+### K142. Two time waits remain in the `examples/mixed` cpu test
+
+- `examples/mixed/model/cpu.cppm:83` waits `RTL_SETTLE_NS` before `test_mem_hier_cpu_read`, because no message says a verilated blockD has seeded `blockBTable1` row 0 after reset.
+- `:370` waits after the rw write to `rwArr[2]` before reading `extArr` back. The owner pushes the `external_reg` mirror, and in the RTL blockD computes the `extArr` read-back combinationally from `rwArr`. Nothing in the model orders that read-back after an rw write, which has no ack. Without the wait the `mixed.uBlockB.uBlockD` run reads stale values.
+- Source: reviewer finding on branch 193, external_reg owner ack.
+
 ## Feature requests
 
 These stay off branch 155 (decision D12).

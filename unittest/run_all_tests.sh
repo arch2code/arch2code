@@ -1239,6 +1239,18 @@ python3 test_external_reg_owner_ack.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: external_reg_src_bfm forwards each RTL strobe and asserts on a slow owner"
+echo "------------------------------------------------------------------------"
+python3 test_external_reg_src_bfm.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: external_reg reg_write() and firmware writes share one command slot"
+echo "------------------------------------------------------------------------"
+python3 test_external_reg_command_slot.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then
     echo "✅ ALL TEST SUITES PASSED!"

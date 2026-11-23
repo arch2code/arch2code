@@ -294,8 +294,8 @@ inline void external_reg_channel<T>::write( const T& val_ )
 template <class T>
 inline void external_reg_channel<T>::reg_write( const T& val_ )
 {
-    Q_ASSERT_CTX(!m_cmd_pending, name(), "external_reg reg_write() while a firmware write is waiting for the owner's read(): "
-                 "both use the one command slot, so publish with update_mirror()");
+    Q_ASSERT_CTX(!m_cmd_open, name(), "external_reg reg_write() while a firmware write is open: both use the one "
+                 "command slot, so the owner publishes with update_mirror()");
     m_write_data = val_;
     m_cmd_pending = true;
     const bool mirror_changed = !m_mirror_valid || !(m_mirror == val_);
@@ -402,12 +402,17 @@ inline T external_reg_channel<T>::readNonBlocking( )
 template <class T>
 void external_reg_channel<T>::status(void)
 {
-    if (m_cmd_pending) {
-        log_.logPrint(std::format("{} has firmware write {} waiting for the owner's read() to take it",
-                                  name(), m_write_data.prt(isDebugLog)), LOG_IMPORTANT);
+    const std::string value = m_write_data.prt(isDebugLog);
+    if (m_cmd_open && m_command_hook) {
+        log_.logPrint(std::format("{} has firmware write {} open, waiting for the Tandem tee to complete it", name(), value), LOG_IMPORTANT);
+    } else if (m_cmd_open && m_cmd_pending) {
+        log_.logPrint(std::format("{} has firmware write {} waiting for the owner's read() to take it{}", name(), value,
+                                  m_done_hook ? ", and the Tandem tee waits for it" : ""), LOG_IMPORTANT);
     } else if (m_cmd_open) {
-        log_.logPrint(std::format("{} has firmware write {} taken by the owner, which has not returned to read()",
-                                  name(), m_write_data.prt(isDebugLog)), LOG_IMPORTANT);
+        log_.logPrint(std::format("{} has firmware write {} taken by the owner, which has not returned to read(){}", name(), value,
+                                  m_done_hook ? ", and the Tandem tee waits for it" : ""), LOG_IMPORTANT);
+    } else if (m_cmd_pending) {
+        log_.logPrint(std::format("{} has reg_write() value {} waiting for the owner's read() to take it", name(), value), LOG_IMPORTANT);
     }
     teeStatus();
 }

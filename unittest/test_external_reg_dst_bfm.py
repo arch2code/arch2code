@@ -12,17 +12,18 @@ and hwRegisterIf into the BFM, with a stub RTL register behind it that logs
 every pulse. Two and three writes must each produce that many pulses with the
 written values, leave the register holding the last one, and read it back.
 
-The BFM drops a write issued while rst_n is low. That is the BFM's own reset
-policy: a write reaches the RTL only as a strobe, and the BFM drives none in
-reset. In the reset case
-firmware writes three times back to back and rst_n asserts for two clocks
-right after the first strobe, so the second and third writes arrive in reset.
-The RTL must see only that first pulse and leave reset holding its reset
-value, and firmware must read that value back. In the in-reset case rst_n
-starts low and firmware writes twice before it rises, the second time in the
-last reset cycle. Neither write may reach the RTL. In the readBack case
-firmware reads the register right after each write, and must get the value
-it wrote, which the RTL publishes a clock after the strobe.
+The BFM drives no strobe in reset, so it drops a write issued while rst_n is
+low. The reset cases pin that behaviour as it is today. It is a known
+defect, left for the BFM reset change.
+
+In the reset case firmware writes three times back to back and rst_n asserts
+for two clocks right after the first strobe, so the second and third writes
+arrive in reset. The RTL must see only that first pulse and leave reset
+holding its reset value, and firmware must read that value back. In the
+in-reset case rst_n starts low and firmware writes twice before it rises, the
+second time in the last reset cycle. Neither write may reach the RTL. In the
+readBack case firmware reads the register right after each write, and must
+get the value it wrote, which the RTL publishes a clock after the strobe.
 """
 
 import os

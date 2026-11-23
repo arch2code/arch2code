@@ -31,16 +31,6 @@ public:
 
     external_reg_src_bfm(sc_module_name modulename) {
         SC_THREAD(bfm_driver_thread);
-        SC_METHOD(count_edges);
-        sensitive << clk.pos();
-        dont_initialize();
-    }
-
-    // Counts the clock edges that pass while a write is open.
-    void count_edges() {
-        if (m_in_cmd && sc_time_stamp() > m_cmd_start) {
-            m_missed_edges++;
-        }
     }
 
     void bfm_driver_thread() {
@@ -63,23 +53,15 @@ public:
             if (hdl_if_p->write.read().or_reduce()) {
                 DATA_T wdata;
                 wdata.sc_unpack(hdl_if_p->wdata);
-                m_in_cmd = true;
-                m_cmd_start = sc_time_stamp();
-                m_missed_edges = 0;
+                const sc_time start = sc_time_stamp();
                 if_p->reg_write_cmd(wdata);
-                m_in_cmd = false;
-                Q_ASSERT(m_missed_edges == 0,
-                         std::format("external_reg has fixed timing: the owner must complete a write within the clock "
-                                     "of its strobe, but {} clock edge(s) passed, and the BFM samples no strobe while it waits",
-                                     m_missed_edges));
+                Q_ASSERT(sc_time_stamp() == start,
+                         std::format("external_reg has fixed timing: the owner must complete a write in the time step "
+                                     "of its strobe, but it took {}, and the BFM samples no strobe while it waits",
+                                     (sc_time_stamp() - start).to_string()));
             }
         }
     }
-
-private:
-    bool m_in_cmd = false;
-    sc_time m_cmd_start;
-    int m_missed_edges = 0;
 
 };
 
@@ -115,7 +97,7 @@ public:
         while (true) {
             DATA_T data;
             if_p->read(data);
-            // the RTL is held in reset, so a write issued now is lost
+            // The BFM drives no strobe in reset, so it drops a write issued then.
             if (!rst_n) {
                 continue;
             }
