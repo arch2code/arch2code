@@ -19,10 +19,10 @@ those checks as expected failures, so they report when the BFM is fixed.
 
 In the reset case firmware writes three times back to back and rst_n asserts
 for two clocks right after the first strobe, so the second and third writes
-arrive in reset. In the in-reset case rst_n starts low and firmware writes
-twice before it rises, the second time in the last reset cycle. In the
-readBack case firmware reads the register right after each write, and must
-get the value it wrote, which the RTL publishes a clock after the strobe.
+arrive in reset. In the in-reset case rst_n starts low until 95 ns and
+firmware writes twice back to back from 30 ns. In the readBack case firmware
+reads the register right after each write, and must get the value it wrote,
+which the RTL publishes a clock after the strobe.
 """
 
 import os
@@ -88,7 +88,8 @@ using regPort = external_reg_out<regSt>;
 
 // CPU, APB channel, registerHandler and hwRegisterIf, up to the register's
 // driver port. The CPU issues `count` back-to-back writes, then reads back.
-// With inReset it writes at 30 ns and 92 ns instead, while rst_n is low. With
+// With inReset it writes twice back to back from 30 ns instead, while rst_n
+// is low, and prints the time it issues each write. With
 // readBack it reads the register right after each write.
 SC_MODULE( driverSide )
 {
@@ -132,12 +133,11 @@ SC_MODULE( driverSide )
     void drive()
     {
         if (inReset) {
-            std::uint32_t v = 0x11111111u;
             wait( 30, SC_NS );
-            access( true, v );
-            v = 0x22222222u;
-            wait( sc_time( 92, SC_NS ) - sc_time_stamp() );
-            access( true, v );
+            for (std::uint32_t v : { 0x11111111u, 0x22222222u }) {
+                std::printf( "inResetWrite=0x%08x@%s\\n", v, sc_time_stamp().to_string().c_str() );
+                access( true, v );
+            }
         } else {
             wait( 100, SC_NS );
         }
@@ -324,6 +324,9 @@ def test_external_reg_dst_bfm():
             output = run.stdout + run.stderr
             before = len(FAILURES)
             inReset = 'reset' in case or 'inReset' in case
+            check('failures=' in output, f"{label}: the probe runs to its end")
+            if not inReset:
+                check(run.returncode == 0, f"{label}: exits with status 0 (got {run.returncode})")
             lines = [l for l in output.splitlines() if l.startswith(('PASS: ', 'FAIL: '))]
             expected = 5 if 'readBack' in case else 4
             check(len(lines) == expected, f"{label}: runs {expected} checks (got {len(lines)})")
