@@ -1626,32 +1626,31 @@ void producer::outAXI0Rd(void) {
 
 ### 7.2 Synchronization (synchLock)
 
-A mutex that also records decisions so tandem can replay them. The `systemc-synchronization` skill (`rules/skills/systemc-synchronization.md`, section 2) has the full rules.
+`synchLock` records a block's ordering decisions so Tandem (A2C Pro) can replay them. Outside Tandem, `lock()` and `unlock()` are a plain mutex and `arb(v)` returns `v`. The **systemc-synchlock** skill (A2C Pro) has the full rules, and **systemc-synchronization** section 2 has the arbitration code that picks each value.
 
-**Purpose:** Guard state shared between threads, and record timing-dependent arbitration choices.
+**Purpose:** Record the decisions the RTL makes, such as an arbiter's winner, so both Tandem copies take the same branch. It is not a way to share state between threads. review-model FAILs a mutex added for convenience and asks for a busy flag or an `sc_event`.
 
 **Note:** Memory RMW operations use a row lock internally (see section 3.2).
 
 **API:**
 - `synchLockFactory<T>::getInstance().newLock(getAltName(), lockName)` - Create a lock. `T` defaults to `uint64_t`. `getAltName()` gives both tandem copies the same key. Lock names must be unique within a block instance
-- `lock->lock(value)` - Take the mutex. `value` is the tandem match key, so give each call site its own value
-- `lock->unlock()` - Release it. There is no RAII guard, so unlock on every path out
-- `lock->arb(value)` - Record the winner your code chose. Outside tandem it returns `value`. In tandem the second copy returns the first copy's value. Keep `arb()` and `lock()` on separate locks
+- `lock->arb(value)` - Record the winner your code chose. Outside tandem it returns `value`. In tandem the second copy returns the first copy's value
+- `lock->lock(value)` and `lock->unlock()` - A site that matches one decision the RTL makes. `value` is the tandem match key, so give each call site its own value. There is no RAII guard, so unlock on every path out. Keep `arb()` and `lock()` on separate locks
 
-**Example - Guard shared state:**
+**Example - Record an arbiter's winner:**
 
 ```cpp
 // block implementation members
-std::shared_ptr<synchLock<>> stateLock;
+std::shared_ptr<synchLock<>> srcArb;
 
 // constructor initializers
-        ,stateLock(synchLockFactory<>::getInstance().newLock(getAltName(), "stateLock"))
+        ,srcArb(synchLockFactory<>::getInstance().newLock(getAltName(), "srcArb"))
 
-void myModule::thread1(void)
+void myModule::serve(void)
 {
-    stateLock->lock(LOCK_SITE_THREAD1);   // a constant the block defines, one per call site
-    accessSharedResource();
-    stateLock->unlock();
+    src_t winner = pickNext();                         // the RTL's arbitration policy
+    winner = static_cast<src_t>(srcArb->arb(winner));  // Tandem replays the first copy's choice
+    switch (winner) { /* ... */ }
 }
 ```
 
