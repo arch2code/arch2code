@@ -25,7 +25,7 @@ Every flow compiles the same SystemC testbench and models, written as C++20 modu
 | :--- | :--- | :--- |
 | `VCS` | `USE_VCS` | `main.cpp` registers an exit handler so `simv` returns the a2c exit code, and sets the lock hierarchy prefix `sc_main`, under which VCS roots every SystemC instance |
 | `VCS_DUT` | `USE_VCS` and `VL_DUT` | registrars and SystemC HDL wrappers use the `vlogan -sc_model` shell `<top>` from `<top>.h` as the DUT class |
-| `XCELIUM`, `NCSC`, `CADENCE`, `LNX86`, `XMSC`, `_GLIBCXX_USE_CXX11_ABI=1` | `USE_XCELIUM` | `main.cpp` rethrows `xmsc_elab_exception`, which xmelab uses to end the elaboration run of `sc_main`. The other defines are the ones xmsc passes to its own compiler |
+| `XCELIUM`, `NCSC`, `CADENCE`, `LNX86`, `XMSC`, `_GLIBCXX_USE_CXX11_ABI=1` | `USE_XCELIUM` | `main.cpp` rethrows `xmsc_elab_exception`, which xmelab uses to end the elaboration run of `sc_main`, and sets the lock hierarchy prefix `sc_main`, which Xcelium puts in front of an HDL `%m`. The other defines are the ones xmsc passes to its own compiler |
 | `XCELIUM_DUT` | `USE_XCELIUM` and `VL_DUT` | registrars and wrappers use the generated foreign-module shell `<top>` from `<top>_xcelium.h` |
 | `VERILATOR` | `VL_DUT` with neither switch | the Verilator flow, including `--vlTrace` VCD tracing. `sc_main` passes its arguments to `Verilated::commandArgs`, so RTL plusargs read the run's command line |
 | `VCS_DEBUG` (SystemVerilog) | `VCS_DEBUG=1`, or `WAVES=1` under `USE_VCS` | when the run passes `+fsdbTrace`, the HDL wrapper and the UVM testbench module call `$fsdbDumpvars` on the scope `+a2c_waves_scope` names, or else on themselves |
