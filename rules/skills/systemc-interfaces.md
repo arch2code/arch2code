@@ -78,8 +78,9 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 *   **Dst side, the block that owns the register.**
     *   `read(v)` blocks until firmware writes and returns the written value.
     *   `update_mirror(v)` publishes the value firmware reads back, without waking `read()`.
-    *   `reg_write(v)` also wakes `read()`, so do not use it to publish from a block that loops on `read()`.
     *   The thread that waits in `read()` publishes the write's read-back value with `update_mirror(v)` before it returns to `read()`. A publish of an unchanged value is fine. Slow work may go to a queue or another thread, which publishes again when the work is done.
+    *   Give each `external_reg` port its own thread. Between two `read()` calls that thread never waits on another port, on firmware or on time, because firmware's write stays open until the thread is back in `read()`.
+    *   `reg_write(v)` also wakes `read()`, so do not use it to publish from a block that loops on `read()`.
 *   **Src side.** This is normally the generated register handler. It issues `reg_write_cmd(v)` and reads back with `readNonBlocking()`. A test driver emulating firmware uses `reg_write_cmd`. `write()` never wakes the owner's `read()`.
 
 ### `raw`

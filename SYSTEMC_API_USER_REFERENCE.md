@@ -1881,26 +1881,23 @@ void consumer::dataProcessor() {
 
 ```cpp
 void myModule::apbMasterThread() {
-    while (true) {
-        apbAddrSt addr;
-        apbDataSt data;
-        
-        // Write transaction
-        addr.address = 0x1000;
-        data._setData(0xDEADBEEF);
-        
-        log_.logPrint(std::format("APB Write addr:0x{:x} data:0x{:x}", 
-                                  addr._getAddress(), data._getData()));
-        
-        apbPort->request(true, addr, data);
-        
-        // Read transaction
-        addr.address = 0x1000;
-        apbPort->request(false, addr, data);
-        
-        log_.logPrint(std::format("APB Read addr:0x{:x} data:0x{:x}",
-                                  addr._getAddress(), data._getData()));
-    }
+    apbAddrSt addr;
+    apbDataSt data;
+
+    // Write transaction
+    addr.address = 0x1000;
+    data._setData(0xDEADBEEF);
+
+    log_.logPrint(std::format("APB Write addr:0x{:x} data:0x{:x}",
+                              addr._getAddress(), data._getData()));
+
+    apbPort->request(true, addr, data);
+
+    // Read the value back
+    apbPort->request(false, addr, data);
+
+    log_.logPrint(std::format("APB Read addr:0x{:x} data:0x{:x}",
+                              addr._getAddress(), data._getData()));
 }
 ```
 

@@ -73,7 +73,7 @@ configReg.setWriteErrorHandler([this](uint64_t, uint32_t) {
 });
 ```
 
-An RTL write pulse on `external_reg_if` becomes a thread that blocks in `read()`. The thread that waits in `read()` publishes the write's read-back value with `update_mirror(v)` before it returns to `read()`. Slow work may go to a queue or another thread, which publishes again when the work is done.
+An RTL write pulse on `external_reg_if` becomes a thread that blocks in `read()`. The thread that waits in `read()` publishes the write's read-back value with `update_mirror(v)` before it returns to `read()`. Slow work may go to a queue or another thread, which publishes again when the work is done. **systemc-interfaces** gives the rule of one thread per port and no other wait between two `read()` calls.
 
 ```cpp
 void blk::cmdListener(void)
