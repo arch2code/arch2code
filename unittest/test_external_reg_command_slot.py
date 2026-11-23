@@ -12,12 +12,16 @@ slot: a firmware write the owner has not taken, one it took without returning
 to read(), a firmware write a Tandem tee holds, or a reg_write() value the
 owner has not taken.
 
-Each mode runs in its own process, because an assert ends the run:
+Each mode runs in its own process, because an assert ends the run. The probe
+orders its steps by deltas and events, never by time:
   * fwOpen: reg_write() while a firmware write waits for read(). Asserts.
+  * fwTaken: reg_write() while the owner holds a firmware write it took.
+    Asserts.
   * merge: two reg_write() calls in one delta, then the owner starts reading.
     read() returns 0x2 once, and the mirror holds 0x2.
-  * statusPending, statusTaken, statusTee, statusRegWrite: print the status
-    for each state of the slot.
+  * statusPending, statusTaken, statusTakenTee, statusTee, statusRegWrite:
+    print the status for each state of the slot. statusTakenTee sets a done
+    hook, as a Tandem tee does, and statusTee a command hook.
 """
 
 import os
@@ -57,6 +61,7 @@ static std::string mode;
 SC_MODULE( probe )
 {
     external_reg_channel<regSt> ch;
+    sc_event taken;
     sc_event never;
 
     SC_CTOR( probe ) : ch( "ch", "tb" )
@@ -64,45 +69,59 @@ SC_MODULE( probe )
         if ( mode == "statusTee" ) {
             ch.setCommandHook( []( const regSt& ) {} );
         }
+        if ( mode == "statusTakenTee" ) {
+            ch.setDoneHook( []() {} );
+        }
         SC_THREAD( script );
     }
 
+    // Takes one value with read(), tells the script, and holds it when asked.
     void reader( bool hold )
     {
         while ( true ) {
             regSt w;
             ch.read( w );
             std::printf( "read=%s@%s\n", w.prt().c_str(), sc_time_stamp().to_string().c_str() );
+            taken.notify( SC_ZERO_TIME );
             if ( hold ) {
                 wait( never );
             }
         }
     }
 
+    // Opens a firmware write. The spawned process runs in this evaluation
+    // phase, so the write is open once the script resumes after a delta.
+    void openFirmwareWrite()
+    {
+        sc_spawn( [this]() { ch.reg_write_cmd( val( 5 ) ); } );
+        wait( SC_ZERO_TIME );
+    }
+
     void script()
     {
-        if ( mode == "fwOpen" ) {
-            sc_spawn( [this]() { ch.reg_write_cmd( val( 5 ) ); } );
-            wait( 5, SC_NS );
+        if ( mode == "fwOpen" || mode == "fwTaken" ) {
+            openFirmwareWrite();
+            if ( mode == "fwTaken" ) {
+                sc_spawn( [this]() { reader( true ); } );
+                wait( taken );
+            }
             ch.reg_write( val( 6 ) );
             std::printf( "regWriteReturned=1\n" );
         } else if ( mode == "merge" ) {
             ch.reg_write( val( 1 ) );
             ch.reg_write( val( 2 ) );
-            wait( 5, SC_NS );
             sc_spawn( [this]() { reader( false ); } );
-            wait( 5, SC_NS );
+            wait( taken );
             std::printf( "mirror=%s\n", ch.readNonBlocking().prt().c_str() );
+        } else if ( mode == "statusRegWrite" ) {
+            ch.reg_write( val( 7 ) );
+            ch.status();
         } else {
-            if ( mode == "statusRegWrite" ) {
-                ch.reg_write( val( 7 ) );
-            } else {
-                sc_spawn( [this]() { ch.reg_write_cmd( val( 5 ) ); } );
-            }
-            if ( mode == "statusTaken" ) {
+            openFirmwareWrite();
+            if ( mode == "statusTaken" || mode == "statusTakenTee" ) {
                 sc_spawn( [this]() { reader( true ); } );
+                wait( taken );
             }
-            wait( 5, SC_NS );
             ch.status();
         }
         std::printf( "end=%s\n", mode.c_str() );
@@ -124,11 +143,15 @@ int sc_main( int argc, char* argv[] )
 SCENARIOS = {
     'fwOpen': (('[Q_ASSERT][probe.ch] external_reg reg_write() while a firmware write is open',),
                ('regWriteReturned=1', 'end=fwOpen')),
-    'merge': (('read=0x2@5 ns', 'mirror=0x2', 'end=merge'), ('[Q_ASSERT]', 'read=0x1')),
+    'fwTaken': (('read=0x5@0 s', '[Q_ASSERT][probe.ch] external_reg reg_write() while a firmware write is open'),
+                ('regWriteReturned=1', 'end=fwTaken')),
+    'merge': (('read=0x2@0 s', 'mirror=0x2', 'end=merge'), ('[Q_ASSERT]', 'read=0x1')),
     'statusPending': (("probe.ch has firmware write 0x5 waiting for the owner's read() to take it",),
                       ('[Q_ASSERT]', 'Tandem')),
     'statusTaken': (('read=0x5@0 s', "probe.ch has firmware write 0x5 taken by the owner, which has not returned to read()"),
                     ('[Q_ASSERT]', 'Tandem')),
+    'statusTakenTee': (("probe.ch has firmware write 0x5 taken by the owner, which has not returned to read(), "
+                        "and the Tandem tee waits for it",), ('[Q_ASSERT]',)),
     'statusTee': (('probe.ch has firmware write 0x5 open, waiting for the Tandem tee to complete it',),
                   ('[Q_ASSERT]', "owner's read()")),
     'statusRegWrite': (("probe.ch has reg_write() value 0x7 waiting for the owner's read() to take it",),

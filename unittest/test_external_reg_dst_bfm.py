@@ -12,16 +12,15 @@ and hwRegisterIf into the BFM, with a stub RTL register behind it that logs
 every pulse. Two and three writes must each produce that many pulses with the
 written values, leave the register holding the last one, and read it back.
 
-The BFM drives no strobe in reset, so it drops a write issued while rst_n is
-low. The reset cases pin that behaviour as it is today. It is a known
-defect, left for the BFM reset change.
+A write issued while rst_n is low must reach the RTL once reset releases, in
+order, so the RTL ends holding the last value written. Today the BFM drives no
+strobe in reset and drops such a write, a known defect. The reset cases mark
+those checks as expected failures, so they report when the BFM is fixed.
 
 In the reset case firmware writes three times back to back and rst_n asserts
 for two clocks right after the first strobe, so the second and third writes
-arrive in reset. The RTL must see only that first pulse and leave reset
-holding its reset value, and firmware must read that value back. In the
-in-reset case rst_n starts low and firmware writes twice before it rises, the
-second time in the last reset cycle. Neither write may reach the RTL. In the
+arrive in reset. In the in-reset case rst_n starts low and firmware writes
+twice before it rises, the second time in the last reset cycle. In the
 readBack case firmware reads the register right after each write, and must
 get the value it wrote, which the RTL publishes a clock after the strobe.
 """
@@ -251,10 +250,9 @@ int sc_main( int argc, char *argv[] )
     if (inReset) { rel.rst_n( rst_n ); } else { rel.rst_n( unusedRel ); }
     sc_start( 1, SC_US );
 
-    // after the reset only the first write has reached the RTL, and reset clears it;
-    // a write issued during reset never reaches it
-    int pulses = inReset ? 0 : withReset ? 1 : count;
-    std::uint32_t last = (withReset || inReset) ? 0 : 0x11111111u * count;
+    // every write reaches the RTL, a write issued in reset once reset releases
+    int pulses = count;
+    std::uint32_t last = 0x11111111u * count;
     std::string got;
     for (auto p : rtl.pulses) { got += std::format( " 0x{:08x}", p ); }
     bool inOrder = (int)rtl.pulses.size() == pulses;
@@ -284,13 +282,27 @@ CASES = (('1',), ('2',), ('3',), ('3', 'reset'), ('2', 'inReset'), ('3', 'readBa
 LABELS = {'reset': " with a reset after the first", 'inReset': " while rst_n is low",
           'readBack': " each read back at once"}
 
+RESET_DROP = ("external_reg_bfm.h:101-103 drops a write issued while rst_n is low, because the BFM drives "
+              "no strobe in reset")
+# Checks of the reset cases that fail today, by the start of their message.
+RESET_XFAIL = ('the RTL sees ', 'the RTL register holds ', 'firmware reads ')
+
 FAILURES = []
+XFAILS = []
 
 
-def check(condition, message):
-    print(f"  {'PASS' if condition else 'FAIL'}: {message}")
-    if not condition:
-        FAILURES.append(message)
+def check(condition, message, xfail=None):
+    """Records a check. A check marked xfail passes the suite only by failing."""
+    if xfail is None:
+        print(f"  {'PASS' if condition else 'FAIL'}: {message}")
+        if not condition:
+            FAILURES.append(message)
+    elif condition:
+        print(f"  XPASS: {message}; marked expected failure: {xfail}")
+        FAILURES.append(f"unexpected pass, {message}")
+    else:
+        print(f"  XFAIL: {message}; {xfail}")
+        XFAILS.append(message)
 
 
 def test_external_reg_dst_bfm():
@@ -311,10 +323,14 @@ def test_external_reg_dst_bfm():
                 continue
             output = run.stdout + run.stderr
             before = len(FAILURES)
-            check(run.returncode == 0, f"{label}: exits with status 0 (got {run.returncode})")
+            inReset = 'reset' in case or 'inReset' in case
+            lines = [l for l in output.splitlines() if l.startswith(('PASS: ', 'FAIL: '))]
             expected = 5 if 'readBack' in case else 4
-            check(output.count('PASS: ') == expected and 'failures=0' in output,
-                  f"{label}: all {expected} checks pass")
+            check(len(lines) == expected, f"{label}: runs {expected} checks (got {len(lines)})")
+            for line in lines:
+                what = line[6:]
+                xfail = RESET_DROP if inReset and what.startswith(RESET_XFAIL) else None
+                check(line.startswith('PASS: '), f"{label}: {what}", xfail)
             if len(FAILURES) > before:
                 print(output)
     finally:
@@ -323,6 +339,7 @@ def test_external_reg_dst_bfm():
 
 if __name__ == '__main__':
     test_external_reg_dst_bfm()
+    print(f"\n  {len(XFAILS)} expected failures")
     if FAILURES:
         print(f"\n  SOME TESTS FAILED ({len(FAILURES)})")
         sys.exit(1)

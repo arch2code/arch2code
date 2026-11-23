@@ -13,9 +13,9 @@ drives the strobe and wdata at falling edges.
     that publishes in zero time must see all four, in order, at their edges.
   * slow: strobes once. The owner takes 5 ns before it publishes, so the BFM
     must assert with its fixed-timing message.
-  * resetEdge: strobes 5 at 30 ns, the first edge after reset ends. The owner
-    should see it. Today the BFM skips that edge, so this case is an expected
-    failure.
+  * resetEdge: a strobe held at the reset-ending edge, 30 ns. Today the BFM
+    skips that edge and the strobe never reaches the owner. The check is an
+    expected failure, so it reports when the BFM changes.
 """
 
 import os
@@ -128,8 +128,8 @@ int sc_main( int argc, char* argv[] )
 }
 """
 
-SRC_BFM_RESET_SKIP = ("external_reg_bfm.h:38-40 skips the rising edge that ends reset: the wait loop takes it, "
-                      "and the main loop then waits for the next edge. Left for the BFM reset change.")
+SRC_BFM_RESET_SKIP = ("a strobe held at the reset-ending edge is not sampled: external_reg_bfm.h:38-40 "
+                      "takes that edge in its reset wait, and the main loop waits for the next one")
 
 # (mode, output that must be present, output that must be absent, output that
 # should be present but is missing today, with the reason)
