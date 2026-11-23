@@ -75,8 +75,10 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 *   **Dst side, the block that owns the register.**
     *   `read(v)` blocks until firmware writes and returns the written value. A write made while the owner is not in `read()` waits for its next call.
     *   `update_mirror(v)` publishes the value firmware reads back, without waking `read()`.
-    *   The owner's next `read()` call completes the write, as the RTL owner's response by the next clock does. Publish the write's read-back value with `update_mirror(v)` before calling `read()` again. A publish of an unchanged value is fine.
+    *   The owner's next `read()` call completes the write. In the RTL the bus never waits for the owner, and firmware reads back what the owner shows one clock after the write.
     *   `reg_write(v)` also wakes `read()`, so do not use it to publish from a block that loops on `read()`.
+    *   The thread that waits in `read()` publishes the write's read-back value with `update_mirror(v)` before it returns to `read()`. A publish of an unchanged value is fine. Slow work may go to a queue or another thread, which publishes again when the work is done.
+    *   Give each `external_reg` port its own thread. Between two `read()` calls that thread never waits on another port or on firmware, because firmware's write stays open until the thread is back in `read()`.
 *   **Src side.** This is normally the generated register handler. It issues `reg_write_cmd(v)` and reads back with `readNonBlocking()`. `reg_write_cmd(v)` returns when the owner completes the write, so a read-back after it sees the owner's value. A test driver emulating firmware uses `reg_write_cmd`. `write()` never wakes the owner's `read()`.
 
 ### `raw`

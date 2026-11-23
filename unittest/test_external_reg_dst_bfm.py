@@ -12,7 +12,9 @@ and hwRegisterIf into the BFM, with a stub RTL register behind it that logs
 every pulse. Two and three writes must each produce that many pulses with the
 written values, leave the register holding the last one, and read it back.
 
-A write issued while rst_n is low is lost, as in the RTL. In the reset case
+The BFM drops a write issued while rst_n is low. That is the BFM's own reset
+policy: a write reaches the RTL only as a strobe, and the BFM drives none in
+reset. In the reset case
 firmware writes three times back to back and rst_n asserts for two clocks
 right after the first strobe, so the second and third writes arrive in reset.
 The RTL must see only that first pulse and leave reset holding its reset

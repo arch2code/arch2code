@@ -5,6 +5,8 @@
 
 #include "systemc.h"
 #include "external_reg_channel.h"
+#include "q_assert.h"
+#include <format>
 
 template<typename VL_DATA_T>
 struct external_reg_hdl_if: public sc_interface {
@@ -29,6 +31,16 @@ public:
 
     external_reg_src_bfm(sc_module_name modulename) {
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(count_edges);
+        sensitive << clk.pos();
+        dont_initialize();
+    }
+
+    // Counts the clock edges that pass while a write is open.
+    void count_edges() {
+        if (m_in_cmd && sc_time_stamp() > m_cmd_start) {
+            m_missed_edges++;
+        }
     }
 
     void bfm_driver_thread() {
@@ -48,15 +60,26 @@ public:
             hdl_if_p->rdata = rdata.sc_pack();
 
             // Forward a one-cycle HDL write strobe into the TLM command path.
-            // reg_write_cmd() returns when the owner completes the command, so
-            // an owner that takes longer than a clock makes this miss edges.
             if (hdl_if_p->write.read().or_reduce()) {
                 DATA_T wdata;
                 wdata.sc_unpack(hdl_if_p->wdata);
+                m_in_cmd = true;
+                m_cmd_start = sc_time_stamp();
+                m_missed_edges = 0;
                 if_p->reg_write_cmd(wdata);
+                m_in_cmd = false;
+                Q_ASSERT(m_missed_edges == 0,
+                         std::format("external_reg has fixed timing: the owner must complete a write within the clock "
+                                     "of its strobe, but {} clock edge(s) passed, and the BFM samples no strobe while it waits",
+                                     m_missed_edges));
             }
         }
     }
+
+private:
+    bool m_in_cmd = false;
+    sc_time m_cmd_start;
+    int m_missed_edges = 0;
 
 };
 

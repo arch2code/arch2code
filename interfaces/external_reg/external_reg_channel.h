@@ -294,6 +294,8 @@ inline void external_reg_channel<T>::write( const T& val_ )
 template <class T>
 inline void external_reg_channel<T>::reg_write( const T& val_ )
 {
+    Q_ASSERT_CTX(!m_cmd_pending, name(), "external_reg reg_write() while a firmware write is waiting for the owner's read(): "
+                 "both use the one command slot, so publish with update_mirror()");
     m_write_data = val_;
     m_cmd_pending = true;
     const bool mirror_changed = !m_mirror_valid || !(m_mirror == val_);
@@ -400,7 +402,13 @@ inline T external_reg_channel<T>::readNonBlocking( )
 template <class T>
 void external_reg_channel<T>::status(void)
 {
-    // for status interface there is nothing to print by default
+    if (m_cmd_pending) {
+        log_.logPrint(std::format("{} has firmware write {} waiting for the owner's read() to take it",
+                                  name(), m_write_data.prt(isDebugLog)), LOG_IMPORTANT);
+    } else if (m_cmd_open) {
+        log_.logPrint(std::format("{} has firmware write {} taken by the owner, which has not returned to read()",
+                                  name(), m_write_data.prt(isDebugLog)), LOG_IMPORTANT);
+    }
     teeStatus();
 }
 

@@ -79,7 +79,7 @@ cpu::cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
 
 void cpu::test_mem_hier_cpu_read(void)
 {
-    // A verilated blockD seeds blockBTable1 row 0 once out of reset. Start after it.
+    // No message says a verilated blockD has seeded blockBTable1 row 0 after reset, so start after it.
     wait(RTL_SETTLE_NS, SC_NS);
 
     apbAddrSt addr;
@@ -304,7 +304,7 @@ void cpu::test_reg_cpu_arr(void)
     // Register arrays. Write every element of each array over APB at BASE + i * STRIDE and read it back.
     // blockD derives each extArr readback from its own rwArr view (element 2): rdata = wdata + rwArr + index.
     // blockF accepts 0 or RWARR_SEED + index on each rwArr element it sees.
-    // Start after a verilated block leaves reset: the ext BFM drops writes made in reset.
+    // The external_reg dst BFM drops a write made while its verilated block is in reset, so start after reset.
     wait(RTL_SETTLE_NS, SC_NS);
 
     static_assert(REG_BLOCKB_RWARR_COUNT == REG_BLOCKB_EXTARR_COUNT, "the test pairs rw and ext elements");
@@ -337,7 +337,6 @@ void cpu::test_reg_cpu_arr(void)
         data.data = 0x20 + i;
         cpu_main->request(true, addr, data);
     }
-    wait(RTL_SETTLE_NS, SC_NS);
     for (uint32_t i = 0; i < REG_BLOCKB_RWARR_COUNT; i++) {
         addr.address = rwAddr(i);
         cpu_main->request(false, addr, data);
@@ -367,6 +366,7 @@ void cpu::test_reg_cpu_arr(void)
     addr.address = rwAddr(RW_ELEM);
     data.data = 0x00; // blockF accepts 0 or RWARR_SEED + index on every element, so 0 is the one value that moves the readback
     cpu_main->request(true, addr, data);
+    // An rw write has no ack, so wait for blockD to see the new rwArr and the extArr readback to follow it.
     wait(RTL_SETTLE_NS, SC_NS);
     for (uint32_t i = 0; i < REG_BLOCKB_EXTARR_COUNT; i++) {
         addr.address = extAddr(i);
@@ -391,7 +391,6 @@ void cpu::test_reg_cpu_arr(void)
         data.data = 0x40 + i;
         cpu_main->request(true, addr, data);
     }
-    wait(RTL_SETTLE_NS, SC_NS);
     for (uint32_t i = 0; i < REG_BLOCKB_EXTFARR_COUNT; i++) {
         addr.address = extFAddr(i);
         cpu_main->request(false, addr, data);
