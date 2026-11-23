@@ -271,27 +271,26 @@ A register the block owns is an `hwRegister` member that the generator declares 
 - `myRegister.write(value)` - Sets the value and notifies the event passed to `registerEvent()`
 - `myRegister.registerEvent(&ev)` - Hooks an `sc_event` that fires on each firmware write and on each `write()`. The register holds one event, so a second call replaces the first
 - `myRegister.m_val` - The stored value. Assigning to it directly notifies no event
+- `myRegister.setWriteErrorHandler(fn)` - Calls `fn(byteOffset, word)` at each firmware write of a 32-bit word, in the thread performing the firmware write, after the word is stored. On a read-only register it runs and nothing is stored. This is the place to act on a firmware write, because it runs in bus order. On an `rw` register the RTL sees only the stored value, so `fn` only derives state from it. A refusal or other per-write action needs `regType: ext`, where returning `true` answers with a bus error when the project sets `regBusErrorResponses`
 
 An `hwRegister` has no `->`, no `setExternalEvent` and no `readNonBlocking`.
 
-An array register (`count:` in YAML) is a `std::array` of `hwRegister`, one per element, for example `std::array< hwRegister< arrRegSt, 4 >, REGARR_N > rwArr;`. The generator registers element k at the array's offset plus k times its stride. To react to a write on any element, pass one event to each: `for (auto &r : rwArr) r.registerEvent(&ev);`.
+An array register (`count:` in YAML) is a `std::array` of `hwRegister`, one per element, for example `std::array< hwRegister< arrRegSt, 4 >, REGARR_N > rwArr;`. The generator registers element k at the array's offset plus k times its stride. To act on a firmware write to any element, give each element a write handler: `for (auto &r : rwArr) r.setWriteErrorHandler([this](uint64_t, uint32_t) { onArrWrite(); return false; });`.
 
 **Example - React to firmware writes:**
 
 ```cpp
-void myBlock::controlThread(void)
-{
-    sc_event ctrlEvent;
-    controlReg.registerEvent(&ctrlEvent);
-    while (true) {
-        wait(ctrlEvent);
-        controlRegSt ctrl = controlReg.read();
-        // act on ctrl
-    }
-}
+// constructor body
+controlReg.setWriteErrorHandler([this](uint64_t, uint32_t) {
+    controlRegSt ctrl = controlReg.read();
+    // derive state from ctrl (rw), or act on this write (ext)
+    return false;
+});
 ```
 
-Firmware writes a register wider than 32 bits one word at a time, and each word write notifies the event. A thread woken by the low-word write still sees the old high word. A read-only register ignores firmware writes.
+Do not apply firmware writes in a thread that waits on the `registerEvent()` event. It runs after the bus access completes, so a later access can overtake it.
+
+Firmware writes a register wider than 32 bits one word at a time, and each word write calls the write handler and notifies the event. The handler for the low word still sees the old high word. A read-only register ignores firmware writes.
 
 ### 3.2 Direct Memory Access
 
@@ -812,19 +811,20 @@ void myModule::updateStatus() {
 - `myPort->readNonBlocking(value)` - Samples the current value (non-blocking)
 - `myPort->setExternalEvent(event)` - Replaces the port's own event, so `read()` also returns when another port fires it. There is no `isActive()`
 
+A block samples a `status` input with `readNonBlocking()` where it makes the decision. Only the one block that turns an unclocked boundary pin input, or a level that only rises until reset, into messages waits on `read()` (the **review-model** skill, section 3).
+
 `read()` wakes on each firmware write, on the first `write()`, and on each later `write()` that changes the value. The initial value raises no event, so a thread that needs it at start-up samples it with `readNonBlocking()` first. `read()` can return the value it returned last time, so compare with the last value seen.
 
 **Example:**
 
 ```cpp
-void myModule::monitorStatus() {
+void myModule::handleRequest(const reqSt& req) {
+    // Sample the status where the block decides
     bSizeRegSt status;
-    
-    // Blocking read (waits for next update)
-    statusPort->read(status);
-    
-    // Non-blocking read (gets current value)
     statusPort->readNonBlocking(status);
+    if (status.index == req.index) {
+        // ...
+    }
 }
 ```
 
@@ -1850,7 +1850,7 @@ void producer::dataGenerator() {
         // Send (blocks if sink not ready)
         outputPort->write(data);
         
-        // Optional: Add timing
+        // The source's rate: one beat every 10 ns
         wait(10, SC_NS);
     }
 }
@@ -1871,7 +1871,7 @@ void consumer::dataProcessor() {
         // Process data
         processData(data);
         
-        // Optional: Processing delay
+        // The time the hardware takes to process a beat
         wait(5, SC_NS);
     }
 }
@@ -1881,28 +1881,23 @@ void consumer::dataProcessor() {
 
 ```cpp
 void myModule::apbMasterThread() {
-    while (true) {
-        apbAddrSt addr;
-        apbDataSt data;
-        
-        // Write transaction
-        addr.address = 0x1000;
-        data._setData(0xDEADBEEF);
-        
-        log_.logPrint(std::format("APB Write addr:0x{:x} data:0x{:x}", 
-                                  addr._getAddress(), data._getData()));
-        
-        apbPort->request(true, addr, data);
-        
-        // Read transaction
-        addr.address = 0x1000;
-        apbPort->request(false, addr, data);
-        
-        log_.logPrint(std::format("APB Read addr:0x{:x} data:0x{:x}",
-                                  addr._getAddress(), data._getData()));
-        
-        wait(100, SC_NS);
-    }
+    apbAddrSt addr;
+    apbDataSt data;
+
+    // Write transaction
+    addr.address = 0x1000;
+    data._setData(0xDEADBEEF);
+
+    log_.logPrint(std::format("APB Write addr:0x{:x} data:0x{:x}",
+                              addr._getAddress(), data._getData()));
+
+    apbPort->request(true, addr, data);
+
+    // Read the value back
+    apbPort->request(false, addr, data);
+
+    log_.logPrint(std::format("APB Read addr:0x{:x} data:0x{:x}",
+                              addr._getAddress(), data._getData()));
 }
 ```
 

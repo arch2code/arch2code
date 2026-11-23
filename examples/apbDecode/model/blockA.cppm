@@ -58,9 +58,8 @@ public:
 
 private:
     void LocalRegAccess();
-    // roArr[i] = rwArr[(i+1) % N] + i + ROARR_BIAS, recomputed when any rwArr element is written.
+    // roArr[i] = rwArr[(i+1) % N] + i + ROARR_BIAS, recomputed at each firmware write to any rwArr element.
     void arrDrive();
-    sc_event rwArrWritten_;
 };
 
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -124,19 +123,17 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(LocalRegAccess);
-    for (auto &r : rwArr) r.registerEvent(&rwArrWritten_);
-    SC_THREAD(arrDrive);
+    // The bus thread calls each handler after it stores the word, so roArr follows every write in bus order.
+    for (auto &r : rwArr) r.setWriteErrorHandler([this](uint64_t, uint32_t) { arrDrive(); return false; });
+    arrDrive();
 };
 
 // blockA reads rwArr and drives roArr.
 void blockA::arrDrive() {
-    for (;;) {
-        for (uint32_t i = 0; i < REGARR_N; i++) {
-            arrRegSt v;
-            v.d = (rwArr[(i + 1) % REGARR_N].read().d + i + ROARR_BIAS) & D_MASK;
-            roArr[i].write(v);
-        }
-        wait(rwArrWritten_);
+    for (uint32_t i = 0; i < REGARR_N; i++) {
+        arrRegSt v;
+        v.d = (rwArr[(i + 1) % REGARR_N].read().d + i + ROARR_BIAS) & D_MASK;
+        roArr[i].write(v);
     }
 }
 

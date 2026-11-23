@@ -84,7 +84,7 @@ assign blockBTable1.write_data = BLOCKBTABLE1_SEED;
 
 
 // extArr element i reads back its last write + rwArr + i.
-for (genvar gi = 0; gi < REGARR_N; gi++) begin : g_extArr
+for (genvar gi = 0; gi < REGARR_N; gi++) begin : gen_extArr
     dRegSt extWdata;
     `DFFEN(extWdata, extArr[gi].wdata, |extArr[gi].write)
     assign extArr[gi].rdata.d = extWdata.d + rwArr.data.d + sevenBitT'(gi);

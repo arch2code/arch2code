@@ -66,7 +66,7 @@ A library instance (A2C Pro `memArb`, `rdyVldFifo` and so on) on another clock b
 
 ### 3. Flop macros
 
-Never write `always_ff` directly. The one exception is a reset supplier's assertion path, such as a reset synchroniser's asynchronous input flop or a PLL wrapper's raw output reset. Write those with explicit asynchronous flops so the domain resets while its clock is stopped.
+Never write `always_ff` directly, with two exceptions. The first is a reset supplier's assertion path, such as a reset synchroniser's asynchronous input flop or a PLL wrapper's raw output reset. Write those with explicit asynchronous flops so the domain resets while its clock is stopped. The second (A2C Pro) is a simulation-only `` `ifdef VERILATOR `` block that holds no flop and only calls `synch_lock_arb` to publish lock sites (`systemc-synchlock`).
 
 The macros live in `flops.sv`. Each family has a bare, a `_CLK` and a `_DOM` form:
 *   `_DOM` takes the clock and the reset as its first two arguments, and holds the only flop body.

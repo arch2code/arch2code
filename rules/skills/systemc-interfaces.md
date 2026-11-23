@@ -33,13 +33,16 @@ uBlockD->rwArr(rwArr[2]);
 ```
 
 *   Call an element as `rwArr[i]->read()`. Each element is its own `status` or `external_reg` port, with the calls in the table below.
-*   To wait on every element, spawn one thread per element, as `blockF` does in its constructor:
+*   Read a `status` element with `rwArr[i]->readNonBlocking()` where the block decides, as for a scalar port. No thread waits on its changes (**review-model** section 3). `blockF` checks every element of `rwArr` when firmware writes its `extFArr`.
+*   An `external_reg` element the block answers needs its own thread blocked in `read()`. Spawn one per element in the constructor, as `blockD` does for `extArr`:
 
     ```cpp
     for (size_t i = 0; i < REGARR_N; i++) {
-        sc_spawn([this, i]() { rwWatch(i, rwArr[i]); }, sc_gen_unique_name("rwWatch", false));
+        sc_spawn([this, i]() { extModel(i, extArr[i]); }, sc_gen_unique_name("extModel", false));
     }
     ```
+
+    Copy only the per-element threads from `blockD`. Its `extRwTrack` thread waits on `rwArr->read()`, a `status` change, which breaks **review-model** section 3.
 
 *   See **systemc-core** for an owned array.
 
@@ -66,8 +69,8 @@ uBlockD->rwArr(rwArr[2]);
 Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **systemc-patterns**.
 
 ### `status`
-*   `status` carries state, never control. It keeps only the latest value, so writes in one delta merge into one wake and an unchanged write raises no event. Never use it for busy, done, grant, interrupt, count or toggle signals, or for anything where the consumer must observe every change. A value the consumer needs only as it stands when read, such as a mode, enable or lock, is correct as `status` even when it gates a decision. `design-architecture.md`, section "`status` carries state, never control", gives the transactional replacements.
-*   `readNonBlocking()` samples the current value.
+*   `status` carries state, never control. A `status` port between two blocks is a warning sign. It usually means the design is not transactional. Check it against `design-architecture.md` before you use it. It keeps only the latest value, so writes in one delta merge into one wake and an unchanged write raises no event. Never use it between blocks for busy, done, grant, interrupt, count or toggle signals, or for anything where the consumer must observe every change. A value the consumer needs only as it stands when read, such as a mode, enable or lock, is correct as `status` even when it gates a decision. A level that crosses the hardware/firmware edge, such as an interrupt line, may be `status` when its owner also sends the level's value whenever no message is out and the value differs from the last one sent. `design-architecture.md`, section "`status` carries state, never control", gives the transactional replacements.
+*   `readNonBlocking()` samples the current value. A model reads `status` this way, where it makes the decision. Only the one block that turns an unclocked boundary pin input, or a level that only rises until reset, into messages waits on `read()` (**review-model** section 3).
 *   `read()` blocks until a `write()` or a firmware write. A `write()` that repeats the current value raises no event, but the first `write()` always does, even when it matches the initial value. The initial value itself raises no event, so a thread that needs it at start-up samples it with `readNonBlocking()` first. `read()` can return the value it returned last, so compare with the last value seen.
 *   `setExternalEvent(&ev)` replaces the port's own event, so `read()` then also returns when another port fires `ev`. There is no `isActive()`.
 
@@ -87,7 +90,7 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 Interfaces outside this table come from A2C Pro (`builder/pro/interfaces/`) or the user. Read their channel header for the calls.
 
 ## Timed delays
-`--delay` and `--delayMode` insert delays into a block's interface calls. They exist to expose ordering problems between interfaces in timed and tandem runs. They do not model hardware latency.
+`--delay` and `--delayMode` insert delays into a block's interface calls. They exist to expose ordering problems between interfaces in timed runs and in tandem (A2C Pro). They do not model hardware latency.
 
 The YAML decides which channels take a delay:
 

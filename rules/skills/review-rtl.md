@@ -1,6 +1,6 @@
 ---
 name: review-rtl
-description: Checklist-driven review of SystemVerilog RTL for arch2code conventions, industry best practices, FUSA, and model-RTL conformity, with awareness of tandem mode's role
+description: Checklist-driven review of SystemVerilog RTL for arch2code conventions, industry best practices, FUSA, and model-RTL conformity, with awareness of tandem mode's role in A2C Pro
 ---
 # Skill: Review RTL
 
@@ -12,19 +12,18 @@ Review a hand-written SystemVerilog module for arch2code conventions, industry p
 *   `rtl-interfaces.md`, `rtl-registers.md`, `rtl-patterns.md` and `systemc-to-rtl.md` cover interfaces, register ports, patterns and conversion.
 *   `run-tandem.md` (A2C Pro) and `verify-cosimulation.md` cover tandem and co-simulation.
 
-## How tandem changes the review
+## How tandem changes the review (A2C Pro)
 Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same stimulus and compares what each sends out. A mismatch on any interface except `status` fails the run. A `status` mismatch only warns unless the run sets `--tandemStatusFatal`. Tandem shows that model and RTL agree on that stimulus. It does not show either is correct, because a bug both share passes. Review with that in mind:
 
-*   Review the algorithm independently: math, rounding, saturation, interpolation.
 *   Treat the interface behaviour as the contract. Pipeline depth and internal signals matter only when they change it.
-*   Do not ask for assertions on things tandem compares, such as "output value in range". Ask for them only on internal invariants tandem cannot see: illegal FSM states, FIFO pointer corruption, arbiter grant conflicts, and counters that control flow, such as credits.
+*   Do not ask for assertions on things tandem compares, such as "output value in range".
 
 ## Instructions
 
 ### 1. Arch2code conventions
 
 *   **Generated regions.** Nothing between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` is hand-edited.
-*   **Flops.** Every flop uses a macro from the `rtl-core.md` table, in its bare, `_CLK` or `_DOM` form. `always_ff` is allowed only on a reset supplier's assertion path.
+*   **Flops.** Every flop uses a macro from the `rtl-core.md` table, in its bare, `_CLK` or `_DOM` form. `always_ff` is allowed only on a reset supplier's assertion path, and (A2C Pro) in a simulation-only `` `ifdef VERILATOR `` block that holds no flop and only calls `synch_lock_arb`.
 *   **Flop clock and reset.** Check each flop's domain:
     *   A bare macro is correct for the default clock, whatever its port is called. The generated region aliases `clk` and `rst_n` onto it. Do not flag a bare macro because the clock port is not named `clk`.
     *   A flop on any other clock uses `_DOM` with that clock and its own reset. PASS.
@@ -36,14 +35,16 @@ Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same 
 *   **Types.** Declare with `logic`, never `reg`. A value that needs a type, such as a counter, tag, index, address or state, uses a generated package type from YAML, including a value internal to the module. A state field uses a YAML enum. The model takes the same type, so the two designs stay in sync (design kernel 11 in `design-architecture.md`). FAIL a local `typedef` or a raw `logic [N:0]` for such a value, and ask for the type in YAML. The one exception is the alias the A2C Pro FSM macros need, `typedef <yamlEnum> statesT;`, where `<yamlEnum>` is a YAML enum type (`rtl-core.md` section 5). A width derived from package types or constants is fine for an arithmetic intermediate whose model counterpart is native scratch, such as an accumulator.
 *   **Parameterized types.** The generated region declares a parameterized block's parameterizable types inside the module, not in the package. Do not flag them as missing from the package or as local typedefs.
 *   **Package imports.** FAIL any hand-written package import in a module. A package the generated region does not import comes through `--importPackages` on the `GENERATED_CODE_PARAM` line (`rtl-core.md`). Packages are per context, not per block, so `<block>_package` does not exist.
-*   **`status_if` used for control.** FAIL a `status_if` port, or a project interface type built on the status channel, that tells another block when to act (design kernels 3, 6 and 9 in `design-architecture.md`). The model's channel keeps only the latest value and RTL samples it at clock edges, so a short change is lost and model and RTL can see different numbers of changes. Look for:
+*   **`status_if` used for control.** FAIL a `status_if` port, or a project interface type built on the status channel, that tells another block when to act (design kernels 3, 6 and 9 in `design-architecture.md`). The model's channel keeps only the latest value and RTL samples it at clock edges, so a short change is lost and model and RTL can see different numbers of changes. Treat every other `status_if` port between two blocks as a warning sign too. Check which block changes it, when, and which blocks act on it. If it is not one of the cases `design-architecture.md` keeps, report a WARN and propose messages from the block that owns the value. If it is a kept case but its YAML has no comment naming the case, report a WARN and ask for the comment. A register's port needs no comment, because it is a register mirror. Look for:
     *   A `.dst` side that keeps a `_prev` copy of `data` and compares to find edges, then grants, blocks, starts or completes something.
     *   A toggle or sequence bit in a status struct.
     *   A `.src` value held for a minimum number of clocks, or kept sticky until the next operation, so the reader sees it.
-    *   A busy, done, valid, permission or count carried as a level.
+    *   A busy, done, valid or count carried as a level, or a permission that a transaction grants, such as a key usable after delivery, which belongs in that transaction's ack.
     *   A custom interface type adopted because `status` lost a value.
 
-    The fix is a transaction (`req_ack_if`, `notify_ack_if`, `push_ack_if`, `pop_ack_if` or `rdy_vld_if`). `design-architecture.md`, section "`status` carries state, never control", maps each case. Exempt a value where the consumer only needs the current value, never every change, such as configuration, mode, an enable, a lock, lifecycle state or a register mirror, even when it gates a decision. Also exempt a level that only rises until reset, such as a fatal alert, whose single rise one place turns into an event, and the block that turns a pin-level boundary input, such as GPIO, into transactions.
+    The fix is a transaction (`req_ack_if`, `notify_ack_if`, `push_ack_if`, `pop_ack_if` or `rdy_vld_if`). `design-architecture.md`, section "`status` carries state, never control", maps each case. Exempt a value where the consumer only needs the current value, never every change, such as configuration, mode, an enable, a lock, lifecycle state or a register mirror, even when it gates a decision. A value that hardware changes on its own while requests are running is not exempt. Also exempt the one block that turns a level that only rises until reset, such as a fatal alert, or an unclocked pin input whose source the design does not contain, such as GPIO, into messages. A serial link such as SPI is not a pin level. Also exempt a level that crosses the hardware/firmware edge, such as an interrupt line, when its owner also sends the level's value whenever no message is out and the value differs from the last one sent. That section gives the conditions.
+*   **Workarounds.** FAIL a flop added only so a simulation passes, such as an ack-hold or re-accept guard whose comment cites `--delay`, a BFM or Tandem (A2C Pro). Fix the BFM or the interface. A guard the protocol needs is not a workaround. When the receiver registers `ack` in the cycle after it takes `req`, `req` is still high in the ack cycle, so it takes `req && !ack`. A receiver that acks later holds a busy state from the take to the ack.
+*   **Published sites (A2C Pro).** FAIL a `synch_lock_arb` triggered by a status input changing, and one that publishes data, such as a read word or a response code. See `review-model-tandem.md`, section 2.
 *   **Generated modules.** Do not review the generated register handler (`<block>_regs` by default, `<block>Regs` in the examples) or the router module, which is named after the router block. Review only the hand-written RTL.
 *   **Module end.** The module ends with `endmodule: <module_name>`.
 
@@ -63,9 +64,9 @@ Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same 
 ### 3. Functional safety
 
 *   **Reset coverage.** Every flop resets, except where a no-reset macro (`DFFNR`, `DFFNR_INST` and their variants) is justified, such as datapath storage that a valid bit qualifies.
-*   **FSM default.** Every FSM `case` has a `default:` branch with `` `qAssertFatal(0, "...") ``. An illegal state otherwise hangs tandem without naming the cause.
+*   **FSM default.** Every FSM `case` has a `default:` branch with `` `qAssertFatal(0, "...") ``. An illegal state otherwise hangs the simulation, or tandem (A2C Pro), without naming the cause.
 *   **Unreachable states.** Unused state encodings either do not exist or go to a known state.
-*   **Assertions.** Use `qAssertFatal`, `qAssertError` or `qAssertWarning` for the internal invariants listed under "How tandem changes the review". Do not flag a missing assertion that tandem covers.
+*   **Assertions.** Use `qAssertFatal`, `qAssertError` or `qAssertWarning` for internal invariants: illegal FSM states, FIFO pointer corruption, arbiter grant conflicts, and counters that control flow, such as credits. In A2C Pro, do not flag a missing assertion that tandem covers.
 *   **Error propagation.** Error signals from sub-blocks reach an output or are handled.
 *   **Determinism.** Nothing depends on evaluation order between combinational blocks.
 
@@ -74,7 +75,7 @@ Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same 
 *   Read `model/<block>.cppm` next to the RTL.
 *   RTL signal names are recognisable counterparts of the model's variables.
 *   RTL types correspond to the model's C++ types. Flag silent truncation and sign mismatches.
-*   Check the algorithm on its own merits, as described under "How tandem changes the review".
+*   Review the algorithm independently: math, rounding, saturation, interpolation. Model and RTL can share a bug.
 
 ### 5. Output format
 

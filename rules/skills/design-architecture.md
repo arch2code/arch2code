@@ -14,14 +14,14 @@ Define hardware architecture in arch2code YAML: blocks, instances, interfaces, c
 
 These hold for every arch2code design. When a design choice is unclear, prefer the one that keeps them true. The numbers are for citing in reviews, not an order of importance.
 
-1.  **The block that owns the facts makes the decision.** If a block needs a signal from another block to decide when to act, the decision is probably in the wrong place. Move it to the block that issues the work or receives the requests.
+1.  **The block that owns the facts makes the decision.** The block that changes a fact owns it. If a block needs a signal from another block to decide when to act, the decision is probably in the wrong place. Move it to the block that issues the work or receives the requests. Make each decision once. A second check that reads its own copy of the facts can disagree with the first. If a second check is wanted, it reads the same message.
 2.  **Every action is a transaction, and every completion is its response.** Completion is the end-to-end response to the request and carries the result. A block knows its work is done when the answer comes back, not when a side-band level changes.
-3.  **An event is a message.** Deliver each occurrence once, in order, with its cause as payload. An event folded into a level change can be merged, missed or raised again.
+3.  **An event is a message.** Deliver each occurrence once and in order. Its payload is the cause the receiver acts on. An event folded into a level change can be merged, missed or raised again. When the receiver needs what changed but not how often, the sender may merge changes (`review-model.md`, item "Avoid backpressure between blocks").
 4.  **Wait for your own work.** A block that must not act while its earlier work is in flight tracks that work itself, from the moment it accepts it to its final response, and gates on that. It never asks downstream whether it is busy.
 5.  **Counts are tokens.** The block that issues or receives credits, occupancy or outstanding work counts them, one transaction per unit. A count is never carried as a level.
 6.  **State is a value, not a message.** `status` carries what is true now. It may gate a decision when read, but it never triggers one. See [`status` carries state, never control](#status-carries-state-never-control).
 7.  **Correctness does not depend on latency.** The design stays correct if any hop takes more or fewer cycles. If it does not, a handshake is missing. `--delay` runs and tandem (A2C Pro) expose this.
-8.  **Arbitrate where the requests meet, and record choices that depend on timing.** A choice that depends on arrival order goes through `synchLock` `arb()`, so every implementation takes the same branch (`systemc-synchronization.md`).
+8.  **Arbitrate where the requests meet, and make choices that depend on timing explicit.** A choice that depends on arrival order is explicit arbitration code that models the RTL policy (`systemc-synchronization.md`). In A2C Pro it also goes through `synchLock` `arb()`, so every implementation takes the same branch.
 9.  **Fix a lost value in the interface, not in the timing.** Holding a value for a minimum number of clocks, keeping it up until the next one, or adding a toggle bit so the reader notices all mean the information needed a transaction.
 10. **Two correct implementations exchange the same transactions, in the same order on each interface.** Model and RTL may differ in timing and internal state. What crosses a block boundary must not. If agreement depends on timing, resolve it with a handshake or a recorded decision.
 11. **Every number, width and type the designs share has one definition.** Declare counts, sizes, opcodes, protocol values, register layouts and field widths once in YAML. If the RTL would have to declare a type for a value, such as a counter, tag, index or address, declare that type in YAML. A state field gets a YAML enum. The model, the RTL, the firmware headers and the testbench all take that definition, so they stay in sync. A protocol value's `desc` names the standard it comes from. A literal or a native C++ type such as `uint32_t` in the model, or a local `typedef`, `logic [N:0]` or `localparam` in the RTL, is a second definition. Second definitions drift, and the result is a width, sign or value mismatch between platforms that no single file shows.
@@ -95,7 +95,7 @@ instances:
 | `backpressure` | Optional. Set `false` for a valid-only `rdy_vld` or `axi4_stream` stream. A `ports:` row can set it per port. See "Timed delays" in `systemc-interfaces.md`. |
 
 *   Prefer handshaked protocols for links between arch2code blocks. Use `raw` only at a design boundary with a handshake-less external pinout. See `ARCH2CODE_AI_RULES.md` (raw).
-*   `status` carries state only, never control. See [`status` carries state, never control](#status-carries-state-never-control).
+*   `status` carries state only, never control. A `status` interface between two blocks is a warning sign. Check it against [`status` carries state, never control](#status-carries-state-never-control), and name its case in a YAML comment.
 *   A pin level at a design boundary, such as a GPIO, pps or fsync input, enters as `status`, not `raw`. A `raw` output nobody reads stalls its writer. See `systemc-interfaces.md`.
 
 ```yaml
@@ -109,15 +109,35 @@ interfaces:
 
 ### `status` carries state, never control
 
-A `status` channel keeps only the latest value. It has no queue and no handshake. Writes in one delta reach the reader as one wake with the last value. A write that repeats the value raises no event. RTL sees only a value that holds across a clock edge. `status` is `timing: fixed`, so `--delay` never moves it. A change, a pulse or a count carried on it gets lost somewhere between the model, the RTL and tandem.
+A `status` channel keeps only the latest value. It has no queue and no handshake. Writes in one delta reach the reader as one wake with the last value. A write that repeats the value raises no event. RTL sees only a value that holds across a clock edge. `status` is `timing: fixed`, so `--delay` never moves it. A change, a pulse or a count carried on it gets lost somewhere between the model, the RTL and tandem (A2C Pro).
 
-*   Use `status` only for a value whose consumers need the current value, never every change. That means configuration and mode, enables, capability tables, lifecycle and lock state, a permission that is itself state, register mirrors, monitoring, and pin levels at a design boundary.
-*   Never use `status`, or a project interface type built on the status channel, to tell another block when to act. No busy, done, valid, start, ack or per-request grant flags. No interrupt or event pulses. No counts or credits encoded as a level. No toggle or sequence bits added to force an event. Design kernels 3, 6 and 9 give the reasons.
-*   The test is whether the consumer must observe every change. If missing a change, or seeing two changes as one, would be wrong, the information is a transaction. Events, completions, counts, credits and handshakes are all transactions. Use `req_ack`, `notify_ack`, `push_ack`, `pop_ack` or `rdy_vld`. If only the current value matters whenever it is read, `status` is correct, even when that value gates a decision, as an engine enable, a lock bit or a zeroize state does.
-*   A thread may wake on a `status` change to re-sample state, such as new configuration. It must stay correct if it misses an intermediate value.
-*   A level that only rises until reset, such as a fatal alert latched until reset, may be `status` when one place turns its single rise into an event.
-*   A boundary input that is genuinely pin-level, such as GPIO or an external pps or fsync, may enter as `status`. The block that receives it turns its edges into transactions for the rest of the design.
-*   Workarounds give the misuse away: a value held for a minimum number of clocks so the reader sees it, a `done` level kept up until the next operation, a toggle bit, edge detection in the consumer to recover events, or a custom interface type adopted because `status` lost a value. In tandem (A2C Pro) the status tee compares the two sides' levels. A difference that lasts the level window, or is left when the run ends, is a mismatch. A shorter difference, such as a pulse on one side only, is not caught. The `final` and `off` policies compare less. See [Tandem status compare](#tandem-status-compare).
+Treat a `status` interface between two blocks as a warning sign. Most of the time it means the design is not transactional. Before you add one, and whenever you find one, study the design. Ask which block changes the value, when it changes, and which blocks act on it. If another block acts on a change, replace the link with messages from the block that owns the value (design kernels 1 and 3). The converter cases below are the only exception. Keep `status` only for one of these cases, and name the case in a YAML comment on the line above the `interfaces:` entry:
+
+*   configuration
+*   register mirror
+*   monitoring
+*   boundary input pin
+*   level at the hardware/firmware edge, with a message
+*   level that only rises until reset
+
+Configuration covers mode, enables, locks, lifecycle state, capability tables and write protection. If two connections of one interface are different cases, give each its own interface. A register's port needs no comment, because it is a register mirror. The bullets below give the conditions for each case.
+
+*   Use `status` only for a value whose consumers need the current value, never every change. That means configuration and mode, enables, capability tables, lifecycle and lock state, register mirrors, monitoring, pin levels at a design boundary, and a permission set the way configuration is, such as write protection. A permission that a transaction grants, such as a key usable after delivery, rides in that transaction's ack.
+*   Never use `status`, or a project interface type built on the status channel, to tell another block when to act. No busy, done, valid, start, ack or per-request grant flags. No interrupt or event pulses between blocks. No counts or credits encoded as a level. No toggle or sequence bits added to force an event. Design kernels 3, 6 and 9 give the reasons.
+*   A level that crosses the hardware/firmware edge, such as an interrupt line into a CPU, may be `status`. The CPU may be outside the chip, or inside it as wrapped vendor RTL. The edge is level based by nature, so these rules apply to it:
+    *   One block owns the level and drives it. No hardware block other than the CPU at the edge reads it. A CPU that runs as RTL, wrapped vendor RTL included, takes the level on its interrupt pin directly. The messages serve the modelled consumers.
+    *   The owner keeps, for each consumer, one outstanding-message flag and the last value sent. The flag starts clear. The last value sent starts at the level's reset value. Whenever no message is out and the level differs from the last value sent, the owner sends the level's current value, and nothing else. The owner does not queue a change, so a pulse that comes and goes while a message is out is never sent. The consumer loses nothing, because it reads the causes from registers.
+    *   The code that changes the level wakes the owner's sender. The sender never watches the level, and the owner's other work never waits for the ack. If a change and the ack can land in the same clock, the owner orders them as the RTL does (design kernel 8).
+    *   Each modelled consumer, the testbench included, keeps its own copy of the level. Only these messages change it. No model reads or waits on the level. While its copy is set, the consumer reads the status register, handles the enabled bits and clears them with W1C. If a read finds no enabled bit, it waits for the next message. It takes messages between passes. These register reads are the hardware/firmware contract, not polling.
+    *   Never send a second copy of the state, such as a cause list, beside the level. A clear can then disagree with a message already sent.
+    *   The message port exists in the RTL too, and whoever integrates the design acks it or ties its ack high.
+*   The test is whether the consumer must observe every change. If missing a change, or seeing two changes as one, would be wrong, the information is a transaction. Events, completions, counts, credits and handshakes are all transactions. Use `req_ack`, `notify_ack`, `push_ack`, `pop_ack` or `rdy_vld`. If only the current value matters whenever it is read, `status` is correct, even when that value gates a decision, as an engine enable or a lock bit does. The next bullet is the exception.
+*   A value that hardware changes on its own while requests are running, such as a zeroize, fault or ready state, is not `status` for a block that decides on it. The change and a request can land in the same clock, and the model and the RTL can then order them differently. The owner sends each consumer a message when the value changes, carrying only what the consumer decides on. The consumer keeps its own copy. Only those messages change it. The consumer decides from that copy. If a message and a request can land in the same clock, the consumer picks which to take first, in plain code that follows the RTL's policy (design kernel 8). In A2C Pro that choice also goes through a `synchLock` `arb()` site, which the RTL publishes. Do not make the consumer ask the owner for a value the owner already holds. A question repeated until the answer changes is polling. A `req_ack` question fits only a fact the owner works out when asked.
+*   A model thread does not wake on a `status` change, not even to re-sample or cache it. The consumer reads the value with `readNonBlocking()` where it makes the decision. The next two cases are the exceptions.
+*   A level that only rises until reset, such as a fatal alert, may be `status` when the level has one `dst`, the converting block, which sends a message to each consumer. Two blocks that detect the same rise are a FAIL. When a modelled block raises it, that block sends the message (design kernel 1); a converter is only for a level from outside the model or from wrapped vendor RTL.
+*   A pin input with no clock of its own, whose source the model does not contain, such as GPIO, pps or fsync, may enter as `status`. The receiving block turns its edges into transactions. If a modelled block drives the level, that block sends the event (design kernel 1), and no consumer converts it.
+*   A clocked serial link, such as SPI, I2C or JTAG, is not a pin level. Between modelled blocks it carries frames as transactions, and the pins exist only in RTL. FAIL a model that drives or samples a serial clock with timed waits.
+*   Workarounds give the misuse away: a value held for a minimum number of clocks so the reader sees it, a `done` level kept up until the next operation, a toggle bit, edge detection in the consumer to recover events, or a custom interface type adopted because `status` lost a value. In tandem (A2C Pro) the status tee compares the two sides' levels. A difference that lasts the level window, or is left when the run ends, is a mismatch. A shorter difference, such as a pulse on one side only, is not caught. The `final` and `off` policies compare less. See **run-tandem**, "`tandem:` policy".
 
 Replace each control use with its transactional form:
 
@@ -126,9 +146,9 @@ Replace each control use with its transactional form:
 | Start or command work | A request on `rdy_vld` or `push_ack`, or on `req_ack` when the requester needs an answer. |
 | Take the next item another block holds | A pop on `pop_ack` from the block that needs the item, which is the connection's `src`. The acknowledgement carries the item, one item per pop. Never put the item on `status` with a valid flag or count next to it. |
 | Work finished, with its result | The `req_ack` acknowledgement is the completion and carries the result code, error or data. Never return completion as a `status` level. |
-| Something happened, such as an error, interrupt cause or alert | One message per occurrence to the block that owns the reaction. Use `push_ack` when the message carries a payload such as the cause, and `notify_ack`, which has no payload, when it does not. A register block latches it for firmware. |
+| Something happened, such as an error, interrupt cause or alert | One message per occurrence to the block that owns the reaction. Use `push_ack` when the message carries a payload such as the cause, and `notify_ack`, which has no payload, when it does not. A register block latches it for firmware. At the hardware/firmware edge the cause stays in that register, and the level's owner sends only the level. |
 | Wait until in-flight work drains | The block that accepted the work tracks it from acceptance to its end-to-end response, with a counter or the state of the FSM that owns it, and gates the dependent action itself. Work still in an internal check stage counts. No busy level from downstream. See design kernel 4. |
-| Choose between competing requests | Arbitrate inside the block that receives them. A choice that depends on arrival timing goes through `synchLock` `arb()` (`systemc-synchronization.md`). No per-request grant level from another block. |
+| Choose between competing requests | Arbitrate inside the block that receives them. A choice that depends on arrival timing is explicit arbitration code (`systemc-synchronization.md`), recorded with `synchLock` `arb()` in A2C Pro. No per-request grant level from another block. |
 | Credits and counts | Tokens on a transactional interface, one per unit. |
 
 Define completion by an end-to-end response. The issuing block then knows when its work is done without a side-band signal.
@@ -145,7 +165,7 @@ A connection joins two sibling instances, both with the same `container`. To lin
 | `srcport`, `dstport` | Port name at each end. |
 | `interfaceName` | Channel name in the container. |
 | `clock` | A container clock that sets the domain of both ends. See [Clocks and resets](#7-clocks-and-resets). |
-| `tandem` | How a Tandem run compares the `src` end's status output. See [Tandem status compare](#tandem-status-compare). |
+| `tandem` | (A2C Pro) How a Tandem run compares the `src` end's status output. See **run-tandem**, "`tandem:` policy". |
 
 ```yaml
 connections:
@@ -166,7 +186,7 @@ A connection map joins a port of `block` to a port of one of its child instances
 | `port` | The parent's port name. |
 | `instancePort` | The child instance's port name. |
 | `name` | Used for whichever of `port` and `instancePort` is not given. |
-| `tandem` | With `direction: src`, how a Tandem run compares the child's status output. See [Tandem status compare](#tandem-status-compare). |
+| `tandem` | (A2C Pro) With `direction: src`, how a Tandem run compares the child's status output. See **run-tandem**, "`tandem:` policy". |
 
 To reach a child port named `in_data` while keeping the parent's port named after the interface, set `instancePort: in_data`. `port: in_data` would rename the parent's port instead.
 
@@ -199,7 +219,7 @@ connectionMaps:
 | `desc` | Required. |
 | `defaultValue` | Reset value. Default `0`. Every element of an array takes it. |
 | `offset` | Assigned by address generation, which overwrites an authored value. |
-| `tandem` | On an `ro` or `ext` register, the default for every `registerConnections` row of it. On an `ro` or `ext` register no `registerConnections` row connects, how a Tandem run compares firmware reads of it. See [Tandem status compare](#tandem-status-compare). |
+| `tandem` | (A2C Pro) On an `ro` or `ext` register, the default for every `registerConnections` row of it. On an `ro` or `ext` register no `registerConnections` row connects, how a Tandem run compares firmware reads of it. See **run-tandem**, "`tandem:` policy". |
 
 ### Memories (`memories:`)
 
@@ -283,57 +303,7 @@ An instance takes the whole array or one element. A slice, a run of elements to 
 *   **A child block's register port is one port.** Every owner that gives a block a register of a given name, in any container, gives it the same `regType`, structure, `count` and form. Align the two registers, connect both with `index` or both without, or rename one.
 *   **An array's names are its own.** The opt-in `regAddresses` firmware header (`manage-address-space.md` section 4) spells an array's stride and count as `REG_<BLOCK>_<REG>_STRIDE` and `REG_<BLOCK>_<REG>_COUNT`. Element k is named `<reg>_<k>` in the register handler's RTL and the Verilator wrapper's flat pins, and the model registers it as `<reg>[k]`. `make db` rejects a register or `regAccess` memory of the owner whose define matches one of these defines or whose name is an element name `<reg>_<k>`, and a port named `<reg>_<k>` on a block that takes the whole array. Rename one of them.
 
-A row of an `ro` register takes `tandem:` for the status output it gives the child. A row of an `ext` register takes it for the value the child publishes for firmware to read. See [Tandem status compare](#tandem-status-compare).
-
-### Tandem status compare
-
-A Tandem run (see `run-tandem.md`) compares each status output of the leaf block it runs, and the value the leaf publishes on each `ext` register it owns through a `registerConnections` row. By default `--tandemStatusFatal` decides whether a mismatch fails the run, and `--tandemLevelWindow` sets how long the two sides may differ. The `tandem:` key on the row that defines one status output sets its own policy:
-
-| Value | Compare |
-| :--- | :--- |
-| `fatal` | A mismatch always fails the run. Run window. |
-| `warn` | A mismatch is counted and logged, and never fails the run. Run window. |
-| `final` | Only the values left at the end of the run are compared. A mismatch fails the run under `--tandemStatusFatal`. |
-| `off` | Not compared. The tee still forwards the primary's value. |
-| a positive number | A level window in ns for this port, in place of the run window. A mismatch always fails the run. |
-
-Rows that set the compare of a leaf's status output or `ext` register port:
-
-*   A `connections:` row with a `status` interface. The key applies to its `src` end.
-*   A `connectionMaps:` row with a `status` interface and `direction: src`. The key applies to the child's port.
-*   A `registerConnections:` row of an `ro` register. A `registers:` row of an `ro` register sets the default for all of its rows. If both set it, the values must match.
-*   A `registerConnections:` row of an `ext` register. The key applies to the value the child publishes for firmware to read. The command compare on the side that drives the register always fails the run on a mismatch. The `registers:` row sets the default, as for an `ro` register.
-
-`make db` rejects any other value, and the key on any other row. That covers a non-status interface, a `src` or child block that is not a leaf with both `hasMdl` and `hasRtl`, a `direction: dst` map, and an `rw` or `memory` register. On an `external_reg` connection that no register backs, the value the owner publishes compares under the run-wide default (`--tandemStatusFatal`, `--tandemLevelWindow`), because only a `registers:` or `registerConnections:` row of an `ext` register can set the key. Other non-status interfaces always compare. A container cannot run in Tandem, so to set the policy of an output that a container forwards from a child, put the key on the `connectionMaps` row that names the child.
-
-#### Register reads
-
-An `ro` or `ext` register that no `registerConnections` row connects lives inside its own block, and a Tandem run of that block sees it only when firmware reads it over the register bus. Its value is a level, so if the two sides change it a little apart, a read in the gap returns different data from each side. The `tandem:` key on its `registers:` row sets what the register-bus tee does with a read data mismatch at that register's address. On an array register (`count:`) the key covers every element, and the log names element k as `<reg>[k]`.
-
-| Value | Read data mismatch |
-| :--- | :--- |
-| unset or `fatal` | Fails the run. |
-| `warn` or a positive number | Logged as `register read level mismatch ... (not asserted)` and counted in `Status tee mismatches`. The run goes on. A number is not fatal here, because a read has no window to wait out. |
-| `final` or `off` | Not compared. |
-
-Firmware always gets the primary's data and error response. A PSLVERR or HRESP mismatch, and a write, compare as before. The block must be a leaf with both `hasMdl` and `hasRtl`. `make db` rejects the key on a register owned by a block that cannot run in Tandem.
-
-On a write-one-to-clear register, `warn` waives only the read compare. A clear that lands between the two sides' sets still leaves them different, so the block must order its clears against its sets as the RTL does, for example with a synchLock site (A2C Pro).
-
-```yaml
-registers:
-  - {register: dmaStatus, regType: ro, block: dma, structure: dmaStatusSt, desc: "Engine state", tandem: warn}
-```
-
-Do not carry a free-running signal on a `status` interface. That means a counter, a timer, or anything else that never settles to a value both sides reach, because the two sides never agree on it. If one must be a status output, mark its port `tandem: off`.
-
-One Tandem wrapper serves every instance of a block. So every row that defines a given port of a block must give the same value, or all of them must leave it unset. `make db` lists the rows when they disagree.
-
-```yaml
-connections:
-  - {interface: irq_if, src: u_ctl, dst: u_cpu, tandem: final}   # RTL settles a cycle late, then agrees
-  - {interface: dbg_if, src: u_ctl, dst: u_mon, tandem: off}     # free-running debug counter
-```
+A row of an `ro` register takes `tandem:` for the status output it gives the child. A row of an `ext` register takes it for the value the child publishes for firmware to read (A2C Pro, **run-tandem**).
 
 ## 7. Clocks and resets
 

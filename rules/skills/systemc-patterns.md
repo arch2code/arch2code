@@ -8,7 +8,7 @@ description: Reference for common SystemC implementation patterns including prod
 Pick the established pattern for a common modelling problem, and find the skill that owns its details.
 
 ## 1. Producer-consumer
-The producer calls `port->write(v)` and the consumer calls `port->read(v)` on a `rdy_vld` port. Both calls block, so neither loop needs its own `wait()`. Calls for the other families are in **systemc-interfaces**.
+The producer calls `port->write(v)` and the consumer calls `port->read(v)` on a `rdy_vld` port. Both calls block, so neither loop needs its own `wait()`. Calls for the other families are in **systemc-interfaces**. For control flow between blocks, queue at one end rather than stall the producer (**review-model** section 3).
 
 ## 2. Register access
 The generated register handler, owned registers and memories, and the one allowed hand-written register thread are in **systemc-core** section 3.
@@ -16,9 +16,9 @@ The generated register handler, owned registers and memories, and the one allowe
 ## 3. One thread, several ports
 Hook one event to several ports with `setExternalEvent` and wait on it. After a wake-up, check `isActive()` on the handshake ports.
 
-`status`, `external_reg` and `raw` ports can share the event but have no `isActive()`. A `status` port fires it on its first `write()`, on each later `write()` that changes the value, and on every firmware write (`reg_write_cmd`). To tell whether it changed, compare `readNonBlocking()` with the last value the thread saw.
+`status`, `external_reg` and `raw` ports can share the event but have no `isActive()`. A `status` port fires it on its first `write()`, on each later `write()` that changes the value, and on every firmware write (`reg_write_cmd`). To tell whether it changed, compare `readNonBlocking()` with the last value the thread saw. Only the one block that turns an unclocked boundary pin input, or a level that only rises until reset, into messages waits on a `status` change. Other blocks sample it where they decide (**review-model** section 3).
 
-**systemc-synchronization** lists the families, the full pattern and tandem-safe arbitration.
+**systemc-synchronization** lists the families, the full pattern and arbitration.
 
 ## 4. Multi-cycle burst
 A burst moves one large structure over a narrow interface as several beats.
@@ -31,4 +31,4 @@ A burst moves one large structure over a narrow interface as several beats.
 The `multiCycleMode` values are in `builder/base/config/schema.yaml`.
 
 ## 5. Resource tracking
-A tracker tags a transaction from entry to exit and logs its progress. Allocation, logging, deallocation and tandem reference counting are in **debug**.
+A tracker tags a transaction from entry to exit and logs its progress. Allocation, logging, deallocation and tandem (A2C Pro) reference counting are in **debug**.
