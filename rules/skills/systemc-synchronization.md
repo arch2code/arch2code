@@ -17,7 +17,7 @@ A thread hooks one `sc_event` to several dst-side ports with `setExternalEvent(&
 *   On `axi_read` and `axi_write` they exist on the dst side and report the address channel, so one thread can serve several AXI subordinate ports. `axi4_stream` reports its one data channel.
 *   `status`, `external_reg` and `raw` have `setExternalEvent` but no `isActive()`, so they cannot join the scan below.
     *   A `status` port fires the shared event on its first `write()`, on each later `write()` that changes the value, and on every firmware write (`reg_write_cmd`), even one that repeats the value. Compare `readNonBlocking()` with the last value the thread saw. Only the one block that turns an unclocked boundary pin input, or a level that only rises until reset, into messages hooks a `status` port this way (**review-model** section 3).
-    *   On an `external_reg` port the hooked event fires only on `write()`, from either side, and never on a firmware write (`reg_write_cmd`). A block that owns the register blocks in `read()` instead. The thread that waits in `read()` does no other blocking work. It hands each write to a queue or a member and returns to `read()`.
+    *   On an `external_reg` port the hooked event fires only on `write()`, from either side, and never on a firmware write (`reg_write_cmd`). A block that owns the register blocks in `read()` instead. The thread that waits in `read()` publishes the write's read-back value with `update_mirror(v)` before it returns to `read()`. Slow work may go to a queue or another thread, which publishes again when the work is done.
     *   A `raw` port can share the event, but `read()` still blocks until a value arrives.
 
 ### Pattern

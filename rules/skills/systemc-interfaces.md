@@ -77,7 +77,7 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
     *   `read(v)` blocks until firmware writes and returns the written value.
     *   `update_mirror(v)` publishes the value firmware reads back, without waking `read()`.
     *   `reg_write(v)` also wakes `read()`, so do not use it to publish from a block that loops on `read()`.
-    *   The thread that waits in `read()` does no other blocking work. It hands each write to a queue or a member and returns to `read()`.
+    *   The thread that waits in `read()` publishes the write's read-back value with `update_mirror(v)` before it returns to `read()`. A publish of an unchanged value is fine. Slow work may go to a queue or another thread, which publishes again when the work is done.
 *   **Src side.** This is normally the generated register handler. It issues `reg_write_cmd(v)` and reads back with `readNonBlocking()`. A test driver emulating firmware uses `reg_write_cmd`. `write()` never wakes the owner's `read()`.
 
 ### `raw`

@@ -73,7 +73,7 @@ configReg.setWriteErrorHandler([this](uint64_t, uint32_t) {
 });
 ```
 
-An RTL write pulse on `external_reg_if` becomes a thread that blocks in `read()`. The thread that waits in `read()` does no other blocking work. It hands each write to a queue or a member and returns to `read()`.
+An RTL write pulse on `external_reg_if` becomes a thread that blocks in `read()`. The thread that waits in `read()` publishes the write's read-back value with `update_mirror(v)` before it returns to `read()`. Slow work may go to a queue or another thread, which publishes again when the work is done.
 
 ```cpp
 void blk::cmdListener(void)
@@ -82,6 +82,7 @@ void blk::cmdListener(void)
         cmdRegSt cmd;
         cmdReg->read(cmd);
         cmdPending = cmd.trigger;
+        cmdReg->update_mirror(cmd); // the value the RTL shows one clock after the write
     }
 }
 ```
