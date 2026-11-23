@@ -42,6 +42,8 @@ uBlockD->rwArr(rwArr[2]);
     }
     ```
 
+    Copy only the per-element threads from `blockD`. Its `extRwTrack` thread waits on `rwArr->read()`, a `status` change, which breaks **review-model** section 3.
+
 *   See **systemc-core** for an owned array.
 
 ## Calls per family

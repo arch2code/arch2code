@@ -811,19 +811,20 @@ void myModule::updateStatus() {
 - `myPort->readNonBlocking(value)` - Samples the current value (non-blocking)
 - `myPort->setExternalEvent(event)` - Replaces the port's own event, so `read()` also returns when another port fires it. There is no `isActive()`
 
+A block samples a `status` input with `readNonBlocking()` where it makes the decision. Only the one block that turns an unclocked boundary pin input, or a level that only rises until reset, into messages waits on `read()` (the **review-model** skill, section 3).
+
 `read()` wakes on each firmware write, on the first `write()`, and on each later `write()` that changes the value. The initial value raises no event, so a thread that needs it at start-up samples it with `readNonBlocking()` first. `read()` can return the value it returned last time, so compare with the last value seen.
 
 **Example:**
 
 ```cpp
-void myModule::monitorStatus() {
+void myModule::handleRequest(const reqSt& req) {
+    // Sample the status where the block decides
     bSizeRegSt status;
-    
-    // Blocking read (waits for next update)
-    statusPort->read(status);
-    
-    // Non-blocking read (gets current value)
     statusPort->readNonBlocking(status);
+    if (status.index == req.index) {
+        // ...
+    }
 }
 ```
 
@@ -1849,7 +1850,7 @@ void producer::dataGenerator() {
         // Send (blocks if sink not ready)
         outputPort->write(data);
         
-        // Optional: Add timing
+        // The source's rate: one beat every 10 ns
         wait(10, SC_NS);
     }
 }
@@ -1870,7 +1871,7 @@ void consumer::dataProcessor() {
         // Process data
         processData(data);
         
-        // Optional: Processing delay
+        // The time the hardware takes to process a beat
         wait(5, SC_NS);
     }
 }
@@ -1899,8 +1900,6 @@ void myModule::apbMasterThread() {
         
         log_.logPrint(std::format("APB Read addr:0x{:x} data:0x{:x}",
                                   addr._getAddress(), data._getData()));
-        
-        wait(100, SC_NS);
     }
 }
 ```
