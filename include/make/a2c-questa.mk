@@ -62,7 +62,11 @@ ifdef VL_DUT
 QUESTA_VLOG_ARGS = $(strip $(QUESTA_VLOG_OPTS) -work $(QUESTA_DUT_LIB) -F $(A2C_ROOT)/common/systemVerilog/a2c.f \
 	$(A2C_HDL_ARGS) $(EXTRA_QUESTA_VLOG_OPTS) \
 	-F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(QUESTA_INCDIRS) $(QUESTA_TOP_SV))
-QUESTA_HDL_DEPS = $(wildcard $(A2C_SV_DEP_FILES) $(EXTRA_SV_GEN_FILES)) $(A2C_RTL_DOT_F) $(QUESTA_TOP_SV) $(A2C_HDL_DEPS)
+# vlog reaches the X/Z checkers and a builder layer's -y units through the same
+# -y dirs as xrun, so they are prerequisites here too (a2c-xrun.mk).
+QUESTA_HDL_DEPS = $(wildcard $(A2C_SV_DEP_FILES) $(EXTRA_SV_GEN_FILES)) $(A2C_RTL_DOT_F) $(QUESTA_TOP_SV) $(A2C_HDL_DEPS) \
+	$(wildcard $(A2C_ROOT)/interfaces/*/*_xcheck.sv) $(A2C_ROOT)/common/systemVerilog/a2c_xcheck.svh \
+	$(A2C_LAYER_VCS_LIB_SV_FILES)
 QUESTA_VLOG_STAMP = $(QUESTA_STAMP_DIR)/vlog
 QUESTA_VOPT_LIBS = -L $(QUESTA_DUT_LIB) -L $(QUESTA_SC_LIB)
 # The foreign-module shells the registrars include are generated under .gen/vl.

@@ -38,8 +38,8 @@ appends one distinct value to every tool hook. Checks:
 - each hook's value in the parse-time stamp that records its command, and the
   HDL files and lists as prerequisites of the verilate, the vlogan analysis,
   the xrun snapshot and the vlog DUT library, and the layer's VCS library
-  files, which xrun reaches through the layer's -y directories, as
-  prerequisites of the xrun snapshot;
+  files, which xrun and vlog reach through the layer's -y directories, as
+  prerequisites of the xrun snapshot and the vlog DUT library;
 - as prerequisites of the same four steps, the .svh files in an
   EXTRA_HDL_INCDIRS directory, in the +incdir+ directory of the layer's list
   and of an EXTRA_HDL_F_FILES list, each relative to its list, and in a2c.f's
@@ -488,7 +488,7 @@ def main():
         failures += checkStamp('vsim', os.path.join(optDir, 'r_opts'), ['-DHOOK_QVSIM'])
         vlogStamp = os.path.join(questaStampDir, 'vlog')
         questaDatabase = run(['make', '-C', rundir, '-pq', *QUESTA_ARGS, vlogStamp]).stdout
-        failures += checkPrereqs('vlog', questaDatabase, vlogStamp, [layerF, vipSv, vipF, *included])
+        failures += checkPrereqs('vlog', questaDatabase, vlogStamp, [layerF, vipSv, vipF, *included, layerLib])
 
         hooks = run(['make', '-C', rundir, '--no-print-directory', 'help-hooks']).stdout
         shownValues = {**HOOK_VALUES, **{name: hookFiles[name] for name in HOOK_FILES},
