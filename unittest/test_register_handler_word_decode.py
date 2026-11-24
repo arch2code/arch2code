@@ -12,7 +12,8 @@ The probe serves a 1-byte register at 0x0, a 4-byte register at 0x4 and a
 6-byte register (two words) at 0x8, response-aware with errorResponses. It
 writes and reads every byte offset from 0x0 to 0xf. The word offsets 0x0, 0x4,
 0x8 and 0xc complete without PSLVERR. Every other offset completes with PSLVERR
-and reads 0xBADDC0DE. The unaligned writes leave the registers unchanged.
+and reads 0xBADDC0DE. The unaligned writes leave the registers unchanged, and
+the 6-byte register's cpu_read runs only for its two word reads.
 """
 
 import os
@@ -66,6 +67,17 @@ struct bitsSt {
     inline void sc_unpack( sc_bv<BITS> p ) { v = p.to_uint64(); }
 };
 
+template <class REG_DATA, int N>
+struct countingRegister : public hwRegister<REG_DATA, N>
+{
+    int reads = 0;
+    std::uint32_t cpu_read( std::uint64_t address ) override
+    {
+        reads++;
+        return hwRegister<REG_DATA, N>::cpu_read( address );
+    }
+};
+
 struct wdHarness : public sc_module
 {
     apb_channel<wdAddrSt, wdDataSt> chan;
@@ -74,7 +86,7 @@ struct wdHarness : public sc_module
     addressMap regs;
     hwRegister<bitsSt<8>, 4> r1;
     hwRegister<bitsSt<32>, 4> r4;
-    hwRegister<bitsSt<48>, 8> r6;
+    countingRegister<bitsSt<48>, 8> r6;
 
     SC_HAS_PROCESS( wdHarness );
     wdHarness( sc_module_name n )
@@ -110,6 +122,7 @@ struct wdHarness : public sc_module
             const bool slverr = chan.requestWithResponse( false, addr, data );
             std::cout << std::format( "read 0x{:x}=0x{:x} slverr={}\\n", a, data.value, slverr );
         }
+        std::cout << std::format( "r6Reads={}\\n", r6.reads );
         sc_stop();
     }
 };
@@ -159,6 +172,7 @@ def test_register_handler_word_decode():
                 check(f"write 0x{a:x} slverr=true" in lines, f"write at byte offset 0x{a:x} is unmapped")
                 check(f"read 0x{a:x}=0xbaddc0de slverr=true" in lines,
                       f"read at byte offset 0x{a:x} is unmapped and returns 0xBADDC0DE")
+        check('r6Reads=2' in lines, "the 6-byte register's cpu_read runs only for its two word reads")
         if FAILURES:
             print(output)
     finally:
