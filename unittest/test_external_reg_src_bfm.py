@@ -11,6 +11,10 @@ edges, on a 10 ns clock whose rising edges fall on multiples of 10 ns. The stub
 drives the strobe and wdata at falling edges.
   * zero: strobes 1, 2, 3 and 4 on four back-to-back edges from 50 ns. An owner
     that publishes in zero time must see all four, in order, at their edges.
+  * delta: as zero, but the owner waits one delta after it publishes before
+    it returns to read(). The BFM must still drive each published value on
+    rdata in the timestep of its strobe, so the RTL samples it at the next
+    edge.
   * slow: strobes once. The owner takes 5 ns before it publishes, so the BFM
     must assert with its fixed-timing message.
   * resetEdge: a strobe held at the reset-ending edge, 30 ns. Today the BFM
@@ -71,6 +75,7 @@ SC_MODULE( probe )
         bfm.rst_n( rst_n );
         SC_THREAD( rtl );
         SC_THREAD( owner );
+        SC_THREAD( rdataLog );
     }
 
     // Drives `values` on back-to-back strobes, changing them at falling edges
@@ -91,7 +96,7 @@ SC_MODULE( probe )
         rst_n = false;
         wait( 22, SC_NS );
         rst_n = true;
-        if ( mode == "zero" ) {
+        if ( mode == "zero" || mode == "delta" ) {
             strobe( 50, { 1, 2, 3, 4 } );
         } else if ( mode == "slow" ) {
             strobe( 50, { 1 } );
@@ -115,6 +120,17 @@ SC_MODULE( probe )
             regSt r;
             r.w = w.w + 1;
             ch.update_mirror( r );
+            if ( mode == "delta" ) {
+                wait( SC_ZERO_TIME );
+            }
+        }
+    }
+
+    void rdataLog()
+    {
+        while ( mode == "delta" ) {
+            wait( hdl.rdata.value_changed_event() );
+            std::printf( "rdata=0x%x@%s\n", (unsigned)hdl.rdata.read().to_uint64(), sc_time_stamp().to_string().c_str() );
         }
     }
 };
@@ -136,6 +152,9 @@ SRC_BFM_RESET_SKIP = ("a strobe held at the reset-ending edge is not sampled: ex
 Case = namedtuple('Case', 'mode present absent xfail reason')
 CASES = [
     Case('zero', ('owner=0x1@50 ns\nowner=0x2@60 ns\nowner=0x3@70 ns\nowner=0x4@80 ns\n', 'rtlDone=1'),
+         ('[Q_ASSERT]',), (), None),
+    Case('delta', ('owner=0x1@50 ns\nrdata=0x2@50 ns\nowner=0x2@60 ns\nrdata=0x3@60 ns\n'
+                   'owner=0x3@70 ns\nrdata=0x4@70 ns\nowner=0x4@80 ns\nrdata=0x5@80 ns\n', 'rtlDone=1'),
          ('[Q_ASSERT]',), (), None),
     Case('slow', ('owner=0x1@50 ns', '[Q_ASSERT][probe.bfm] external_reg has fixed timing', 'but it took 5 ns'),
          ('rtlDone=1',), (), None),

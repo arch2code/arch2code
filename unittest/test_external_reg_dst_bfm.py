@@ -282,7 +282,7 @@ CASES = (('1',), ('2',), ('3',), ('3', 'reset'), ('2', 'inReset'), ('3', 'readBa
 LABELS = {'reset': " with a reset after the first", 'inReset': " while rst_n is low",
           'readBack': " each read back at once"}
 
-RESET_DROP = ("external_reg_bfm.h:133-135 drops a write issued while rst_n is low, because the BFM drives "
+RESET_DROP = ("external_reg_bfm.h:136-138 drops a write issued while rst_n is low, because the BFM drives "
               "no strobe in reset")
 # Checks of the reset cases that fail today, by the start of their message.
 RESET_XFAIL = ('the RTL sees ', 'the RTL register holds ', 'firmware reads ')

@@ -78,6 +78,9 @@ public:
                          std::format("external_reg has fixed timing: the owner must complete a write in the time step "
                                      "of its strobe, but it took {}, and the BFM samples no strobe while it waits",
                                      (sc_time_stamp() - start).to_string()));
+                // The owner published before it completed the write. A mirror
+                // change made while this thread waited woke no one.
+                hdl_if_p->rdata = if_p->readNonBlocking().sc_pack();
             }
         }
     }

@@ -644,9 +644,10 @@ def visible(writes, resetEdges, end):
 
 
 def inOrderAcrossReset(case, who, got, want):
-    """external_reg drops a write the RTL has not taken at a reset and drives rdata 0 in reset
-    (external_reg_bfm.h:60, 133-135), so across a reset this checks that the values seen
-    come in order, none extra or repeated, and the last one arrives."""
+    """external_reg loses a write issued in reset, which the dst BFM drops (external_reg_bfm.h:136-138),
+    and a write whose strobe edge finds the RTL in reset. The src BFM drives rdata 0 in reset
+    (external_reg_bfm.h:60). So across a reset this checks that the values seen come in order,
+    none extra or repeated, and the last one arrives."""
     seen = [v for v in got if v]
     rest = iter(want)
     check(case, f'across a reset the {who} sees values in order and the last one',
@@ -662,8 +663,8 @@ def levelChecks(case, ev):
         want = visible(wire, resetEdges, RUN_END)
         got = [v for v, _ in smp]
         if case.family == 'extreg' and case.rtl == 'reset':
-            # A write issued in reset, or in the clock before it, may be dropped (external_reg_bfm.h:133-135);
-            # every other write must reach the RTL.
+            # The dst BFM drops a write issued in reset (external_reg_bfm.h:136-138), and the RTL's reset
+            # loses a write whose strobe edge falls in reset. Every other write must reach the RTL.
             kept = [v for v, t in calls if nextEdge(t) not in resetEdges and nextEdge(t) - PERIOD not in resetEdges]
             lost = [v for v in kept if v not in got]
             check(case, 'the RTL sees every write issued out of reset', not lost,
