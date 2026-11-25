@@ -1,6 +1,8 @@
 constants:
   ASIZE :             {value: 29, desc: "The size of A"}
   DWORD :             {value: 32, desc: size of a double word}
+  REGARR_N:           {value: 4, desc: "Number of elements of the rwArr and roArr register arrays"}
+  ROARR_BIAS:         {value: 0x1000, desc: "Added to each roArr element blockA derives from rwArr"}
   MEMORYA_WORDS:      {value: 19, desc: "Address wordlines for memory A"}
   MEMORYA_WORDS_LOG2: {eval: "$clog2($MEMORYA_WORDS)", desc: "Address wordlines for memory A log2"}
   MEMORYA_WIDTH:      {value: 63, desc: "Bit width of content for memory A, more than 32, less than 64"}
@@ -58,6 +60,8 @@ structures:
     fc : {varType: u8T, generator: register, desc: "[7:0] - byte 0"}
   aSizeRegSt:
     index: {varType: aSizeT, generator: register}
+  arrRegSt:
+    d: {varType: u16T, generator: register, desc: "Register array element payload"}
   apbAddrSt:
     address: {varType: apbAddrT, generator: address}
   apbDataSt:
@@ -155,3 +159,5 @@ registers:
   - {register: rwUn0A,   regType: rw,  block: blockA,   structure: un0ARegSt,  defaultValue: 0x1234abcdef, desc: A unaligned Read Write register}
   - {register: roUn0A,   regType: ro,  block: blockA,   structure: un0ARegSt,  desc: A unaligned Read Only register}
   - {register: extA,     regType: ext, block: blockA,   structure: un0ExtRegSt, desc: A unaligned Read Only register defined externally}
+  - {register: rwArr,    regType: rw,  block: blockA,   structure: arrRegSt,   count: REGARR_N, desc: A Read Write register array}
+  - {register: roArr,    regType: ro,  block: blockA,   structure: arrRegSt,   count: REGARR_N, desc: A Read Only register array}

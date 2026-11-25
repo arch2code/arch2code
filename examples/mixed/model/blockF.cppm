@@ -6,11 +6,13 @@ module;
 #include "systemc.h"
 #include "logging.h"
 #include "instanceFactory.h"
+#include "external_reg_channel.h"
 #include "rdy_vld_channel.h"
 #include "status_channel.h"
 #include "addressMap.h"
 #include "hwMemory.h"
 // GENERATED_CODE_END
+#include "testController.h"
 
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module mixed_blockF.block;
@@ -39,6 +41,9 @@ public:
     using blockFBase<Config>::dSin;
     using blockFBase<Config>::dSout;
     using blockFBase<Config>::rwD;
+    using blockFBase<Config>::rwArr;
+    using blockFBase<Config>::extFArr;
+    using blockFBase<Config>::roFArr;
 
 
     memories mems;
@@ -55,6 +60,12 @@ public:
 
     // GENERATED_CODE_END
     // block implementation members
+    // Checks every rwArr element blockF sees. It runs at each firmware write to extFArr, a transaction blockF takes.
+    void rwArrCheck(void);
+    // extFArr model, as the RTL: rdata = last written wdata + fred, so each instance answers with its own offset.
+    void extFModel(void);
+    // The bits of field d of dRegSt: unpacking all ones masks each field to its own width.
+    static inline const uint32_t D_MASK = [] { dRegSt m; m.unpack(dRegSt::_packedSt(~dRegSt::_packedSt(0))); return uint32_t(m.d); }();
 
 };
 
@@ -70,5 +81,36 @@ blockF<Config>::blockF(sc_module_name blockName, const char * variant, blockBase
 {
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
+    SC_THREAD(extFModel);
+    sc_spawn([this]() { dRegSt v; v.d = (ROFARR_SEED + fred) & D_MASK; roFArr->write(v); }, sc_gen_unique_name("roFDrive", false));
 };
 
+template<typename Config>
+void blockF<Config>::rwArrCheck(void)
+{
+    for (size_t i = 0; i < REGARR_N; i++) {
+        dRegSt v = rwArr[i]->readNonBlocking();
+        log_.logPrint(std::format("{} rwArr[{}] = 0x{:02x}", this->name(), i, static_cast<unsigned>(v.d)), LOG_ALWAYS);
+        // Encodes the stimulus of test_reg_cpu_arr: 0 or RWARR_SEED + i. Another test that writes rwArr fails here.
+        if (v.d != 0 && v.d != RWARR_SEED + i) {
+            log_.logPrint(std::format("{} rwArr[{}] expected 0x{:02x}", this->name(), i, RWARR_SEED + i), LOG_ALWAYS);
+            errorCode::fail("blockF rwArr element misrouted");
+        }
+    }
+}
+
+template<typename Config>
+void blockF<Config>::extFModel(void)
+{
+    dRegSt r;
+    r.d = fred & D_MASK;
+    extFArr->update_mirror(r);
+    while (true) {
+        dRegSt w;
+        extFArr->read(w);
+        rwArrCheck();
+        r.d = (w.d + fred) & D_MASK;
+        extFArr->update_mirror(r);
+        log_.logPrint(std::format("{} extFArr write 0x{:02x}", this->name(), static_cast<unsigned>(w.d)), LOG_ALWAYS);
+    }
+}

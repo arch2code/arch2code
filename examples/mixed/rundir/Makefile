@@ -19,3 +19,12 @@ else
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(HDL_TOP_MODULE)
 endif
 
+
+# Runs one verilated leaf of blockB against the model of the rest, with a model
+# register handler on the far side of its external_reg ports.
+.PHONY : run-vl-blockD run-vl-blockF0
+run-vl-blockD: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uBlockB.uBlockD
+
+run-vl-blockF0: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uBlockB.uBlockF0

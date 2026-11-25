@@ -532,6 +532,8 @@ mixed: mixed-db
 	make -C $(MIXED_DIR)/rundir -j all VL_DUT=1
 	$(RUN_LIMIT) make -C $(MIXED_DIR)/rundir -j run
 	$(RUN_LIMIT) make -C $(MIXED_DIR)/rundir -j run VL_DUT=1
+	$(RUN_LIMIT) make -C $(MIXED_DIR)/rundir -j run-vl-blockD VL_DUT=1
+	$(RUN_LIMIT) make -C $(MIXED_DIR)/rundir -j run-vl-blockF0 VL_DUT=1
 	make -C $(MIXED_DIR)/rtl lint -j
 
 .PHONY : pySocket

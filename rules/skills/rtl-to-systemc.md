@@ -57,27 +57,23 @@ Build and run the model with `make run` (see **manage-build**). With A2C Pro, pr
 ## Registers
 RTL reads a register's value combinationally. Check how the model receives it.
 *   An `hwRegister` member in the generated class region is a register the block owns. Read it as **systemc-core** section 3 describes.
-*   A `status_in` port in `base/<block>Base.cppm` carries a read-write register the register handler holds. Sample it once with `readNonBlocking()`, then loop on `read()`, which wakes on each firmware write.
+*   A `status_in` port in `base/<block>Base.cppm` carries a read-write register the register handler holds. Sample it with `readNonBlocking()` where the block uses it. No thread waits on its changes (**review-model** section 3).
 *   A `status_out` port carries a read-only register. The block drives the value firmware reads with `write(v)`.
 *   An `external_reg` port carries a register the block implements itself. The handler forwards firmware accesses to it. Wait for firmware writes with `read(v)` and publish the read-back value with `update_mirror(v)`.
 
 **systemc-interfaces** has the full call rules.
 
-A listener thread caches derived values in members, so the processing thread never blocks on configuration:
+An owned register's write handler derives values into members. It runs in the bus thread, so the processing thread sees each write in bus order:
 
 ```cpp
-void blk::configListener(void)
-{
-    sc_event configEvent;
-    configReg.registerEvent(&configEvent);
-    while (true) {
-        modeActive = (configReg.read().mode == MODE_ACTIVE);
-        wait(configEvent);
-    }
-}
+// constructor body
+configReg.setWriteErrorHandler([this](uint64_t, uint32_t) {
+    modeActive = (configReg.read().mode == MODE_ACTIVE);
+    return false;
+});
 ```
 
-An RTL write pulse on `external_reg_if` becomes a thread that blocks in `read()`:
+An RTL write pulse on `external_reg_if` becomes a thread that blocks in `read()`. The thread that waits in `read()` publishes the write's read-back value with `update_mirror(v)` before it returns to `read()`. Slow work may go to a queue or another thread, which publishes again when the work is done. **systemc-interfaces** gives the rule of one thread per port and no other wait between two `read()` calls.
 
 ```cpp
 void blk::cmdListener(void)
@@ -86,6 +82,7 @@ void blk::cmdListener(void)
         cmdRegSt cmd;
         cmdReg->read(cmd);
         cmdPending = cmd.trigger;
+        cmdReg->update_mirror(cmd); // the value the RTL shows one clock after the write
     }
 }
 ```

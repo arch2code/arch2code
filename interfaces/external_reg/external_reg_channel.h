@@ -26,6 +26,12 @@
 // CPU writes use reg_write_cmd (command mailbox only).
 // Only the register owner (the in_if side: engine/BFM) publishes architectural
 // values, with update_mirror or reg_write; the driver has no mirror write.
+//
+// A command is the bus write's request and the owner's next read() is its
+// response. The command stays pending until the owner's read() takes it,
+// and reg_write_cmd() returns only when the owner calls read() again, so the
+// value the owner published for the command is in the mirror by then. One
+// command is open at a time.
 template <class T>
 class external_reg_in_if
 : virtual public sc_interface, virtual public portBase
@@ -41,16 +47,20 @@ public:
     // non-blocking
     virtual void write( const T& val_ ) = 0;
     virtual void reg_write( const T& val_ ) = 0; // publish: update mirror + notify readers
-    // CPU write command: notify readers without changing APB read mirror.
+    // CPU write command: wakes read() without changing APB read mirror, and
+    // returns when the owner completes it.
     virtual void reg_write_cmd( const T& val_ ) = 0;
     // Update read mirror without notifying read() waiters (engine/BFM rdata publish).
     virtual void update_mirror( const T& val_ ) = 0;
     // Block until the architectural mirror is updated (tandem return path).
     virtual void wait_mirror(void) = 0;
-    // Only a Tandem tee sets this; user models do not. Each reg_write_cmd()
-    // calls the hook with its value, in the caller's process and delta, after
-    // it notifies read()'s event. The hook must not wait.
+    // Only a Tandem tee sets this; user models do not. Each command calls the
+    // hook with its value, in the caller's process and delta, after it
+    // notifies read()'s event. The hook must not wait.
     virtual void setCommandHook( std::function<void(const T&)> hook ) = 0;
+    // Only a Tandem tee calls this, for a command it took through the command
+    // hook in place of read(). It completes the open command.
+    virtual void complete_cmd(void) = 0;
 
 protected:
     // constructor
@@ -75,13 +85,21 @@ public:
     virtual T readNonBlocking() = 0;
     // blocking write
     virtual void write( const T& val_ ) = 0;
+    // Firmware write: returns when the owner completes the command.
     virtual void reg_write_cmd( const T& val_ ) = 0;
+    // Only a Tandem tee calls this, from a hook. It opens a command as
+    // reg_write_cmd() does and returns at once.
+    virtual void post_cmd( const T& val_ ) = 0;
     virtual void wait_mirror(void) = 0;
     // Only a Tandem tee sets this; user models do not. Each mirror change, by
     // update_mirror() or reg_write(), calls the hook with the new value, in
     // the caller's process and delta, after it notifies the mirror event. The
     // hook must not wait.
     virtual void setMirrorHook( std::function<void(const T&)> hook ) = 0;
+    // Only a Tandem tee sets this; user models do not. Each command's
+    // completion calls the hook, in the completing process and delta, after
+    // it notifies the waiting writer. The hook must not wait.
+    virtual void setDoneHook( std::function<void(void)> hook ) = 0;
 
 protected:
     // constructor
@@ -111,6 +129,7 @@ public:
         m_channel_update_event_ptr(&m_channel_update_event),
         m_reg_write_event( (std::string(name_) + "m_reg_write_event").c_str() ),
         m_mirror_event( (std::string(name_) + "m_mirror_event").c_str() ),
+        m_cmd_done_event( (std::string(name_) + "m_cmd_done_event").c_str() ),
         m_reader(nullptr),
         m_writer(nullptr)
         {
@@ -148,11 +167,14 @@ public:
     virtual T reg_read() override;             // waits on event
     // blocking write
     virtual void reg_write( const T& val_ ) override; // publish: mirror + notify
-    virtual void reg_write_cmd( const T& val_ ) override; // CPU cmd: notify only
+    virtual void reg_write_cmd( const T& val_ ) override; // CPU cmd: waits for the owner
+    virtual void post_cmd( const T& val_ ) override;
+    virtual void complete_cmd(void) override;
     virtual void update_mirror( const T& val_ ) override;
     virtual void wait_mirror(void) override;
     virtual void setCommandHook( std::function<void(const T&)> hook ) override { m_command_hook = std::move(hook); }
     virtual void setMirrorHook( std::function<void(const T&)> hook ) override { m_mirror_hook = std::move(hook); }
+    virtual void setDoneHook( std::function<void(void)> hook ) override { m_done_hook = std::move(hook); }
     // other methods
     operator T ()
         { return read(); }
@@ -190,8 +212,10 @@ protected:
     sc_event* m_channel_update_event_ptr;
     sc_event m_reg_write_event;
     sc_event m_mirror_event;
+    sc_event m_cmd_done_event;
     std::function<void(const T&)> m_command_hook;
     std::function<void(const T&)> m_mirror_hook;
+    std::function<void(void)> m_done_hook;
 
     sc_port_base* m_reader; // used for static design rule checking
     sc_port_base* m_writer; // used for static design rule checking
@@ -199,6 +223,10 @@ protected:
     bool m_status_value_written = false; // m_value contain valid data when true
     bool m_external_arb = false;
     bool m_mirror_valid = false;
+    bool m_cmd_pending = false; // m_write_data holds a command read() has not taken
+    bool m_cmd_open = false;    // a command is posted and not yet completed
+
+    void cmd_done(void);
 
 private:
     // disabled
@@ -266,7 +294,10 @@ inline void external_reg_channel<T>::write( const T& val_ )
 template <class T>
 inline void external_reg_channel<T>::reg_write( const T& val_ )
 {
+    Q_ASSERT_CTX(!m_cmd_open, name(), "external_reg reg_write() while a firmware write is open: both use the one "
+                 "command slot, so the owner publishes with update_mirror()");
     m_write_data = val_;
+    m_cmd_pending = true;
     const bool mirror_changed = !m_mirror_valid || !(m_mirror == val_);
     m_mirror = val_;
     m_mirror_valid = true;
@@ -283,11 +314,41 @@ inline void external_reg_channel<T>::reg_write( const T& val_ )
 template <class T>
 inline void external_reg_channel<T>::reg_write_cmd( const T& val_ )
 {
+    post_cmd(val_);
+    while (m_cmd_open) {
+        wait(m_cmd_done_event);
+    }
+}
+
+template <class T>
+inline void external_reg_channel<T>::post_cmd( const T& val_ )
+{
+    Q_ASSERT_CTX(!m_cmd_open, name(), "external_reg command issued before the owner completed the previous one");
     m_write_data = val_;
+    m_cmd_pending = true;
+    m_cmd_open = true;
     interfaceBase::delay(false);
     m_reg_write_event.notify(SC_ZERO_TIME);
     if (m_command_hook) {
         m_command_hook(val_);
+    }
+}
+
+template <class T>
+inline void external_reg_channel<T>::complete_cmd(void)
+{
+    Q_ASSERT_CTX(m_cmd_open, name(), "external_reg complete_cmd() with no command open");
+    m_cmd_pending = false;
+    cmd_done();
+}
+
+template <class T>
+inline void external_reg_channel<T>::cmd_done(void)
+{
+    m_cmd_open = false;
+    m_cmd_done_event.notify(SC_ZERO_TIME);
+    if (m_done_hook) {
+        m_done_hook();
     }
 }
 
@@ -311,10 +372,17 @@ inline void external_reg_channel<T>::wait_mirror(void)
     wait(m_mirror_event);
 }
 
+// Returning to read() completes the command the owner took last.
 template <class T>
 inline void external_reg_channel<T>::read( T& val_ )
 {
-    wait(m_reg_write_event);
+    if (m_cmd_open && !m_cmd_pending) {
+        cmd_done();
+    }
+    while (!m_cmd_pending) {
+        wait(m_reg_write_event);
+    }
+    m_cmd_pending = false;
     val_ = m_write_data;
 }
 
@@ -334,7 +402,18 @@ inline T external_reg_channel<T>::readNonBlocking( )
 template <class T>
 void external_reg_channel<T>::status(void)
 {
-    // for status interface there is nothing to print by default
+    const std::string value = m_write_data.prt(isDebugLog);
+    if (m_cmd_open && m_command_hook) {
+        log_.logPrint(std::format("{} has firmware write {} open, waiting for the Tandem tee to complete it", name(), value), LOG_IMPORTANT);
+    } else if (m_cmd_open && m_cmd_pending) {
+        log_.logPrint(std::format("{} has firmware write {} waiting for the owner's read() to take it{}", name(), value,
+                                  m_done_hook ? ", and the Tandem tee waits for it" : ""), LOG_IMPORTANT);
+    } else if (m_cmd_open) {
+        log_.logPrint(std::format("{} has firmware write {} taken by the owner, which has not returned to read(){}", name(), value,
+                                  m_done_hook ? ", and the Tandem tee waits for it" : ""), LOG_IMPORTANT);
+    } else if (m_cmd_pending) {
+        log_.logPrint(std::format("{} has reg_write() value {} waiting for the owner's read() to take it", name(), value), LOG_IMPORTANT);
+    }
     teeStatus();
 }
 

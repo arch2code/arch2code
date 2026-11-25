@@ -18,10 +18,22 @@ using namespace mixed_mixedBlockC_ns;
 import mixed;
 using namespace mixed_ns;
 import mixed.blockF.config;
+#include "external_reg_bfm.h"
 #include "rdy_vld_bfm.h"
 #include "status_bfm.h"
 
 #include "socketSync.h"
+// Time-0 levels of the generated clocks and resets. The 4-state simulators
+// start the clocks low with the resets asserted, so no flop sees a clock edge
+// at time 0 while its reset is X; Verilator keeps a rising clock edge and a
+// reset negedge at time 0, which its 2-state flops need to be reset then.
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#define A2C_HDL_CLOCK_START false
+#define A2C_HDL_RESET_BORN false
+#else
+#define A2C_HDL_CLOCK_START true
+#define A2C_HDL_RESET_BORN true
+#endif
 template <typename DUT_T, typename Config>
 class blockF_hdl_sc_wrapper: public sc_module, public blockBase, public blockFBase<Config> {
 
@@ -36,6 +48,9 @@ public:
     rdy_vld_dst_bfm<dSt, sc_bv<7>> dSin_bfm_inst;
     rdy_vld_src_bfm<dSt, sc_bv<7>> dSout_bfm_inst;
     status_dst_bfm<dRegSt, sc_bv<7>> rwD_bfm_inst;
+    sc_vector< status_dst_bfm<dRegSt, sc_bv<7>> > rwArr_bfm_inst;
+    external_reg_dst_bfm<dRegSt, sc_bv<7>> extFArr_bfm_inst;
+    status_src_bfm<dRegSt, sc_bv<7>> roFArr_bfm_inst;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
@@ -52,7 +67,10 @@ public:
         dSin_bfm_inst("dSin_bfm_inst"),
         dSout_bfm_inst("dSout_bfm_inst"),
         rwD_bfm_inst("rwD_bfm_inst"),
-        rst_n("rst_n", true),
+        rwArr_bfm_inst("rwArr_bfm_inst", REGARR_N),
+        extFArr_bfm_inst("extFArr_bfm_inst"),
+        roFArr_bfm_inst("roFArr_bfm_inst"),
+        rst_n("rst_n", A2C_HDL_RESET_BORN),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
         dut_hdl = new DUT_T("dut_hdl");
@@ -70,6 +88,14 @@ public:
         dut_hdl->dSout_data(dSout_hdl_inst.data);
         dut_hdl->dSout_rdy(dSout_hdl_inst.rdy);
         dut_hdl->rwD_data(rwD_hdl_inst.data);
+        dut_hdl->rwArr_0_data(rwArr_hdl_inst[0].data);
+        dut_hdl->rwArr_1_data(rwArr_hdl_inst[1].data);
+        dut_hdl->rwArr_2_data(rwArr_hdl_inst[2].data);
+        dut_hdl->rwArr_3_data(rwArr_hdl_inst[3].data);
+        dut_hdl->extFArr_wdata(extFArr_hdl_inst.wdata);
+        dut_hdl->extFArr_rdata(extFArr_hdl_inst.rdata);
+        dut_hdl->extFArr_write(extFArr_hdl_inst.write);
+        dut_hdl->roFArr_data(roFArr_hdl_inst.data);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
@@ -98,7 +124,24 @@ public:
         rwD_bfm_inst.clk(clk);
         rwD_bfm_inst.rst_n(rst_n);
 
-        clk.write(true);
+        for (size_t i = 0; i < REGARR_N; i++) {
+            rwArr_bfm_inst[i].if_p(this->rwArr[i]);
+            rwArr_bfm_inst[i].hdl_if_p(rwArr_hdl_inst[i]);
+            rwArr_bfm_inst[i].clk(clk);
+            rwArr_bfm_inst[i].rst_n(rst_n);
+        }
+
+        extFArr_bfm_inst.if_p(this->extFArr);
+        extFArr_bfm_inst.hdl_if_p(extFArr_hdl_inst);
+        extFArr_bfm_inst.clk(clk);
+        extFArr_bfm_inst.rst_n(rst_n);
+
+        roFArr_bfm_inst.if_p(this->roFArr);
+        roFArr_bfm_inst.hdl_if_p(roFArr_hdl_inst);
+        roFArr_bfm_inst.clk(clk);
+        roFArr_bfm_inst.rst_n(rst_n);
+
+        clk.write(A2C_HDL_CLOCK_START);
         SC_THREAD(clock_gen_clk);
         SC_THREAD(reset_driver_rst_n);
 
@@ -121,6 +164,9 @@ private:
     rdy_vld_hdl_if<sc_bv<7>> dSin_hdl_inst;
     rdy_vld_hdl_if<sc_bv<7>> dSout_hdl_inst;
     status_hdl_if<sc_bv<7>> rwD_hdl_inst;
+    std::array<status_hdl_if<sc_bv<7>>, REGARR_N> rwArr_hdl_inst;
+    external_reg_hdl_if<sc_bv<7>> extFArr_hdl_inst;
+    status_hdl_if<sc_bv<7>> roFArr_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

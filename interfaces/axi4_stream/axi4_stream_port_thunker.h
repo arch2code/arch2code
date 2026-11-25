@@ -3,7 +3,7 @@
 #define AXI4_STREAM_PORT_THUNKER_H
 
 #include "axi4_stream_channel.h"
-#include "../../common/systemc/bitTwiddling.h"
+#include "bitTwiddling.h"
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <optional>
 #include <string>

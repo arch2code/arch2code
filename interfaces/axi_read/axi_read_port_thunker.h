@@ -3,7 +3,7 @@
 #define AXI_READ_PORT_THUNKER_H
 
 #include "axi_read_channel.h"
-#include "../../common/systemc/bitTwiddling.h"
+#include "bitTwiddling.h"
 #include <memory>
 #include <optional>
 #include <queue>

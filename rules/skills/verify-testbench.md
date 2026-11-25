@@ -151,7 +151,6 @@ SC_THREAD(endOfTestVoter);
 
 void myBlock::test_req_ack(void)
 {
-    wait(1, SC_NS);          // start delay, if the test needs one
     // ... drive and check ...
 }
 
@@ -164,8 +163,8 @@ void myBlock::endOfTestVoter(void)
 ```
 
 *   **Run order.** The `set_test_names` list sets the order across every block. The order of the `ADD_TEST` lines and of block construction does not matter. A test must not rely on an earlier one, because `--test` can run it alone. In `examples/mixed`, `--test test_mem_hier_cpu_read` fails for this reason: it reads memory that `test_mem_hier_blockd_write` writes.
-*   **Start delay.** `ADD_TEST` takes no delay. When you convert a `wait_test` thread that passes a start delay, make `wait(...)` the first line of the `ADD_TEST` function. Leaving it out raises no error, but the test starts earlier and its timestamps change.
-*   **One test in several blocks.** Functions with the same name in different blocks form one test, which completes when all of them have returned. Every instance of a block that adds the function adds one more. `examples/mixed` splits `test_reg_cpu_rwg` this way: `cpu` writes the register and `blockGLeaf` checks the value it receives.
+*   **Start delay.** `ADD_TEST` takes no delay. When you convert a `wait_test` thread that passes a start delay, keep it as a `wait(...)` on the first line of the `ADD_TEST` function only to preserve the test's log time stamps. Nothing may depend on the delay for ordering. A test that needs a design event first waits on its message. A wait that sets up a case is covered in **review-model** section 3.
+*   **One test in several blocks.** Functions with the same name in different blocks form one test, which completes when all of them have returned. Every instance of a block that adds the function adds one more. `examples/mixed` splits `test_reg_cpu_rwg` this way: `cpu` writes the register and `blockGLeaf` checks the value it receives. The example shows how to split a test across blocks, not how to wait. Its `blockGLeaf` half waits 1 ns and then blocks on a `status` `read()`, which breaks **review-model** section 3.
 *   **End-of-test voter.** Vote from one separate thread that waits on `wait_all_tests_complete()`, as above. Never put a voter inside an `ADD_TEST` function. It would register only when its test starts, so an earlier test could vote and end the run before later tests register their voters.
 *   **Mixing the forms.** One testbench can run some tests with `ADD_TEST` and others with `wait_test` threads, so you can convert a testbench one block at a time. Each test uses one form. `examples/ip_test`'s `fwModelMain::startupInit` uses the `wait_test` form because it is one procedure, not one function per test. It runs two tests in a row and holds the end-of-test voter, so a `--test` run of that testbench never completes.
 *   **Two functions in one block under one test name.** One class cannot hold two functions with the same name, so `ADD_TEST` cannot express this. `testController::GetInstance().add_test("name", [this]() { secondHalf(); });` registers a second function under the same name. Capture only `this`. A lambda that captures a constructor local by reference reads freed memory when the test runs.

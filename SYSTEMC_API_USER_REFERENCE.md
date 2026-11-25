@@ -271,25 +271,26 @@ A register the block owns is an `hwRegister` member that the generator declares 
 - `myRegister.write(value)` - Sets the value and notifies the event passed to `registerEvent()`
 - `myRegister.registerEvent(&ev)` - Hooks an `sc_event` that fires on each firmware write and on each `write()`. The register holds one event, so a second call replaces the first
 - `myRegister.m_val` - The stored value. Assigning to it directly notifies no event
+- `myRegister.setWriteErrorHandler(fn)` - Calls `fn(byteOffset, word)` at each firmware write of a 32-bit word, in the thread performing the firmware write, after the word is stored. On a read-only register it runs and nothing is stored. This is the place to act on a firmware write, because it runs in bus order. On an `rw` register the RTL sees only the stored value, so `fn` only derives state from it. A refusal or other per-write action needs `regType: ext`, where returning `true` answers with a bus error when the project sets `regBusErrorResponses`
 
 An `hwRegister` has no `->`, no `setExternalEvent` and no `readNonBlocking`.
+
+An array register (`count:` in YAML) is a `std::array` of `hwRegister`, one per element, for example `std::array< hwRegister< arrRegSt, 4 >, REGARR_N > rwArr;`. The generator registers element k at the array's offset plus k times its stride. To act on a firmware write to any element, give each element a write handler: `for (auto &r : rwArr) r.setWriteErrorHandler([this](uint64_t, uint32_t) { onArrWrite(); return false; });`.
 
 **Example - React to firmware writes:**
 
 ```cpp
-void myBlock::controlThread(void)
-{
-    sc_event ctrlEvent;
-    controlReg.registerEvent(&ctrlEvent);
-    while (true) {
-        wait(ctrlEvent);
-        controlRegSt ctrl = controlReg.read();
-        // act on ctrl
-    }
-}
+// constructor body
+controlReg.setWriteErrorHandler([this](uint64_t, uint32_t) {
+    controlRegSt ctrl = controlReg.read();
+    // derive state from ctrl (rw), or act on this write (ext)
+    return false;
+});
 ```
 
-Firmware writes a register wider than 32 bits one word at a time, and each word write notifies the event. A thread woken by the low-word write still sees the old high word. A read-only register ignores firmware writes.
+Do not apply firmware writes in a thread that waits on the `registerEvent()` event. It runs after the bus access completes, so a later access can overtake it.
+
+Firmware writes a register wider than 32 bits one word at a time, and each word write calls the write handler and notifies the event. The handler for the low word still sees the old high word. A read-only register ignores firmware writes.
 
 ### 3.2 Direct Memory Access
 
@@ -828,19 +829,20 @@ void myModule::updateStatus() {
 - `myPort->readNonBlocking(value)` - Samples the current value (non-blocking)
 - `myPort->setExternalEvent(event)` - Replaces the port's own event, so `read()` also returns when another port fires it. There is no `isActive()`
 
+A block samples a `status` input with `readNonBlocking()` where it makes the decision. Only the one block that turns an unclocked boundary pin input, or a level that only rises until reset, into messages waits on `read()` (the **review-model** skill, section 3).
+
 `read()` wakes on each firmware write, on the first `write()`, and on each later `write()` that changes the value. The initial value raises no event, so a thread that needs it at start-up samples it with `readNonBlocking()` first. `read()` can return the value it returned last time, so compare with the last value seen.
 
 **Example:**
 
 ```cpp
-void myModule::monitorStatus() {
+void myModule::handleRequest(const reqSt& req) {
+    // Sample the status where the block decides
     bSizeRegSt status;
-    
-    // Blocking read (waits for next update)
-    statusPort->read(status);
-    
-    // Non-blocking read (gets current value)
     statusPort->readNonBlocking(status);
+    if (status.index == req.index) {
+        // ...
+    }
 }
 ```
 
@@ -1034,14 +1036,14 @@ A firmware register whose storage lives in the block that owns it, not in the re
 #### Source side (register handler)
 
 **API:**
-- `myPort->reg_write_cmd(value)` - Issues a firmware write. It wakes the owner's `read()` and leaves the readback value unchanged. A test driver that emulates firmware uses this call too
+- `myPort->reg_write_cmd(value)` - Issues a firmware write. It wakes the owner's `read()`, leaves the readback value unchanged, and returns when the owner calls `read()` again. A test driver that emulates firmware uses this call too
 - `myPort->readNonBlocking(value)` - The readback value the owner last published
 - `myPort->write(value)` - Never wakes the owner's `read()`. Do not use it to drive the owner
 
 #### Sink side (owning block)
 
 **API:**
-- `myPort->read(value)` - Blocks until firmware writes and returns the written value
+- `myPort->read(value)` - Blocks until firmware writes and returns the written value. A write made while the owner is elsewhere waits for the next call. The next call completes the write, so publish its readback value first
 - `myPort->update_mirror(value)` - Publishes the value firmware reads back, without waking `read()`
 - `myPort->reg_write(value)` - Publishes the readback value and also wakes `read()`, so do not use it from a block that loops on `read()`
 - `myPort->setExternalEvent(event)` - Hooks a shared event. It fires only on `write()`, never on a firmware write. There is no `isActive()`
@@ -1409,7 +1411,7 @@ These APIs are used in generated code. Users rarely need to call them directly. 
 **Purpose:** Address space management for register and memory access.
 
 **Framework APIs:**
-- `addRegister(address, size, name, ptr)` - Register a register
+- `addRegister(address, size, name, ptr)` - Register a register. The generator calls it once per element of an array register, in a loop at `base + i * stride`
 - `addMemory(address, size, name, ptr)` - Register a memory. A memory with a parameterizable structure is registered this way, with `size` the row stride times the row count
 - `addMemory(address, structByteWidth, wordLines, name, ptr)` - Register memory with dimensions
 - `cpu_read(address)` - Read from address space
@@ -1642,32 +1644,31 @@ void producer::outAXI0Rd(void) {
 
 ### 7.2 Synchronization (synchLock)
 
-A mutex that also records decisions so tandem can replay them. The `systemc-synchronization` skill (`rules/skills/systemc-synchronization.md`, section 2) has the full rules.
+`synchLock` records a block's ordering decisions so Tandem (A2C Pro) can replay them. Outside Tandem, `lock()` and `unlock()` are a plain mutex and `arb(v)` returns `v`. The **systemc-synchlock** skill (A2C Pro) has the full rules, and **systemc-synchronization** section 2 has the arbitration code that picks each value.
 
-**Purpose:** Guard state shared between threads, and record timing-dependent arbitration choices.
+**Purpose:** Record the decisions the RTL makes, such as an arbiter's winner, so both Tandem copies take the same branch. It is not a way to share state between threads. review-model FAILs a mutex added for convenience and asks for a busy flag or an `sc_event`.
 
 **Note:** Memory RMW operations use a row lock internally (see section 3.2).
 
 **API:**
 - `synchLockFactory<T>::getInstance().newLock(getAltName(), lockName)` - Create a lock. `T` defaults to `uint64_t`. `getAltName()` gives both tandem copies the same key. Lock names must be unique within a block instance
-- `lock->lock(value)` - Take the mutex. `value` is the tandem match key, so give each call site its own value
-- `lock->unlock()` - Release it. There is no RAII guard, so unlock on every path out
-- `lock->arb(value)` - Record the winner your code chose. Outside tandem it returns `value`. In tandem the second copy returns the first copy's value. Keep `arb()` and `lock()` on separate locks
+- `lock->arb(value)` - Record the winner your code chose. Outside tandem it returns `value`. In tandem the second copy returns the first copy's value
+- `lock->lock(value)` and `lock->unlock()` - A site that matches one decision the RTL makes. `value` is the tandem match key, so give each call site its own value. There is no RAII guard, so unlock on every path out. Keep `arb()` and `lock()` on separate locks
 
-**Example - Guard shared state:**
+**Example - Record an arbiter's winner:**
 
 ```cpp
 // block implementation members
-std::shared_ptr<synchLock<>> stateLock;
+std::shared_ptr<synchLock<>> srcArb;
 
 // constructor initializers
-        ,stateLock(synchLockFactory<>::getInstance().newLock(getAltName(), "stateLock"))
+        ,srcArb(synchLockFactory<>::getInstance().newLock(getAltName(), "srcArb"))
 
-void myModule::thread1(void)
+void myModule::serve(void)
 {
-    stateLock->lock(LOCK_SITE_THREAD1);   // a constant the block defines, one per call site
-    accessSharedResource();
-    stateLock->unlock();
+    src_t winner = pickNext();                         // the RTL's arbitration policy
+    winner = static_cast<src_t>(srcArb->arb(winner));  // Tandem replays the first copy's choice
+    switch (winner) { /* ... */ }
 }
 ```
 
@@ -1866,7 +1867,7 @@ void producer::dataGenerator() {
         // Send (blocks if sink not ready)
         outputPort->write(data);
         
-        // Optional: Add timing
+        // The source's rate: one beat every 10 ns
         wait(10, SC_NS);
     }
 }
@@ -1887,7 +1888,7 @@ void consumer::dataProcessor() {
         // Process data
         processData(data);
         
-        // Optional: Processing delay
+        // The time the hardware takes to process a beat
         wait(5, SC_NS);
     }
 }
@@ -1897,28 +1898,23 @@ void consumer::dataProcessor() {
 
 ```cpp
 void myModule::apbMasterThread() {
-    while (true) {
-        apbAddrSt addr;
-        apbDataSt data;
-        
-        // Write transaction
-        addr.address = 0x1000;
-        data._setData(0xDEADBEEF);
-        
-        log_.logPrint(std::format("APB Write addr:0x{:x} data:0x{:x}", 
-                                  addr._getAddress(), data._getData()));
-        
-        apbPort->request(true, addr, data);
-        
-        // Read transaction
-        addr.address = 0x1000;
-        apbPort->request(false, addr, data);
-        
-        log_.logPrint(std::format("APB Read addr:0x{:x} data:0x{:x}",
-                                  addr._getAddress(), data._getData()));
-        
-        wait(100, SC_NS);
-    }
+    apbAddrSt addr;
+    apbDataSt data;
+
+    // Write transaction
+    addr.address = 0x1000;
+    data._setData(0xDEADBEEF);
+
+    log_.logPrint(std::format("APB Write addr:0x{:x} data:0x{:x}",
+                              addr._getAddress(), data._getData()));
+
+    apbPort->request(true, addr, data);
+
+    // Read the value back
+    apbPort->request(false, addr, data);
+
+    log_.logPrint(std::format("APB Read addr:0x{:x} data:0x{:x}",
+                              addr._getAddress(), data._getData()));
 }
 ```
 

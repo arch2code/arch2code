@@ -97,7 +97,7 @@ public:
     addressElement *find(uint64_t address) {
         for (auto &it : m_addressMap)
         {
-            if (address >= it.m_address && address < it.m_address + it.m_size)
+            if (maps(it, address))
             {
                 return &it;
             }
@@ -108,7 +108,7 @@ public:
     bool contains(uint64_t address) const {
         for (auto &it : m_addressMap)
         {
-            if (address >= it.m_address && address < it.m_address + it.m_size)
+            if (maps(it, address))
             {
                 return true;
             }
@@ -116,6 +116,13 @@ public:
         return false;
     }
 private:
+    // A register answers only at the offset of each of its 32-bit words, as the
+    // generated RTL decodes it. Any other offset inside it is unmapped.
+    static bool maps(const addressElement &it, uint64_t address)
+    {
+        return address >= it.m_address && address < it.m_address + it.m_size
+            && (it.m_type == addressElementType::MEM || (address - it.m_address) % 4 == 0);
+    }
     std::vector<addressElement> m_addressMap;
     uint64_t m_lastWriteAddress=0;
     logBlock &log_;  // parents logging reference
@@ -137,7 +144,7 @@ void registerHandler(addressMap &regs, sc_port< BUS_IN_IF< ADDR, DATA > > &busIn
     {
         busIn->reqReceive(isWrite, addr, data);
         uint64_t address = addr._getAddress() & (addressMask);
-        // An address no register or memory occupies drops the write and reads 0xBADDC0DE,
+        // An address that decodes to no register word or memory drops the write and reads 0xBADDC0DE,
         // as an empty decoder slot and the generated RTL do
         if (!regs.contains(address))
         {

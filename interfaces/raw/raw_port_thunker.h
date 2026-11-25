@@ -2,7 +2,7 @@
 #ifndef RAW_PORT_THUNKER_H
 #define RAW_PORT_THUNKER_H
 
-#include "../../common/systemc/bitTwiddling.h"
+#include "bitTwiddling.h"
 #include "raw_channel.h"
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <cstdint>

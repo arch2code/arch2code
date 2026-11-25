@@ -24,6 +24,7 @@ Convert a SystemC model (`model/<block>.cppm`) into synthesizable SystemVerilog 
 | `rdy_vld` output, `port->write()` | `rdy_vld_if.src` |
 | `status` input, `readNonBlocking()` | `status_if.dst`, read `.data` |
 | Owned `rw` register, `reg.read()` | `status_if` instance, read `<reg>.data` |
+| Owned `rw` array register, `rwArr[i].read()` | `status_if` interface array, read `rwArr[gi].data` inside a `for (genvar gi ...)` block. Index only with a constant or genvar (`rtl-registers.md`) |
 | Owned memory, `hwMemory` `read(i)` / `write(i, v)` | generated `memory_if` instance named after the memory |
 | `memory` port, `port->request(isWrite, addr, data)` | `memory_if.src` port |
 
@@ -103,7 +104,7 @@ Round the reciprocal up and shift by at least the input width plus one. A larger
 *   A model `for` loop that sums parallel values becomes a lane-reduction tree: sum the lanes, then add to the accumulator (`rtl-patterns.md`, "Parallel-lane reduction").
 
 ### 6. Registers
-The model reacts to register writes with events: `setExternalEvent` and `readNonBlocking()` on a `status` port, or `registerEvent` and `read()` on an owned `hwRegister`. RTL reads `<reg>.data` combinationally every cycle:
+The model acts on a firmware write to an owned `hwRegister` in its write handler, and samples a `status` port with `readNonBlocking()` where it decides. On an `rw` register the handler only derives state from the value, and RTL reads `<reg>.data` combinationally every cycle:
 
 ```systemverilog
 `DFF_INST(logic, modeActive)
@@ -111,6 +112,8 @@ always_comb begin
     n_modeActive = (cfgReg.data.mode == ACTIVE);
 end
 ```
+
+A handler that refuses or acts per write belongs on an `ext` register, and becomes the `if (|<reg>.write)` branch in **rtl-registers** section 5.
 
 ### 7. Drive the outputs
 

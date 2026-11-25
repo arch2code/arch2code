@@ -777,6 +777,12 @@ python3 test_reg_bus_error_responses.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: regBusErrorResponses captures each ext array element's own pslverr on a write"
+echo "------------------------------------------------------------------------"
+python3 test_reg_bus_error_ext_array.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: generated RTL register block reads 32'hBADD_C0DE and drops writes past a memory's variant depth"
 echo "------------------------------------------------------------------------"
 python3 test_regs_rtl_mem_depth.py || FAILED=1
@@ -825,6 +831,12 @@ python3 test_hw_register_wide_word_write.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: registerHandler maps a register only at the word offsets the generated RTL decodes"
+echo "------------------------------------------------------------------------"
+python3 test_register_handler_word_decode.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: each word write to a wide hwRegisterIf rw register reaches the child"
 echo "------------------------------------------------------------------------"
 python3 test_hw_register_if_wide_word_write.py || FAILED=1
@@ -834,6 +846,30 @@ echo ""
 echo "Test Suite ${idx}: an ext register wider than the register bus is rejected at make db"
 echo "------------------------------------------------------------------------"
 python3 test_error_ext_register_width.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a register array or its registerConnections that cannot be built is rejected at make db"
+echo "------------------------------------------------------------------------"
+python3 test_error_register_arrays.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a register array is one address unit, and the views and regAddresses.h describe it"
+echo "------------------------------------------------------------------------"
+python3 test_register_array_layout.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a testbench External re-creates a register array's channel as a vector, with each element's source"
+echo "------------------------------------------------------------------------"
+python3 test_register_array_tb_external.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: split ext and ro arrays generate, a register handler registers in address order, and a child port does not depend on row order"
+echo "------------------------------------------------------------------------"
+python3 test_register_array_generation.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
@@ -1206,6 +1242,24 @@ echo ""
 echo "Test Suite ${idx}: external_reg_channel legs, wakeup deltas and Tandem hooks"
 echo "------------------------------------------------------------------------"
 python3 test_external_reg_channel.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: an external_reg write completes only after the owner handles it"
+echo "------------------------------------------------------------------------"
+python3 test_external_reg_owner_ack.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: external_reg_src_bfm forwards each RTL strobe and asserts on a slow owner"
+echo "------------------------------------------------------------------------"
+python3 test_external_reg_src_bfm.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: external_reg reg_write() and firmware writes share one command slot"
+echo "------------------------------------------------------------------------"
+python3 test_external_reg_command_slot.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

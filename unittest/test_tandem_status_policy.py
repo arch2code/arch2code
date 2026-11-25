@@ -36,13 +36,13 @@ from pysrc.processYaml import projectOpen
 def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra='', in_extra='',
           ro_reg_extra='', rw_reg_extra='', ro_rc_extra='', rw_rc_extra='', own_reg_extra='',
           wrap_out_extra='', leaf_ro_extra='', leaf_ext_extra='', leaf_rw_extra='', leaf_mem_extra='',
-          ext_reg_extra='', ext_rc_extra='', wide_ext_extra=None, ext_tb_extra=None):
+          ext_reg_extra='', ext_rc_extra='', wide_ext_extra=None, ext_tb_extra=None, leaf_arr_extra=None):
     """Each *_extra is appended inside one row's inline dict, e.g. ', tandem: warn'.
     A fan_extra adds a second row from uSrcA's statIf, which getBlockData rejects as a
     duplicate port, so only a case make db rejects uses it. A wide_ext_extra adds a
     64-bit ext register to regLeaf, which make db rejects as wider than the bus. An
     ext_tb_extra connects a second ext register to an instance of rtlOnly, which has
-    hasMdl: false."""
+    hasMdl: false. A leaf_arr_extra adds an ro array register of four elements to regLeaf."""
     tbInst = '' if ext_tb_extra is None else "    uRegTb:     { container: regOwner, instanceType: rtlOnly }\n"
     tbReg = '' if ext_tb_extra is None else (
         '    - { register: extTb, regType: ext, block: regOwner, structure: cfgRegSt, desc: "ext to tb" }\n')
@@ -51,6 +51,9 @@ def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra
     wide = '' if wide_ext_extra is None else (
         '    - { register: wideExt, regType: ext, block: regLeaf, structure: wideRegSt, desc: "wide ext"'
         + wide_ext_extra + ' }\n')
+    arr = '' if leaf_arr_extra is None else (
+        '    - { register: leafArr, regType: ro, block: regLeaf, structure: cfgRegSt, count: 4, desc: "leaf ro array"'
+        + leaf_arr_extra + ' }\n')
     fan = '' if fan_extra is None else (
         "    - { interface: statIf, src: uSrcA, dst: uSinkB" + fan_extra + " }\n")
     preamble = APB_PREAMBLE.replace('structures:\n', """structures:
@@ -71,7 +74,8 @@ def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra
     return (preamble + """
 blocks:
 """ + render_plain_block('top', '        hasRtl: false\n') + render_router('apbDecode', 'top')
-            + render_plain_block('srcLeaf') + render_plain_block('sinkLeaf') + render_plain_block('wrap')
+            + render_plain_block('srcLeaf') + render_plain_block('sinkLeaf') + render_plain_block('regSink')
+            + render_plain_block('wrap')
             + render_plain_block('regOwner') + render_plain_block('tbSrc', '        hasRtl: false\n')
             + render_plain_block('regLeaf') + """    rtlOnly:
         desc: "RTL-only block"
@@ -88,7 +92,7 @@ instances:
     uWrap:      { container: top, instanceType: wrap }
     uInner:     { container: wrap, instanceType: srcLeaf }
     uRegOwner:  { container: top, instanceType: regOwner, addressGroup: top }
-    uRegLeaf:   { container: regOwner, instanceType: sinkLeaf }
+    uRegLeaf:   { container: regOwner, instanceType: regSink }
     uOwnLeaf:   { container: top, instanceType: regLeaf, addressGroup: top }
 """ + tbInst + """
 connections:
@@ -110,7 +114,7 @@ registers:
     - { register: leafExt, regType: ext, block: regLeaf, structure: cfgRegSt, desc: "leaf ext" """ + leaf_ext_extra + """ }
     - { register: leafMem, regType: memory, block: regLeaf, structure: cfgRegSt, addressStruct: apbAddrSt, wordLines: 8, desc: "leaf memory" """ + leaf_mem_extra + """ }
     - { register: extReg, regType: ext, block: regOwner, structure: cfgRegSt, desc: "connected ext" """ + ext_reg_extra + """ }
-""" + wide + tbReg + """
+""" + wide + arr + tbReg + """
 registerConnections:
     - { register: roReg, block: regOwner, instance: uRegLeaf""" + ro_rc_extra + """ }
     - { register: rwReg, block: regOwner, instance: uRegLeaf""" + rw_rc_extra + """ }
@@ -132,7 +136,7 @@ def accept(label, expected, **rows):
     try:
         prj = projectOpen(db_path)
         got = {block: prj.getBlockData(find_block(prj, block)[0])['tandemStatusPolicy']
-               for block in ('srcLeaf', 'sinkLeaf', 'wrap', 'regOwner')}
+               for block in ('srcLeaf', 'sinkLeaf', 'regSink', 'wrap', 'regOwner')}
         ok = got == expected
         print(f"{'PASS' if ok else 'FAIL'}: {label}" + ('' if ok else f": expected {expected}, got {got}"))
         RESULTS.append(ok)
@@ -159,6 +163,27 @@ def accept_reads(label, expected, **rows):
         cleanup([project_path, db_path] + arch_paths)
 
 
+def accept_array_reads(label):
+    """tandem: warn on regLeaf's ro array register gives one read entry per element, named
+    leafArr[k]. The fixture places leafArr at 0x20 with an 8-byte element stride."""
+    try:
+        db_path, project_path, arch_paths = build_database(_arch(leaf_arr_extra=', tandem: warn'))
+    except RuntimeError as exc:
+        print(f"FAIL: {label}: {exc}")
+        RESULTS.append(False)
+        return
+    try:
+        prj = projectOpen(db_path)
+        expected = [{'register': f'leafArr[{k}]', 'offset': offset, 'size': 2, 'policy': 'warn'}
+                    for k, offset in enumerate((32, 40, 48, 56))]
+        got = prj.getBlockData(find_block(prj, 'regLeaf')[0])['tandemRegisterReads']['registers']
+        ok = got == expected
+        print(f"{'PASS' if ok else 'FAIL'}: {label}" + ('' if ok else f": expected {expected}, got {got}"))
+        RESULTS.append(ok)
+    finally:
+        cleanup([project_path, db_path] + arch_paths)
+
+
 def reject(label, needles, **rows):
     """make db fails and its diagnostic holds every needle."""
     try:
@@ -178,7 +203,7 @@ def reject(label, needles, **rows):
         cleanup([project_path, db_path] + arch_paths)
 
 
-NONE = {'srcLeaf': {}, 'sinkLeaf': {}, 'wrap': {}, 'regOwner': {}}
+NONE = {'srcLeaf': {}, 'sinkLeaf': {}, 'regSink': {}, 'wrap': {}, 'regOwner': {}}
 
 
 def policy(**blocks):
@@ -198,19 +223,19 @@ def run_all_tests():
     accept("tandem: 12.5 is a 12.5 ns level window", policy(srcLeaf={'statIf': 12.5}),
            **{k: v.format(v=12.5) for k, v in both.items()})
     accept("tandem: on a registerConnections row of an ro register",
-           policy(sinkLeaf={'roReg': 'final'}), ro_rc_extra=', tandem: final')
+           policy(regSink={'roReg': 'final'}), ro_rc_extra=', tandem: final')
     accept("tandem: on an ro registers row applies to its registerConnections ports",
-           policy(sinkLeaf={'roReg': 'off'}), ro_reg_extra=', tandem: off')
+           policy(regSink={'roReg': 'off'}), ro_reg_extra=', tandem: off')
     accept("the same tandem: on the registers row and its registerConnections row",
-           policy(sinkLeaf={'roReg': 'warn'}), ro_reg_extra=', tandem: warn', ro_rc_extra=', tandem: warn')
+           policy(regSink={'roReg': 'warn'}), ro_reg_extra=', tandem: warn', ro_rc_extra=', tandem: warn')
     for value, resolved in (('fatal', 'fatal'), ('warn', 'warn'), ('final', 'final'), ('off', 'off'),
                             ('250', 250.0)):
         accept(f"tandem: {value} on a connected ext registers row applies to its external_reg port",
-               policy(sinkLeaf={'extReg': resolved}), ext_reg_extra=f', tandem: {value}')
+               policy(regSink={'extReg': resolved}), ext_reg_extra=f', tandem: {value}')
     accept("tandem: on a registerConnections row of an ext register",
-           policy(sinkLeaf={'extReg': 'final'}), ext_rc_extra=', tandem: final')
+           policy(regSink={'extReg': 'final'}), ext_rc_extra=', tandem: final')
     accept("the same tandem: on an ext registers row and its registerConnections row",
-           policy(sinkLeaf={'extReg': 'warn'}), ext_reg_extra=', tandem: warn', ext_rc_extra=', tandem: warn')
+           policy(regSink={'extReg': 'warn'}), ext_reg_extra=', tandem: warn', ext_rc_extra=', tandem: warn')
     accept_reads("a leaf with no tagged register has no read table", None)
     for value, resolved in (('fatal', 'fatal'), ('warn', 'warn'), ('final', 'final'), ('off', 'off'),
                             ('250', 250.0)):
@@ -220,6 +245,7 @@ def run_all_tests():
                      {'leafExt': resolved}, leaf_ext_extra=f', tandem: {value}')
     accept_reads("tandem: on an ro and an ext register of one leaf", {'leafRo': 'off', 'leafExt': 'warn'},
                  leaf_ro_extra=', tandem: off', leaf_ext_extra=', tandem: warn')
+    accept_array_reads("tandem: warn on an ro array register covers each of its four elements")
 
     all_src = {k: v.format(v='fatal') for k, v in both.items()}
     reject("an unknown word", ["tandem: loud", "not a tandem status-compare policy"],

@@ -6,7 +6,8 @@
 #include "systemc.h"
 #include "bfmClockEdge.h"
 #include "external_reg_channel.h"
-#include <deque>
+#include "q_assert.h"
+#include <format>
 
 template<typename VL_DATA_T>
 struct external_reg_hdl_if: public sc_interface {
@@ -71,7 +72,12 @@ public:
             if (clk.posedge() && hdl_if_p->write.read().or_reduce()) {
                 DATA_T wdata;
                 wdata.sc_unpack(hdl_if_p->wdata);
+                const sc_time start = sc_time_stamp();
                 if_p->reg_write_cmd(wdata);
+                Q_ASSERT(sc_time_stamp() == start,
+                         std::format("external_reg has fixed timing: the owner must complete a write in the time step "
+                                     "of its strobe, but it took {}, and the BFM samples no strobe while it waits",
+                                     (sc_time_stamp() - start).to_string()));
             }
         }
     }
@@ -107,53 +113,37 @@ public:
 
     external_reg_dst_bfm(sc_module_name modulename) {
         m_edge.clk(clk);
-        SC_THREAD(write_reader_thread);
         SC_THREAD(write_driver_thread);
         SC_THREAD(rdata_monitor_thread);
     }
 
-    // read() sees only a command issued while it waits, so a dedicated reader
-    // queues each one and a write arriving mid-strobe is not lost. Firmware
-    // reads the mirror, which follows RTL rdata a clock behind.
-    // update_mirror does not notify read(), so rdata publishes never re-enter here.
-    void write_reader_thread() {
-        while (true) {
-            DATA_T data;
-            if_p->read(data);
-            // the RTL is held in reset, so a write issued now is lost
-            if (!rst_n) {
-                continue;
-            }
-            pending.push_back(data);
-            pending_event.notify(SC_ZERO_TIME);
-        }
-    }
-
-    // Each queued reg_write_cmd() → one-cycle HDL write strobe, in order, so
-    // queued commands strobe on consecutive edges. A reset discards the queue,
-    // as it clears the RTL register.
+    // Each reg_write_cmd() → one-cycle HDL write strobe. The thread returns to
+    // read(), which completes the command, only after it has published the
+    // rdata the strobe produced, so the firmware write completes after the RTL
+    // has taken it. update_mirror does not notify read(), so rdata publishes
+    // never re-enter here.
     void write_driver_thread() {
         hdl_if_p->write = 0;
         hdl_if_p->wdata = VL_DATA_T(0);
         while (true) {
+            DATA_T data;
+            if_p->read(data);
+            m_edge.settle();
+            // The BFM drives no strobe in reset, so it drops a write issued then.
             if (!rst_n) {
-                pending.clear();
-                hdl_if_p->write = 0;
-                wait(clk.posedge_event());
                 continue;
             }
-            if (pending.empty()) {
-                hdl_if_p->write = 0;
-                wait(pending_event);
-                m_edge.settle();
-                continue;
-            }
-            DATA_T data = pending.front();
-            pending.pop_front();
 
             hdl_if_p->wdata = data.sc_pack();
             hdl_if_p->write = 1; // non-zero strobe; RTL uses |write
             wait(clk.posedge_event());
+            hdl_if_p->write = 0;
+            // Registered rdata updates on the write edge; sample on the next clock.
+            wait(clk.posedge_event());
+
+            DATA_T rdata;
+            rdata.sc_unpack(hdl_if_p->rdata);
+            if_p->update_mirror(rdata);
         }
     }
 
@@ -182,10 +172,6 @@ public:
             }
         }
     }
-
-private:
-    std::deque<DATA_T> pending;
-    sc_event pending_event;
 
 };
 

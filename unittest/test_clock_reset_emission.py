@@ -388,9 +388,9 @@ fileGeneration:
 # parameterizable registers and memories, the two memory access sequences, and
 # the APB ready pipeline.
 #
-# regAccessor reaches the register from the DEFAULT domain, so the leaf spans two
-# clocks while its handler spans one - which is what separates the handler's own
-# derived set from its owning block's.
+# regAccessor, a child of the leaf, reaches the register from the DEFAULT
+# domain, so the leaf spans two clocks while its handler spans one - which is
+# what separates the handler's own derived set from its owning block's.
 REGS_DESIGN = """include:
     - shared.yaml
 
@@ -426,7 +426,7 @@ instances:
     uCPU:         {{ container: top, instanceType: cpu }}
     uAPBDecode:   {{ container: top, instanceType: apbDecode{routerMap} }}
     uLeafA:       {{ container: top, instanceType: leafA, addressGroup: top, variant: wide{leafMap} }}
-    uRegAccessor: {{ container: top, instanceType: regAccessor }}
+    uRegAccessor: {{ container: leafA, instanceType: regAccessor }}
 
 connections:
     - {{ interface: apbReg, src: uCPU, dst: uAPBDecode{feed_clock} }}
@@ -1439,16 +1439,46 @@ def check_gated_clock_free_runs_after_link_loss(emitted):
 
 
 def check_reset_signal_per_reset(emitted):
-    """One sc_signal<bool> per resolved reset, born released."""
+    """One sc_signal<bool> per resolved reset, born released under Verilator."""
     text = emitted['verif/fastProd_hdl_sc_wrapper.h']
     for decl in ('sc_signal<bool> rst_n;', 'sc_signal<bool> rstSlow_n;',
                  'sc_signal<bool> rstPico_n;'):
         _expect(text, decl, 'each resolved reset is its own signal',
                 'fastProd SC wrapper')
-    for init in ('rst_n("rst_n", true)', 'rstSlow_n("rstSlow_n", true)',
-                 'rstPico_n("rstPico_n", true)'):
-        _expect(text, init, "a reset is born released so the driver's first "
-                "assertion is a real negedge", 'fastProd SC wrapper')
+    for init in ('rst_n("rst_n", A2C_HDL_RESET_BORN)',
+                 'rstSlow_n("rstSlow_n", A2C_HDL_RESET_BORN)',
+                 'rstPico_n("rstPico_n", A2C_HDL_RESET_BORN)'):
+        _expect(text, init, "a reset is born released under Verilator (the "
+                "driver's first assertion is a real negedge) and asserted "
+                "under VCS / Xcelium", 'fastProd SC wrapper')
+    return True
+
+
+def check_time_zero_levels_per_simulator(emitted):
+    """Each input clock starts at A2C_HDL_CLOCK_START. VCS and Xcelium start the
+    clocks low and the resets asserted, so no 4-state flop is clocked at time 0
+    while its reset is X. Verilator keeps a rising edge and a reset negedge at
+    time 0, which its 2-state flops need to be reset then."""
+    text = emitted['verif/fastProd_hdl_sc_wrapper.h']
+    for clock in ('clk', 'clkSlow', 'clkPico'):
+        _expect(text, f'{clock}.write(A2C_HDL_CLOCK_START);',
+                'each input clock starts at the simulator\'s time-0 level',
+                'fastProd SC wrapper')
+        _refute(text, f'{clock}.write(true);', 'a clock starts at '
+                'A2C_HDL_CLOCK_START, not high under every simulator',
+                'fastProd SC wrapper')
+    block = ('#if defined(VCS_DUT) || defined(XCELIUM_DUT)\n'
+             '#define A2C_HDL_CLOCK_START false\n'
+             '#define A2C_HDL_RESET_BORN false\n'
+             '#else\n'
+             '#define A2C_HDL_CLOCK_START true\n'
+             '#define A2C_HDL_RESET_BORN true\n'
+             '#endif\n')
+    _expect(text, block, 'VCS and Xcelium start clocks low and resets asserted; '
+            'Verilator starts clocks high and resets released', 'fastProd SC wrapper')
+    if text.index(block) > text.index(': public sc_module, public blockBase'):
+        raise AssertionError("fastProd SC wrapper must define the time-0 macros "
+                             "before the class that uses them")
     return True
 
 
@@ -2501,17 +2531,19 @@ endmodule
 
 
 def check_regs_handler_off_bus_lints_clean(fixture, emitted):
-    """The emitted handler, and the leaf instantiating it and its memories,
-    lint clean under verilator (--lint-only --no-timing, no -Wall, the
+    """The emitted handler, and the leaf instantiating it, its memories and
+    regAccessor, lint clean under verilator (--lint-only --no-timing, no -Wall, the
     default reset style). CFG_WIDTH is bound in the wrapper because the
     wrapper is the elaborated top."""
     db = os.path.join(fixture, 'regs.db')
     shared_pkg = os.path.join(fixture, 'rtl', 'shared_package.sv')
-    gen = _arch2code('--db', db, '-r', '--systemVerilog', '--file', shared_pkg,
-                     cwd=fixture)
-    if gen.returncode != 0:
-        raise AssertionError(
-            f"generating rtl/shared_package.sv failed:\n{gen.stdout}\n{gen.stderr}")
+    accessor = os.path.join(fixture, 'rtl', 'regAccessor.sv')
+    for path in (shared_pkg, accessor):
+        gen = _arch2code('--db', db, '-r', '--systemVerilog', '--file', path,
+                         cwd=fixture)
+        if gen.returncode != 0:
+            raise AssertionError(
+                f"generating {os.path.relpath(path, fixture)} failed:\n{gen.stdout}\n{gen.stderr}")
 
     leaf_module_match = re.search(r'(?m)^module\s+(\w+)', emitted[REGS_LEAF])
     if not leaf_module_match:
@@ -2536,6 +2568,7 @@ def check_regs_handler_off_bus_lints_clean(fixture, emitted):
                 FLOPS_SV, ASSERTS_SVH, shared_pkg,
                 os.path.join(fixture, 'rtl', 'top_package.sv'),
                 os.path.join(fixture, REGS_HANDLER),
+                accessor,
                 os.path.join(fixture, REGS_LEAF),
                 wrapper_path])
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -2898,6 +2931,8 @@ def main():
              check_gated_clock_free_runs_after_link_loss),
             ('one sc_signal per reset, born released',
              check_reset_signal_per_reset),
+            ('clocks and resets start at each simulator\'s time-0 level',
+             check_time_zero_levels_per_simulator),
             ('each reset releases after its own releaseCycles edges of its '
              'own clock', check_release_counts_own_clock),
             ('no wrapper releases a reset at an absolute time',

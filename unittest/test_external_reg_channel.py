@@ -2,12 +2,15 @@
 """external_reg_channel delivers each leg at a fixed delta, with fixed values.
 
 The channel carries three legs between a driver and the register owner:
-  * command: reg_write_cmd() wakes read() one delta later.
+  * command: reg_write_cmd() wakes read() one delta later, and returns one
+    delta after the owner calls read() again.
   * mirror: update_mirror() changes readNonBlocking() in the same delta and
     wakes wait_mirror() one delta later.
   * status: write() wakes reg_read() one delta later.
-A Tandem tee sets a command hook and a mirror hook, which run inside the call
-that makes the change, in the caller's delta, and change no wakeup.
+A Tandem tee sets a command hook, a mirror hook and a done hook, which run
+inside the call that makes the change, in the caller's delta, and change no
+wakeup. It posts commands with post_cmd() and completes the ones it takes
+through the hook with complete_cmd().
 
 The Tandem tees and the BFMs rely on these timings, so this pins them.
 """
@@ -64,19 +67,21 @@ SC_MODULE( probe )
     external_reg_channel<regSt> chExt;   // status leg redirected to extEvent
     external_reg_channel<regSt> chHook;  // both hooks set
     external_reg_channel<regSt> chFwd;   // takes chHook's commands through its command hook
+    external_reg_channel<regSt> chTee;   // completed by complete_cmd() alone, nothing reads it
     external_reg_channel<regSt> chCopy;  // takes chHook's mirror through its mirror hook
     sc_event extEvent;
-    waiter cmd, mirror, status, initMirror, ext, hookCmd, hookMirror, hookRead, fwdRead, hookStatus;
+    waiter cmd, mirror, status, initMirror, ext, hookCmd, hookMirror, hookRead, fwdRead, hookStatus, done;
     std::string hookCmdValues;
 
     SC_CTOR( probe ) : ch( "ch", "tb", 0x11 ), chInit( "chInit", "tb", 0x42 ), chExt( "chExt", "tb" ),
-                       chHook( "chHook", "tb" ), chFwd( "chFwd", "tb" ), chCopy( "chCopy", "tb" )
+                       chHook( "chHook", "tb" ), chFwd( "chFwd", "tb" ), chTee( "chTee", "tb" ), chCopy( "chCopy", "tb" )
     {
         chExt.setExternalEvent( &extEvent );
         chHook.setCommandHook( [this]( const regSt& v ) {
             hookCmd.woke( v.w );
             hookCmdValues += std::format( "{:x}", v.w );
-            chFwd.reg_write_cmd( v ); } );
+            chFwd.post_cmd( v ); } );
+        chFwd.setDoneHook( [this]() { done.woke( 0 ); } );
         chHook.setMirrorHook( [this]( const regSt& v ) {
             hookMirror.woke( v.w );
             chCopy.update_mirror( v ); } );
@@ -109,6 +114,7 @@ SC_MODULE( probe )
         wait( 10, SC_NS );
         std::uint64_t d = sc_delta_count();
         ch.reg_write_cmd( val( 5 ) );
+        check( sc_delta_count() == d + 2, std::format( "reg_write_cmd() returns one delta after the owner is back in read() (delta +{})", sc_delta_count() - d ) );
         check( ch.readNonBlocking().w == 0x11, "reg_write_cmd() leaves the mirror alone" );
         wait( 1, SC_NS );
         check( cmd.wakes == 1 && cmd.value == 5, std::format( "read() wakes once with the command (wakes {}, value 0x{:x})", cmd.wakes, cmd.value ) );
@@ -117,9 +123,9 @@ SC_MODULE( probe )
 
         wait( 9, SC_NS );
         ch.reg_write_cmd( val( 6 ) );
+        check( cmd.wakes == 2 && cmd.value == 6, "back-to-back commands: read() has the first when the first returns" );
         ch.reg_write_cmd( val( 7 ) );
-        wait( 1, SC_NS );
-        check( cmd.wakes == 2 && cmd.value == 7, std::format( "two commands in one delta wake read() once, with the last (wakes {}, value 0x{:x})", cmd.wakes, cmd.value ) );
+        check( cmd.wakes == 3 && cmd.value == 7, std::format( "back-to-back commands wake read() once each, in order (wakes {}, value 0x{:x})", cmd.wakes, cmd.value ) );
 
         // mirror leg
         wait( 9, SC_NS );
@@ -129,7 +135,7 @@ SC_MODULE( probe )
         wait( 1, SC_NS );
         check( mirror.wakes == 1 && mirror.value == 9, std::format( "wait_mirror() wakes once with the new value (wakes {}, value 0x{:x})", mirror.wakes, mirror.value ) );
         check( mirror.delta == d + 1, std::format( "wait_mirror() wakes one delta after update_mirror() (delta +{})", mirror.delta - d ) );
-        check( cmd.wakes == 2, "update_mirror() does not wake read()" );
+        check( cmd.wakes == 3, "update_mirror() does not wake read()" );
 
         wait( 9, SC_NS );
         ch.update_mirror( val( 9 ) );
@@ -147,13 +153,13 @@ SC_MODULE( probe )
         ch.reg_write( val( 0x20 ) );
         check( ch.readNonBlocking().w == 0x20, "reg_write() changes readNonBlocking() in the same delta" );
         wait( 1, SC_NS );
-        check( cmd.wakes == 3 && cmd.value == 0x20 && cmd.delta == d + 1, "reg_write() wakes read() one delta later with the value" );
+        check( cmd.wakes == 4 && cmd.value == 0x20 && cmd.delta == d + 1, "reg_write() wakes read() one delta later with the value" );
         check( mirror.wakes == 2 && mirror.value == 0x20 && mirror.delta == d + 1, "reg_write() wakes wait_mirror() one delta later" );
 
         wait( 9, SC_NS );
         ch.reg_write( val( 0x20 ) );
         wait( 1, SC_NS );
-        check( cmd.wakes == 4 && mirror.wakes == 2, "reg_write() of the same value wakes read() but raises no mirror event" );
+        check( cmd.wakes == 5 && mirror.wakes == 2, "reg_write() of the same value wakes read() but raises no mirror event" );
 
         // status leg
         wait( 9, SC_NS );
@@ -161,7 +167,7 @@ SC_MODULE( probe )
         ch.write( val( 3 ) );
         wait( 1, SC_NS );
         check( status.wakes == 1 && status.value == 3 && status.delta == d + 1, std::format( "reg_read() wakes one delta after write() with the value (wakes {}, delta +{})", status.wakes, status.delta - d ) );
-        check( cmd.wakes == 4 && mirror.wakes == 2 && ch.readNonBlocking().w == 0x20, "write() touches neither the command nor the mirror" );
+        check( cmd.wakes == 5 && mirror.wakes == 2 && ch.readNonBlocking().w == 0x20, "write() touches neither the command nor the mirror" );
 
         wait( 9, SC_NS );
         ch.write( val( 3 ) );
@@ -178,14 +184,27 @@ SC_MODULE( probe )
         wait( 9, SC_NS );
         d = sc_delta_count();
         chHook.reg_write_cmd( val( 1 ) );
+        check( hookCmd.wakes == 1 && hookCmd.delta == d,
+               std::format( "the command hook runs in the delta of reg_write_cmd() (delta +{})", hookCmd.delta - d ) );
+        check( hookRead.wakes == 1 && hookRead.value == 1 && hookRead.delta == d + 1, "with the hook set, read() still wakes one delta later with the command" );
+        check( fwdRead.wakes == 1 && fwdRead.value == 1 && fwdRead.delta == d + 1,
+               std::format( "a command the hook posts wakes the next channel's read() in the same delta as a direct one (delta +{})", fwdRead.delta - d ) );
+        check( done.wakes == 1 && done.delta == d + 1,
+               std::format( "the done hook runs in the delta the owner returns to read() (calls {}, delta +{})", done.wakes, done.delta - d ) );
         chHook.reg_write_cmd( val( 2 ) );
-        check( hookCmd.wakes == 2 && hookCmdValues == "12" && hookCmd.delta == d,
-               std::format( "the command hook runs once per reg_write_cmd(), in its delta (calls {}, values {}, delta +{})", hookCmd.wakes, hookCmdValues, hookCmd.delta - d ) );
+        check( hookCmd.wakes == 2 && hookCmdValues == "12", std::format( "the command hook runs once per command (values {})", hookCmdValues ) );
         check( hookMirror.wakes == 0, "reg_write_cmd() does not run the mirror hook" );
-        wait( 1, SC_NS );
-        check( hookRead.wakes == 1 && hookRead.value == 2 && hookRead.delta == d + 1, "with the hook set, read() still wakes once, one delta later, with the last command" );
-        check( fwdRead.wakes == 1 && fwdRead.value == 2 && fwdRead.delta == d + 1,
-               std::format( "a command forwarded by the hook wakes the next channel's read() one delta after the first call (delta +{})", fwdRead.delta - d ) );
+
+        // a command taken through the hook, completed by complete_cmd()
+        wait( 9, SC_NS );
+        d = sc_delta_count();
+        chTee.post_cmd( val( 3 ) );
+        check( sc_delta_count() == d, "post_cmd() returns at once" );
+        chTee.complete_cmd();
+        sc_time t0 = sc_time_stamp();
+        sc_spawn( [this]() { wait( 2, SC_NS ); chTee.complete_cmd(); } );
+        chTee.reg_write_cmd( val( 4 ) );
+        check( sc_time_stamp() == t0 + sc_time( 2, SC_NS ), "a command nothing reads completes when complete_cmd() is called" );
 
         wait( 9, SC_NS );
         d = sc_delta_count();

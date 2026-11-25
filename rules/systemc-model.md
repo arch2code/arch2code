@@ -10,5 +10,5 @@ These rules apply to files in `model/`. Also read `systemc-shared.md`.
 *   `systemc-core`: the `model/<block>.cppm` layout and user slots, registers and memories, threads, logging.
 *   `systemc-interfaces`: the call for each port family.
 *   `systemc-patterns`: producer-consumer, one thread on several ports, multi-cycle bursts, trackers.
-*   `systemc-synchronization`: shared events, `synchLock` and tandem-safe `arb()`.
+*   `systemc-synchronization`: shared events and arbitration.
 *   `rtl-to-systemc`: writing a model from RTL.

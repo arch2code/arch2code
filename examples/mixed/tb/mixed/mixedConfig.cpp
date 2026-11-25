@@ -42,11 +42,12 @@ public:
             "test_mem_hier_cpu_ext_rw",
             "test_mem_local_cpu_rw",
             "test_mem_37bit_cpu_rw",
-            "test_reg_cpu_rwg"
+            "test_reg_cpu_rwg",
+            "test_reg_cpu_arr"
         };
         // blockD's model runs the blockd tests, so they do not exist when the
-        // whole mixed DUT is verilated.
-        if (simController::vlInst == "mixed") {
+        // whole mixed DUT or uBlockD is verilated.
+        if (simController::vlInst == "mixed" || simController::vlInst == "mixed.uBlockB.uBlockD") {
             testNames.remove("test_mem_hier_blockd_write");
             testNames.remove("test_mem_hier_blockd_read");
         }
