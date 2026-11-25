@@ -511,8 +511,9 @@ SRC_VALUES = [0, 0x11, 0, 0x22]
 MIN_GAP = {'mem': PERIOD, 'apb': 2 * PERIOD, 'ahb': PERIOD}
 # An RTL master's request reaches the model in the timestep of the edge after
 # the master drives it: the memory access, the apb setup phase, or the ahb
-# address phase. An ahb write's data goes on the wire only after that edge, and
-# a BFM reads it on the next one, so every ahb src write takes a wait state.
+# address phase. An ahb write's data goes on the wire only after that edge.
+# The BFM reads it at the next falling edge, half a clock later, and a model
+# that answers there adds no wait state.
 ERROR_OPS = [0, 1, 1, 0]
 
 
