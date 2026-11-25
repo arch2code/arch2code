@@ -3,6 +3,7 @@ interface_defs:
   axi4_stream : 
     timing: elastic
     backpressure: { default: true, overridable: true }
+    uvmAgent: true
     parameters : 
       tdata_t : { datatype : struct }
       tid_t : { datatype : struct }

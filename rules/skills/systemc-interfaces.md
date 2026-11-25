@@ -16,6 +16,33 @@ Pick the right port call for each interface family in a SystemC model.
 *   Call a port's methods through `->`, as in `dataIn->read(v)`.
 *   A register or memory the block owns is a member, not a port. See **systemc-core**.
 
+### Register array ports
+A child that takes a whole array register (`count:`, a `registerConnections:` row without `index:`) gets an `sc_vector` of ports. A child that takes one element (`index: k`) gets a plain port. A container that owns the array and gives it to children holds an `sc_vector` of channels. A leaf that owns the array and uses it itself holds `std::array< hwRegister<...>, N >` and no channels, as `blockA` in `examples/apbDecode` does. From `examples/mixed`:
+
+```cpp
+// blockFBase: the whole array
+sc_vector< status_in< dRegSt > > rwArr;
+// blockDBase: element 2 of rwArr
+status_in< dRegSt > rwArr;
+// blockB, the owner
+sc_vector< status_channel< dRegSt > > rwArr;
+
+// blockB constructor: the whole form binds the vector, the element form binds one channel
+uBlockF0->rwArr.bind(rwArr);
+uBlockD->rwArr(rwArr[2]);
+```
+
+*   Call an element as `rwArr[i]->read()`. Each element is its own `status` or `external_reg` port, with the calls in the table below.
+*   To wait on every element, spawn one thread per element, as `blockF` does in its constructor:
+
+    ```cpp
+    for (size_t i = 0; i < REGARR_N; i++) {
+        sc_spawn([this, i]() { rwWatch(i, rwArr[i]); }, sc_gen_unique_name("rwWatch", false));
+    }
+    ```
+
+*   See **systemc-core** for an owned array.
+
 ## Calls per family
 "Src" is the side that starts a transaction. "Dst" is the side that answers it.
 
@@ -54,6 +81,26 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 `raw` is a last resort. `read()` blocks until a value arrives, and `write()` blocks until the reader takes the value. Use it only at a design boundary to legacy or external IP that has a free-running data bus and no ready, valid or ack wires. Between arch2code blocks, use a handshaked family, and confirm with the user before proposing `raw`. The `raw` entry under "Interfaces & Interface Types" in `ARCH2CODE_AI_RULES.md` explains why.
 
 Interfaces outside this table come from A2C Pro (`builder/pro/interfaces/`) or the user. Read their channel header for the calls.
+
+## Ports that face HDL
+In co-simulation and in a UVM bench a BFM joins a model's `rdy_vld` or `axi4_stream` port to HDL pins. Write the model transactionally. Call the port again as soon as the model can take or give the next beat, and never wait on the clock between port calls.
+
+At each rising edge the BFM drives the pins from what the model is doing:
+*   `rdy` (`tready`) is high while the model has a `read()` outstanding.
+*   `vld` (`tvalid`) is high while the model has a `write()` outstanding. The `write()` returns on the edge the HDL takes the beat.
+*   The BFM holds no beat of its own, so the model's own queuing is all the buffering the port has.
+
+The blocking call already spends the transfer edge. A model that returns from `read()` or `write()`, waits for the next edge and then calls again has missed that edge, so the port moves one beat per two clocks. A transactional model must not wait on clock edges. The model still runs, at half rate. After 32 such beats in a row the BFM logs one notice for the port, which never fails the run, UVM included:
+
+```text
+tb.dut.din_bfm_inst:port tb.din: the model came back exactly one clock after each of 32 transfers in a row, so it waits on the clock between port calls and the port moves one beat per two clocks. A transactional model must not wait on clock edges: remove the wait from the model
+```
+
+The BFM counts a return only when the model called the port in the clock edge's own delta cycle or earlier, which is when a model that waits on the clock runs. A model that another channel wakes with a delta notification runs a delta later and is not counted. Nor is a model that a memory BFM wakes at the edge: the HDL paces it, not a wait of its own.
+
+A model that reads one port and writes another in the same thread also moves one beat per two clocks. It comes back to its input only when its output write returns, on the edge the HDL takes the beat, too late to take an input beat on that edge. For one beat per clock, give the model a second thread with a channel between the two, the queuing an RTL output register gives.
+
+A multicycle `rdy_vld` burst is the exception to the no-beat rule. The dst BFM takes the whole burst from the model when its first beat goes on the pins.
 
 ## Timed delays
 `--delay` and `--delayMode` insert delays into a block's interface calls. They exist to expose ordering problems between interfaces in timed and tandem runs. They do not model hardware latency.

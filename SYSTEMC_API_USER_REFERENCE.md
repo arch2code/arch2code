@@ -274,6 +274,8 @@ A register the block owns is an `hwRegister` member that the generator declares 
 
 An `hwRegister` has no `->`, no `setExternalEvent` and no `readNonBlocking`.
 
+An array register (`count:` in YAML) is a `std::array` of `hwRegister`, one per element, for example `std::array< hwRegister< arrRegSt, 4 >, REGARR_N > rwArr;`. The generator registers element k at the array's offset plus k times its stride. To react to a write on any element, pass one event to each: `for (auto &r : rwArr) r.registerEvent(&ev);`.
+
 **Example - React to firmware writes:**
 
 ```cpp
@@ -1377,7 +1379,7 @@ These APIs are used in generated code. Users rarely need to call them directly. 
 **Purpose:** Address space management for register and memory access.
 
 **Framework APIs:**
-- `addRegister(address, size, name, ptr)` - Register a register
+- `addRegister(address, size, name, ptr)` - Register a register. The generator calls it once per element of an array register, in a loop at `base + i * stride`
 - `addMemory(address, size, name, ptr)` - Register a memory. A memory with a parameterizable structure is registered this way, with `size` the row stride times the row count
 - `addMemory(address, structByteWidth, wordLines, name, ptr)` - Register memory with dimensions
 - `cpu_read(address)` - Read from address space

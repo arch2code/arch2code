@@ -12,7 +12,9 @@ Rules:
 - A later design unit in the same file must be a pair top,
   `p<N>_<parent>_c<M>_<child><tail>`, where N and M are the lengths of
   <parent> and <child>, and <tail> ends the file stem. The generator writes
-  these beside the variant top that shares the file.
+  these beside the variant top that shares the file. A file may hold pair
+  tops only: a parent's pair with a child of another project has no variant
+  top beside it, as the child's variant tops are in the child's project.
 - Every `endmodule : <label>` or `endpackage : <label>` must name a unit the
   same file declares, so a label left stale by a rename fails.
 
@@ -69,7 +71,8 @@ def checkFile(path):
         return None
     mismatches = list()
     kind, first = decls[0]
-    if first != stem:
+    pairsOnly = all(k == "module" and isPairTop(name, stem) for k, name in decls)
+    if first != stem and not pairsOnly:
         mismatches.append(f"{kind} {first} != stem {stem}")
     for kind, name in decls[1:]:
         if kind == "module" and isPairTop(name, stem):

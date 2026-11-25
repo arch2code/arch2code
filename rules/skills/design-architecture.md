@@ -192,9 +192,10 @@ connectionMaps:
 | `regType` | Required. `rw`, `ro`, `ext` or `memory`. An `ext` register's structure is at most 32 bits wide, the register bus width, and `make db` rejects a wider one. |
 | `structure` | Required. |
 | `addressStruct`, `wordLines` | Required for `regType: memory`. `wordLines` is a literal or a constant. |
+| `count` | Makes an `rw`, `ro` or `ext` register an array of `count` elements, even when `count` is 1. An integer or a constant that is not parameterizable, resolving to at least 1. `make db` rejects a block parameter, and `count` on `regType: memory`. Without it the register is a scalar. |
 | `desc` | Required. |
-| `defaultValue` | Reset value. Default `0`. |
-| `offset` | Manual offset. Default `0`, auto-assigned. |
+| `defaultValue` | Reset value. Default `0`. Every element of an array takes it. |
+| `offset` | Assigned by address generation, which overwrites an authored value. |
 
 ### Memories (`memories:`)
 
@@ -216,6 +217,7 @@ A memory has no `reset:`, and setting one is an error.
 ```yaml
 registers:
   - {register: config, block: dma_controller, regType: rw, structure: dma_config_t, desc: "Config"}
+  - {register: rwArr, block: blockB, regType: rw, structure: dRegSt, count: REGARR_N, desc: "A Read Write register array"}   # examples/mixed
 
 memories:
   - {memory: buffer, block: dma_controller, structure: buffer_data_t, addressStruct: buffer_addr_t, wordLines: 1024, desc: "Internal RAM", regAccess: true}
@@ -234,10 +236,48 @@ memoryConnections:
 
 A register connection wires a register the container owns to one of its child instances. The child reads an `rw` register and drives an `ro` register. An `ext` or `memory` register reaches the child as a `dst` port, as `rw` does.
 
+| Field | Meaning |
+| :--- | :--- |
+| `register` | Required. A register of `block`. |
+| `block` | Required. The owner, which contains `instance`. |
+| `instance` | Required. The child instance that takes the register. |
+| `index` | The one element of an array register this instance takes. An integer or a constant that is not parameterizable, from 0 to `count - 1`. Allowed only on a register with `count`. |
+
+An array register reaches its users in one of three forms. The child ports come from `examples/mixed/rtl/blockF.sv` and `blockD.sv`, and the bindings from `blockB.sv`, where `rwArr` has `count: REGARR_N`:
+
+| Form | YAML | Child port | Container binds |
+| :--- | :--- | :--- | :--- |
+| Local | No row. The owner uses the array itself, as `blockA` does in `examples/apbDecode`. | none | |
+| Whole | A row without `index`. | An array port, `status_if.dst rwArr [REGARR_N]`. | `.rwArr (rwArr)` |
+| Element | A row with `index: k`. | A scalar port, `status_if.dst rwArr`. | `.rwArr (rwArr[2])` |
+
+In every form the child port takes the register's name. In `examples/mixed` both `blockF` instances take the whole `rwArr`, `uBlockD` takes element 2 of it, and `uBlockD` takes the whole `ext` array `extArr`:
+
 ```yaml
 registerConnections:
   - {register: rwD, block: blockB, instance: uBlockF0}
+  - {register: rwD, block: blockB, instance: uBlockF1}
+  - {register: rwD, block: blockB, instance: uBlockD}
+  - {register: rwArr, block: blockB, instance: uBlockF0}
+  - {register: rwArr, block: blockB, instance: uBlockF1}
+  - {register: rwArr, block: blockB, instance: uBlockD, index: 2}
+  - {register: extArr, block: blockB, instance: uBlockD}
 ```
+
+An instance takes the whole array or one element. A slice, a run of elements to one instance, is not supported. Instance arrays are not supported either (see `count` under [Instances](#2-instances-instances)), so each consumer is its own instance with its own row.
+
+`make db` checks the rows of each register together. Each rule below gives the fix:
+
+*   **One row per register and instance.** `make db` rejects a second row for the same register and instance, including one in another file. Remove one of the two.
+*   **A row names a child of the owner.** `make db` rejects a row whose `instance` is not contained in `block`, such as a sibling of the owner or the topInstance, which is in no block. The generator builds the channel inside the owner, so the port of any other instance stays unbound. Name a child instance of `block`, or move the instance into `block`.
+*   **`index` needs an array.** `make db` rejects `index` on a register without `count`. Remove `index`, or give the register a `count`. It also rejects an `index` outside 0 to `count - 1` or one that names a parameterizable constant. Use an integer or a plain constant in range.
+*   **`count` is fixed.** `make db` rejects `count` below 1, `count` on a `regType: memory` register, and a `count` that names a block parameter or a parameterizable constant. An array has one size in every variant. Use an integer or a plain constant, or remove `count` for a scalar.
+*   **Every instance of one child block takes the register the same way.** In one container, the rows for a register and a child block all have `index` or none do. Give every row for that block an `index`, or none.
+*   **Every instance of a child block gets its register port.** A row gives a block a port named after the register. Every instance of that block, in every container this project builds, then needs a row from its own container for a register of that name, or its port stays unbound. A container the project declares counts even when nothing instantiates it. A child project's harness does not, because that project builds it. This holds for scalar registers too. Add a row for each instance the message names, from a register of its container with the same `regType`, structure and `count`. An `ro` or `ext` register given whole has one consumer, so when two instances of the block share a container, make the register an array and give each instance an element with `index`, or use a separate block for the instance that takes no register.
+*   **An `ro` or `ext` element has one consumer.** The consumer drives an `ro` element and answers an `ext` one. A whole `ro` or `ext` array goes to one instance, with no `index` rows beside it. With `index` rows, each element has exactly one. A scalar `ro` or `ext` register goes to one instance. Connect the whole array to one instance, or give each element its own `index` row.
+*   **An `rw` element may have any number of readers.** Whole and `index` rows may mix across different child blocks, as `rwArr` does above, but not within one block.
+*   **A child block's register port is one port.** Every owner that gives a block a register of a given name, in any container, gives it the same `regType`, structure, `count` and form. Align the two registers, connect both with `index` or both without, or rename one.
+*   **An array's names are its own.** The opt-in `regAddresses` firmware header (`manage-address-space.md` section 4) spells an array's stride and count as `REG_<BLOCK>_<REG>_STRIDE` and `REG_<BLOCK>_<REG>_COUNT`. Element k is named `<reg>_<k>` in the register handler's RTL and the Verilator wrapper's flat pins, and the model registers it as `<reg>[k]`. `make db` rejects a register or `regAccess` memory of the owner whose define matches one of these defines or whose name is an element name `<reg>_<k>`, and a port named `<reg>_<k>` on a block that takes the whole array. Rename one of them.
 
 ## 7. Clocks and resets
 

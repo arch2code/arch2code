@@ -1,0 +1,89 @@
+{
+    "session": {
+        "name": "regr_uvmReuseLeaf_uvm_xcelium",
+        "jobs": 4,
+        "lrp": 0
+    },
+    "build": {
+        "command": "make -j8 USE_UVM=1 USE_XCELIUM=1 uvm_snapshots",
+        "timeout": 1800
+    },
+    "run": {
+        "command": "/usr/bin/time -f CPU_TIME_USER=%U ../../../../dutRun.py build_xrun/run uvmReuseLeaf_uvm",
+        "args": "--seed ${RL_SEED} --verbosity=low --uvmTop uvmReuseLeaf_w4",
+        "timeout": 900,
+        "rules": [
+            "../../../../config/regrRules/uvm.json",
+            "default.json",
+            "xcelium.json"
+        ],
+        "count": 1,
+        "seed": 1,
+        "labels": [
+            "uvm"
+        ],
+        "model_dut": {
+            "args+": "--uvmDut model",
+            "labels+": [
+                "mdl"
+            ],
+            "test_group": {
+                "uvmReuseLeaf_smoke_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_smoke_test"
+                },
+                "uvmReuseLeaf_random_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_random_test",
+                    "count": 2,
+                    "seed": "random"
+                },
+                "uvmReuseLeaf_fail_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_fail_test"
+                }
+            }
+        },
+        "rtl_dut": {
+            "args+": "--uvmDut rtl",
+            "labels+": [
+                "hdl"
+            ],
+            "test_group": {
+                "uvmReuseLeaf_smoke_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_smoke_test"
+                },
+                "uvmReuseLeaf_random_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_random_test",
+                    "count": 2,
+                    "seed": "random"
+                },
+                "uvmReuseLeaf_fail_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_fail_test"
+                },
+                "uvmReuseLeaf_reset_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_reset_test"
+                }
+            }
+        },
+        "both_dut": {
+            "args+": "--uvmDut both",
+            "labels+": [
+                "both"
+            ],
+            "test_group": {
+                "uvmReuseLeaf_smoke_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_smoke_test"
+                },
+                "uvmReuseLeaf_random_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_random_test",
+                    "count": 2,
+                    "seed": "random"
+                },
+                "uvmReuseLeaf_fail_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_fail_test"
+                },
+                "uvmReuseLeaf_model_mismatch_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_model_mismatch_test"
+                }
+            }
+        }
+    }
+}

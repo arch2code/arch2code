@@ -1,0 +1,430 @@
+# The variant package of a hasUvm block. SV cannot parameterize a package, so
+# the package binds the variant's parameter values as localparams and declares
+# the block's parameterized types from them. The testbench interfaces and the
+# agents must be typed by these package types: a struct declared locally in a
+# module is a different type, and its virtual interface does not assign to one
+# typed by the package. The items section also holds the register model and
+# the env, both generated whole; a test package extends the env.
+import textwrap
+
+from pysrc.systemVerilogGeneratorHelper import importPackages
+from templates.systemVerilog.package import parameterizedDeclLines
+
+
+def render(args, prj, data):
+    # A block without params has one variantless top, which its scaffold
+    # names with no --variant.
+    variant = args.variant or ''
+    top = data['uvm']['tops'][variant]
+    match args.section:
+        case 'header':
+            out = render_header(args, prj, data, top)
+        case 'items':
+            out = render_items(prj, data, variant)
+        case 'footer':
+            out = f"\nendpackage : {top['pkgName']}\n"
+        case _:
+            raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are header, items or footer")
+    return textwrap.indent(out, ' '*args.sectionindent)
+
+
+def render_header(args, prj, data, top):
+    out = f"\npackage {top['pkgName']};\n"
+    lines = ['import uvm_pkg::*;', '`include "uvm_macros.svh"']
+    lines += [f'import {pkg}::*;' for pkg in data['uvm']['agentPackages']]
+    lines.append(importPackages(args, prj, data['blockInfo']['_context'], data))
+    out += textwrap.indent('\n'.join(lines), ' '*4) + '\n'
+    return out
+
+
+def agent_typedefs(port):
+    # Unbound optional parameters keep the class and interface defaults. A
+    # port with no bound parameter names the classes with no #().
+    args = ', '.join(f".{b['structureType']}({b['structure']})"
+                    for b in port['paramBindings'] if not b['isNull'])
+    params = f" #({args})" if args else ''
+    name = port['name']
+    intfType = port['interfaceType']
+    return [f"typedef {intfType}_agent{params} {name}_agent_t;",
+            f"typedef {name}_agent_t::item_t {name}_item_t;",
+            f"typedef {name}_agent_t::config_t {name}_config_t;",
+            f"typedef virtual {intfType}_if{params} {name}_vif_t;"]
+
+
+def render_items(prj, data, variant):
+    lines = list()
+    if data['blockInfo']['params']:
+        values = data['standaloneVariants'][variant]
+        lines += [f"localparam {p['param']} = {values[p['param']]};" for p in data['blockInfo']['params']]
+        lines += [decl['line'] for decl in parameterizedDeclLines(
+            data['parameterizedDecls'], prj, data['blockInfo']['params'])]
+        lines.append('')
+    for port in data['uvm']['ports'] + data['uvm']['internalMonitors']:
+        lines += agent_typedefs(port)
+    uvm = data['uvm']
+    hasRegModel = uvm['registerBus'] is not None
+    if hasRegModel:
+        for block in uvm['registerBlocks']:
+            for reg in block['registers']:
+                lines += [''] + reg_class(reg, variant)
+            lines += [''] + reg_block_class(block, variant)
+    lines += [''] + env_class(uvm, hasRegModel, variant)
+    return '\n' + textwrap.indent('\n'.join(lines), ' '*4) + '\n'
+
+
+def reg_class(reg, variant):
+    cls = reg['className']
+    fields = reg['fields'][variant]
+    lines = [f"class {cls} extends uvm_reg;"]
+    lines += [f"    rand uvm_reg_field {f['name']};" for f in fields]
+    lines += ['',
+              '    // UVM_CVR_FIELD_VALS: each field\'s value on every access the predictor sees.',
+              '    covergroup cg_vals with function sample(uvm_reg_data_t data);',
+              '        option.per_instance = 1;']
+    lines += [f"        {f['name']}: coverpoint data[{f['lsb'] + f['width'] - 1}:{f['lsb']}];" for f in fields]
+    lines += ['    endgroup',
+              '',
+              f"    `uvm_object_utils({cls})",
+              '',
+              f'    function new(string name = "{reg["name"]}");',
+              f"        super.new(name, {reg['width'][variant]}, build_coverage(UVM_CVR_FIELD_VALS));",
+              '        if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();',
+              '    endfunction',
+              '',
+              '    protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,',
+              '                                           uvm_reg_map map);',
+              '        if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);',
+              '    endfunction',
+              '',
+              '    virtual function void build();',
+              '        if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});']
+    access = reg['uvmAccess']
+    volatile = int(reg['volatile'])
+    isRand = int(access == 'RW')
+    for f in fields:
+        lines.append(f'        {f["name"]} = uvm_reg_field::type_id::create("{f["name"]}");')
+        lines.append(f'        {f["name"]}.configure(this, {f["width"]}, {f["lsb"]}, "{access}", {volatile}, '
+                     f"{f['width']}'h{f['reset']:x}, 1, {isRand}, 0);")
+    lines += ['    endfunction', f"endclass : {cls}"]
+    return lines
+
+
+def reg_block_class(block, variant):
+    cls = block['className']
+    lines = [f"class {cls} extends uvm_reg_block;"]
+    lines += [f"    rand {reg['className']} {reg['name']};" for reg in block['registers']]
+    lines += [f"    uvm_mem {mem['name']};" for mem in block['memories']]
+    lines += [f"    rand {child['className']} {child['name']};" for child in block['children']]
+    registers = block['registers']
+    if registers:
+        lines += ['',
+                  '    // UVM_CVR_ADDR_MAP: each register of this map read and written.',
+                  '    covergroup cg_map with function sample(uvm_reg_addr_t map_offset, bit is_read);',
+                  '        option.per_instance = 1;',
+                  '        reg_addr: coverpoint map_offset {']
+        lines += [f"            bins {reg['name']} = {{'h{reg['offset']:x}}};" for reg in registers]
+        lines += ['        }',
+                  '        dir: coverpoint is_read {',
+                  '            bins write = {0}; bins read = {1};',
+                  '        }']
+        readOnly = [reg['name'] for reg in registers if reg['uvmAccess'] == 'RO']
+        if readOnly:
+            lines.append('        reg_x_dir: cross reg_addr, dir {')
+            lines += [f"            ignore_bins {name}_write = binsof(reg_addr.{name}) && binsof(dir.write);"
+                      for name in readOnly]
+            lines.append('        }')
+        else:
+            lines.append('        reg_x_dir: cross reg_addr, dir;')
+        lines.append('    endgroup')
+    lines += ['',
+              f"    `uvm_object_utils({cls})",
+              '',
+              f'    function new(string name = "{cls}");']
+    if registers:
+        lines += ['        super.new(name, build_coverage(UVM_CVR_ADDR_MAP));',
+                  '        if (has_coverage(UVM_CVR_ADDR_MAP)) cg_map = new();',
+                  '    endfunction',
+                  '',
+                  '    protected virtual function void sample(uvm_reg_addr_t offset, bit is_read, uvm_reg_map map);',
+                  '        if (get_coverage(UVM_CVR_ADDR_MAP)) cg_map.sample(offset, is_read);',
+                  '    endfunction',
+                  '',
+                  '    virtual function void build();']
+    else:
+        lines += ['        super.new(name, UVM_NO_COVERAGE);',
+                  '    endfunction',
+                  '',
+                  '    virtual function void build();']
+    if block['a2cMap']:
+        lines.append('        a2c_uvm_pkg::a2c_reg_map a2c_map;')
+    if registers:
+        lines.append('        if (cg_map != null) cg_map.set_inst_name({get_full_name(), ".cg_map"});')
+    catchChildren = block['isRoot'] and block['children']
+    for reg in block['registers']:
+        name = reg['name']
+        lines += [f'        {name} = {reg["className"]}::type_id::create("{name}");',
+                  f"        {name}.configure(this);",
+                  f"        {name}.build();"]
+    for mem in block['memories']:
+        name = mem['name']
+        lines += [f'        {name} = new("{name}", {mem["count"][variant]}, {mem["width"][variant]}, '
+                  f'"{mem["uvmAccess"]}", UVM_NO_COVERAGE);',
+                  f"        {name}.configure(this);"]
+        lines += [f'        uvm_resource_db#(bit)::set({{"REG::", {name}.get_full_name()}}, "{resource}", 1, this);'
+                  for resource in mem['excludeTests']]
+    if catchChildren:
+        lines += ["        // In UVM 1.2, each child block's configure() raises a UVM/RSRC/NOREGEX",
+                  "        // warning that names it; the catcher demotes those warnings to info.",
+                  "        a2c_uvm_pkg::a2c_child_block_catcher::install(this);"]
+    for child in block['children']:
+        name = child['name']
+        lines += [f'        {name} = {child["className"]}::type_id::create("{name}", , get_full_name());',
+                  f"        {name}.configure(this);",
+                  f"        {name}.build();"]
+    if catchChildren:
+        lines.append("        a2c_uvm_pkg::a2c_child_block_catcher::remove(this);")
+    if block['a2cMap']:
+        if block['memories']:
+            lines += ["        // UVM would step each memory by its n_bits rounded up to bus words;",
+                      "        // a2c_reg_map steps it by the decoder's row stride."]
+        else:
+            lines.append("        // A child block's a2c_reg_map may only be a submap of an a2c_reg_map.")
+        lines += ['        a2c_map = a2c_uvm_pkg::a2c_reg_map::type_id::create("default_map", , get_full_name());',
+                  "        a2c_map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);",
+                  "        add_map(a2c_map);"]
+    else:
+        lines.append("        default_map = create_map(\"default_map\", 'h0, 4, UVM_LITTLE_ENDIAN, 1);")
+    for reg in block['registers']:
+        lines.append(f'        default_map.add_reg({reg["name"]}, \'h{reg["offset"]:x}, "{reg["uvmAccess"]}");')
+    for mem in block['memories']:
+        lines += [f'        default_map.add_mem({mem["name"]}, \'h{mem["offset"]:x}, "{mem["mapRights"]}");',
+                  f'        a2c_map.set_mem_stride({mem["name"]}, {mem["rowBytes"]});']
+    lines += [f"        default_map.add_submap({child['name']}.default_map, 'h{child['offset']:x});"
+              for child in block['children']]
+    # The root locks the whole model once every child map is in place. A
+    # parent's register model can hold this block, and then locks it itself.
+    if block['isRoot']:
+        lines += ['        if (get_parent() == null) begin',
+                  '            lock_model();']
+        # A test need not look anything up through the root map, which is
+        # when it would check itself, so a routed model checks at build.
+        if block['a2cMap'] and block['children']:
+            lines.append('            a2c_map.check_overlaps_once();')
+        lines.append('        end')
+    lines += ['    endfunction', f"endclass : {cls}"]
+    return lines
+
+
+def env_class(uvm, hasRegModel, variant):
+    cls = uvm['envClass']
+    ports = uvm['ports']
+    counters = [port for port in ports if port['counter']]
+    lines = [f"class {cls} extends uvm_env;"]
+    lines += [f"    {port['name']}_agent_t {port['agent']};" for port in ports]
+    lines += [f"    a2c_uvm_pkg::a2c_txn_counter #({port['name']}_item_t) {port['counter']};" for port in counters]
+    lines += [f"    a2c_uvm_pkg::a2c_txn_digest #({port['name']}_item_t) {port['digest']};" for port in ports]
+    lines += [f"    virtual a2c_clk_if {clock['vif']};" for clock in uvm['clocks']]
+    monitors = uvm['internalMonitors']
+    if monitors or uvm['unmonitored']:
+        lines.append("    // Passive agents on the RTL's connections between the block's children,")
+        lines.append("    // built only when the run holds the RTL.")
+        lines += [f"    // Not watched: {item['name']}, {item['reason']}." for item in uvm['unmonitored']]
+    lines += [f"    {mon['name']}_agent_t {mon['agent']};" for mon in monitors]
+    lines += [f"    a2c_uvm_pkg::a2c_txn_digest #({mon['name']}_item_t) {mon['digest']};" for mon in monitors]
+    if monitors:
+        lines.append('    bit model_dut;')
+    bus = uvm['registerBus']
+    if hasRegModel:
+        lines += [f"    {uvm['regBlockClass']} regmodel;",
+                  f"    {bus['adapterClass']} adapter;",
+                  f"    uvm_reg_predictor #({bus['port']}_item_t) predictor;"]
+    lines += ["    // Paired mode, set from a2c_dual_dut: each agent also drives and",
+              "    // monitors the model DUT's <port>_model pins, and comparators lists the",
+              "    // agents' model_cmp comparators."]
+    lines += ['    bit dual_dut;',
+              '    a2c_uvm_pkg::a2c_comparator_base comparators[$];']
+    if hasRegModel:
+        lines += ['    a2c_uvm_pkg::a2c_midstream_guard guard;',
+                  f"    a2c_uvm_pkg::a2c_reg_write_subscriber #({bus['port']}_item_t) reg_writes;"]
+    lines += ['',
+              f"    `uvm_component_utils({cls})",
+              '',
+              '    function new(string name, uvm_component parent);',
+              '        super.new(name, parent);',
+              '    endfunction',
+              '',
+              '    virtual function void build_phase(uvm_phase phase);']
+    lines += [f"        {port['name']}_config_t {port['name']}_cfg;" for port in ports]
+    lines += ['        super.build_phase(phase);',
+              '        if (!uvm_config_db#(bit)::get(this, "", "a2c_dual_dut", dual_dut)) begin',
+              '            `uvm_fatal("A2C_CFG", "no a2c_dual_dut setting")',
+              '        end']
+    for clock in uvm['clocks']:
+        name = clock['clock']
+        lines += [f'        if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "{name}", {clock["vif"]})) begin',
+                  f'            `uvm_fatal("A2C_CFG", "no virtual a2c_clk_if \'{name}\'")',
+                  '        end']
+    for port in ports:
+        lines += [''] + agent_build(port, variant)
+    if monitors:
+        lines += ['',
+                  '        if (!uvm_config_db#(bit)::get(this, "", "a2c_model_dut", model_dut)) begin',
+                  '            `uvm_fatal("A2C_CFG", "no a2c_model_dut setting")',
+                  '        end',
+                  '        if (!model_dut) begin']
+        for mon in monitors:
+            lines.append('            begin')
+            lines += [f'                {line}' for line in internal_monitor_build(mon)]
+            lines.append('            end')
+        lines.append('        end')
+    if hasRegModel:
+        lines += ['',
+                  '        // A UVM_COV=1 build covers field values and address maps. A',
+                  '        // test calling uvm_reg::include_coverage() in its build_phase',
+                  '        // sets it first, and the first setting wins.',
+                  '        uvm_reg::include_coverage("*", a2c_uvm_pkg::a2c_reg_cov);',
+                  f'        regmodel = {uvm["regBlockClass"]}::type_id::create("regmodel");',
+                  '        regmodel.build();',
+                  '        void\'(regmodel.set_coverage(UVM_CVR_ALL));',
+                  '        regmodel.reset();',
+                  f'        adapter = {bus["adapterClass"]}::type_id::create("adapter");',
+                  f'        predictor = uvm_reg_predictor#({bus["port"]}_item_t)::type_id::create("predictor", this);',
+                  '        if (dual_dut) begin',
+                  '            guard = a2c_uvm_pkg::a2c_midstream_guard::type_id::create("guard", this);',
+                  f'            reg_writes = a2c_uvm_pkg::a2c_reg_write_subscriber#({bus["port"]}_item_t)::type_id::create("reg_writes", this);',
+                  '        end']
+    lines += ['    endfunction', '']
+    if hasRegModel:
+        lines += ["    // The register model's mirror follows the DUT lane's bus through the",
+                  "    // explicit predictor, not the register calls' own prediction. In paired",
+                  "    // mode the guard sees every write on the DUT lane's bus, and the bus",
+                  "    // agent's comparator asks it about each read."]
+    lines.append('    virtual function void connect_phase(uvm_phase phase);')
+    lines += [f"        {port['agent']}.mon.ap.connect({port['counter']}.analysis_export);" for port in counters]
+    lines += [f"        {port['digest']}.watch({port['agent']}.mon, a2c_uvm_pkg::A2C_DUT_LANE);" for port in ports]
+    if monitors:
+        lines.append('        if (!model_dut) begin')
+        lines += [f"            {mon['digest']}.watch({mon['agent']}.mon, a2c_uvm_pkg::A2C_DUT_LANE);" for mon in monitors]
+        lines.append('        end')
+    if hasRegModel:
+        agent = bus['agent']
+        lines += [f"        regmodel.default_map.set_sequencer({agent}.sqr, adapter);",
+                  '        regmodel.default_map.set_auto_predict(0);',
+                  '        predictor.map     = regmodel.default_map;',
+                  '        predictor.adapter = adapter;',
+                  f"        {agent}.mon.ap.connect(predictor.bus_in);"]
+    lines.append('        if (dual_dut) begin')
+    lines += [f"            {port['agent']}.model_mon.ap.connect({port['counter']}.model_export);" for port in counters]
+    lines += [f"            {port['digest']}.watch({port['agent']}.model_mon, a2c_uvm_pkg::A2C_MODEL_LANE);" for port in ports]
+    for port in ports:
+        agent = port['agent']
+        lines += [f"            if ({agent}.model_cmp != null) begin",
+                  f"                comparators.push_back({agent}.model_cmp);",
+                  f"                {port['digest']}.cmp = {agent}.model_cmp;",
+                  '            end']
+    # The counter reports a counted port's missing or extra items.
+    lines += [f"            {port['agent']}.model_cmp.counted = 1;" for port in counters]
+    if hasRegModel:
+        lines += ['            reg_writes.map     = regmodel.default_map;',
+                  '            reg_writes.adapter = adapter;',
+                  f"            {bus['agent']}.mon.ap.connect(reg_writes.analysis_export);",
+                  '            reg_writes.ap.connect(guard.analysis_export);',
+                  '            guard.map = regmodel.default_map;',
+                  f"            {bus['agent']}.model_cmp.guard = guard;"]
+        lines += [f"            guard.counters.push_back({port['counter']});" for port in counters]
+        lines.append('            guard.comparators = comparators;')
+    lines += ['        end',
+              '    endfunction',
+              '',
+              '    // The base test calls this in paired mode each time wait_for_outputs()',
+              '    // returns. A comparator with auto_stable cleared takes its stable',
+              '    // points from the user region instead.',
+              '    function void model_stable_point();',
+              '        foreach (comparators[i]) begin',
+              '            if (comparators[i].auto_stable) begin',
+              '                comparators[i].stable_point();',
+              '            end',
+              '        end',
+              '    endfunction']
+    if hasRegModel:
+        lines += ['',
+                  "    // A front-door write of rg and a read-back, each an A2C_REG error on a",
+                  "    // bad status, the read-back also on a value other than the one",
+                  "    // written. The read-back returns once the write has reached the DUT.",
+                  '    task write_reg(uvm_reg rg, uvm_reg_data_t value);',
+                  '        uvm_status_e   status;',
+                  '        uvm_reg_data_t readback;',
+                  '        rg.write(status, value);',
+                  '        if (status != UVM_IS_OK) begin',
+                  '            `uvm_error("A2C_REG", $sformatf("%s write of \'h%0h returned %s", rg.get_full_name(), value, status.name()))',
+                  '        end',
+                  '        rg.read(status, readback);',
+                  '        if (status != UVM_IS_OK || readback != value) begin',
+                  '            `uvm_error("A2C_REG", $sformatf("%s read back \'h%0h (%s), wrote \'h%0h", rg.get_full_name(), readback, status.name(), value))',
+                  '        end',
+                  '    endtask']
+    lines.append(f"endclass : {cls}")
+    return lines
+
+
+def internal_monitor_build(mon):
+    name = mon['name']
+    cfg = f"{name}_cfg"
+    agent = mon['agent']
+    return [f'{name}_config_t {cfg} = {name}_config_t::type_id::create("{cfg}");',
+            f'if (!uvm_config_db#({name}_vif_t)::get(this, "", "{name}", {cfg}.vif)) begin',
+            f'    `uvm_fatal("A2C_CFG", "no virtual {mon["interfaceType"]}_if \'{name}\'")',
+            'end',
+            f"{cfg}.clk_vif = {mon['clockVif']};",
+            f"{cfg}.role = a2c_uvm_pkg::A2C_DST;",
+            f"{cfg}.is_active = UVM_PASSIVE;",
+            f'{cfg}.port_name = "{name}";',
+            f"{cfg}.joint_watch = 0;",
+            f'uvm_config_db#({name}_config_t)::set(this, "{agent}", "cfg", {cfg});',
+            f'{agent} = {name}_agent_t::type_id::create("{agent}", this);',
+            f'{mon["digest"]} = a2c_uvm_pkg::a2c_txn_digest#({name}_item_t)::type_id::create("{mon["digest"]}", this);',
+            f'{mon["digest"]}.port_name = "{name}";']
+
+
+def agent_build(port, variant):
+    # An agent plays the side opposite the DUT port's modport.
+    name = port['name']
+    cfg = f"{name}_cfg"
+    vif = f"virtual {port['interfaceType']}_if"
+    lines = [f'        {cfg} = {name}_config_t::type_id::create("{cfg}");',
+             f'        if (!{cfg}.randomize()) `uvm_fatal("A2C_RAND", "{cfg}: randomize() failed")',
+             f'        if (!uvm_config_db#({name}_vif_t)::get(this, "", "{name}", {cfg}.vif)) begin',
+             f'            `uvm_fatal("A2C_CFG", "no {vif} \'{name}\'")',
+             '        end',
+             '        if (dual_dut) begin',
+             f'            if (!uvm_config_db#({name}_vif_t)::get(this, "", "{name}_model", {cfg}.model_vif)) begin',
+             f'                `uvm_fatal("A2C_CFG", "no {vif} \'{name}_model\'")',
+             '            end']
+    if port['modelCredit']:
+        lines += [f'            if (!uvm_config_db#(virtual a2c_credit_if)::get(this, "", "{name}_credit", {cfg}.credit_vif)) begin',
+                  f'                `uvm_fatal("A2C_CFG", "no virtual a2c_credit_if \'{name}_credit\'")',
+                  '            end']
+    lines += ['        end',
+              f"        {cfg}.clk_vif = {port['clockVif']};",
+              f"        {cfg}.role = a2c_uvm_pkg::{'A2C_SRC' if port['role'] == 'dst' else 'A2C_DST'};",
+              f'        {cfg}.port_name = "{name}";']
+    if port['backpressureOverridable']:
+        lines.append(f"        {cfg}.no_backpressure = {int(not port['backpressure'])};")
+    if port['maxTransferBytes'] is not None:
+        lines.append(f"        {cfg}.max_transfer_bytes = {port['maxTransferBytes'][variant]};")
+    if port['idUnbound']:
+        lines.append(f"        {cfg}.id_unbound = 1;")
+    agent = port['agent']
+    lines += [f'        uvm_config_db#({name}_config_t)::set(this, "{agent}", "cfg", {cfg});',
+              f'        {agent} = {name}_agent_t::type_id::create("{agent}", this);']
+    if port['counter']:
+        counter = port['counter']
+        lines += [f'        {counter} = a2c_uvm_pkg::a2c_txn_counter#({name}_item_t)::type_id::create("{counter}", this);',
+                  f'        {counter}.port_name = "{name}";',
+                  f'        {counter}.dual = dual_dut;',
+                  f"        {counter}.clk_vif = {port['clockVif']};"]
+    digest = port['digest']
+    lines += [f'        {digest} = a2c_uvm_pkg::a2c_txn_digest#({name}_item_t)::type_id::create("{digest}", this);',
+              f'        {digest}.port_name = "{name}";',
+              f'        {digest}.dual = dual_dut;']
+    return lines

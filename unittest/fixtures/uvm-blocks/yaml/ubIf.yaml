@@ -1,0 +1,24 @@
+# Test-only protocol with no UVM agent, so a hasUvm block cannot use it on
+# its boundary. It has no companion files: make db and make gen accept a port
+# of this type, and only a build would need the files the generated code names.
+
+interface_defs:
+  ub_no_agent :
+    timing: elastic
+    backpressure: { default: true, overridable: false }
+    parameters :
+      rdata_t : { datatype : struct }
+    signals:
+      pop : bool
+      ack : bool
+      rdata : rdata_t
+    modports :
+      src :
+        inputs : ['ack', 'rdata']
+        outputs: ['pop']
+      dst :
+        inputs : ['pop']
+        outputs: ['ack', 'rdata']
+    sc_channel :
+      type : 'ub_no_agent'
+      multicycle_types : []

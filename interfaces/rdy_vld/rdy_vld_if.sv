@@ -7,6 +7,8 @@
  *           __                        _____
  *  dst.rdy    \______________________/
  *
+ * The source must not wait for rdy before raising vld, and once vld is high
+ * it holds vld and data until the transfer completes. rdy may wait for vld.
  */
 
 interface rdy_vld_if #(

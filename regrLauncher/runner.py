@@ -133,6 +133,7 @@ class sessionRunExecutor(sessionExecutorBase):
         results_ = (rundir / 'results.xml').resolve()
         run_env = os.environ.copy()
         run_env['COCOTB_RESULTS_FILE'] = str(results_)
+        run_env['RL_RUN_DIR'] = str(rundir.resolve())
         with open(log_, 'wt') as fp:
             exec_status = self.execute_command(cmd, fp, timeout, env=run_env)
 

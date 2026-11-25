@@ -136,6 +136,8 @@ class newModule:
             # The scaffold's user-owned `endmodule: <label>` must match the
             # generator-emitted module begin-label.
             data['blockSvModuleName'] = prj.blockSvModuleName[qualBlock]
+            # The UVM test package scaffold names the env and test classes.
+            data['uvmNames'] = prj.uvmNames[qualBlock] if qualBlock in prj.uvmNames else None
             # A dutVariant artifact has no per-variant row; seed it with the
             # block's first declared variant so one pass scaffolds every
             # testbench.

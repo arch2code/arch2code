@@ -1,0 +1,21 @@
+{
+  "name": "xcelium",
+  "description": "Xcelium simulator messages",
+  "filters": {
+    "xcelium_error": {
+      "description": "xrun/xmvlog/xmelab/xmsim error message",
+      "re": "^(?:\\S+: )?\\*E,(?P<code>[A-Z0-9_]+)(?: \\([^)]*\\))?:\\s*(?P<msg>.*)",
+      "msg": "(\\g<code>) \\g<msg>",
+      "file": null,
+      "sev": "error"
+    },
+    "xcelium_fatal": {
+      "description": "xrun/xmvlog/xmelab/xmsim fatal message",
+      "re": "^(?:\\S+: )?\\*F,(?P<code>[A-Z0-9_]+)(?: \\([^)]*\\))?:\\s*(?P<msg>.*)",
+      "msg": "(\\g<code>) \\g<msg>",
+      "file": null,
+      "sev": "fatal"
+    }
+  },
+  "modifiers": {}
+}

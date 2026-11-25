@@ -1,0 +1,155 @@
+# uvmReuseChain passes packets from in through uLeafA and uLeafB to out, each
+# leaf adding its offset to every word. Its register model holds uLeafA as
+# the leaf's own register block class in both variants. uLeafB is the leaf's
+# w8 package in v8 and its w4 package in v4, so the chain's model generates
+# its own class for uLeafB, and both leaf packages compile in each top.
+# uTick, on the second clock clkAux, streams a count to uTock over ticks,
+# a connection whose clock comes from uTick's own clock binding.
+
+include:
+    - ../leaf/yaml/uvmReuseLeaf.yaml
+
+ipParameters:
+    constants:
+        UVM_REUSE_B_W: { value: 8, maxValue: 8, desc: "Width of uLeafB's offset register" }
+
+constants:
+    UVM_REUSE_PACKETS: { value: 4, desc: "Packets uDrv sends in the SystemC testbench" }
+    UVM_REUSE_PACKET_WORDS: { value: 8, desc: "Words per packet uDrv sends in the SystemC testbench" }
+    UVM_REUSE_TB_OFFSET_A: { value: 0x21, desc: "uLeafA offset uDrv programs" }
+    UVM_REUSE_TB_OFFSET_B: { value: 3, desc: "uLeafB offset uDrv programs" }
+
+types:
+    uvmReuseCountT: { width: 8, desc: "Tick count" }
+
+structures:
+    uvmReuseCountSt:
+        count: { varType: uvmReuseCountT, desc: "Tick count" }
+
+interfaces:
+    uvmReuseTickIf:
+        interfaceType: push_ack
+        desc: "Tick counts"
+        structures:
+            - { structure: uvmReuseCountSt, structureType: data_t }
+
+blocks:
+    uvmReuse_tb:
+        desc: "Testbench container for uvmReuse (root container)"
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false
+        clocks:
+            clk: { default: true }
+            clkAux: {}
+        resets:
+            rst_n: { clock: clk }
+            rstAux_n: { clock: clkAux }
+    uvmReuseChain:
+        desc: "DUT: in through uLeafA and uLeafB to out, registers behind uRouter"
+        hasVl: true
+        hasRtl: true
+        hasMdl: true
+        hasTb: true
+        hasUvm: true
+        params: [UVM_REUSE_B_W]
+        clocks:
+            clk: { default: true }
+            clkAux: {}
+        resets:
+            rst_n: { clock: clk }
+            rstAux_n: { clock: clkAux }
+        ports:
+            in:  { interface: uvmReuseStreamIf, direction: dst }
+            out: { interface: uvmReuseStreamIf, direction: src }
+        registerPorts:
+            apbReg: { interface: apbReg }
+    uvmReuseRouter:
+        desc: "Register decoder of uvmReuseChain"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+        addressBlock:
+            addressGroup: chain
+            addressIncrement: 0x1000
+            maxAddressSpaces: 4
+            varType: addr_id_uvm_reuse_chain
+            enumPrefix: ADDR_ID_UVM_REUSE_CHAIN_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    uvmReuseTick:
+        desc: "Pushes a count every few clkTick cycles"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+        clocks:
+            clkTick: { default: true, period: 3, timeUnit: ns }
+        resets:
+            rstTick_n: { clock: clkTick }
+        ports:
+            out: { interface: uvmReuseTickIf, direction: src }
+    uvmReuseTock:
+        desc: "Acks every count"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+        clocks:
+            clkTock: { default: true, period: 3, timeUnit: ns }
+        resets:
+            rstTock_n: { clock: clkTock }
+        ports:
+            in: { interface: uvmReuseTickIf, direction: dst }
+    uvmReuseDrv:
+        desc: "Programs both offsets and sends UVM_REUSE_PACKETS packets"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            apbReg: { interface: apbReg, direction: src }
+            out: { interface: uvmReuseStreamIf, direction: src }
+    uvmReuseSink:
+        desc: "Checks each word against the offsets uDrv programs"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            in: { interface: uvmReuseStreamIf, direction: dst }
+
+instances:
+    uvmReuse_tb: { container: uvmReuse_tb, instanceType: uvmReuse_tb, instGroup: top,
+                   clocks: { clk: clk, clkAux: clkAux }, resets: { rst_n: rst_n, rstAux_n: rstAux_n } }
+    u_uvmReuseChain: { container: uvmReuse_tb, instanceType: uvmReuseChain, instGroup: top, variant: v8,
+                       clocks: { clk: clk, clkAux: clkAux }, resets: { rst_n: rst_n, rstAux_n: rstAux_n } }
+    uDrv: { container: uvmReuse_tb, instanceType: uvmReuseDrv, instGroup: top }
+    uSink: { container: uvmReuse_tb, instanceType: uvmReuseSink, instGroup: top }
+    uRouter: { container: uvmReuseChain, instanceType: uvmReuseRouter }
+    uLeafA: { container: uvmReuseChain, instanceType: uvmReuseLeaf, addressGroup: chain, variant: w8 }
+    uLeafB: { container: uvmReuseChain, instanceType: uvmReuseLeaf, addressGroup: chain, variant: fromChain }
+    uTick: { container: uvmReuseChain, instanceType: uvmReuseTick,
+             clocks: { clkTick: clkAux }, resets: { rstTick_n: rstAux_n } }
+    uTock: { container: uvmReuseChain, instanceType: uvmReuseTock,
+             clocks: { clkTock: clkAux }, resets: { rstTock_n: rstAux_n } }
+
+parameters:
+    uvmReuseChain:
+        v8: { UVM_REUSE_B_W: 8 }
+        v4: { UVM_REUSE_B_W: 4 }
+    uvmReuseLeaf:
+        fromChain: { UVM_REUSE_OFF_W: { containerParam: UVM_REUSE_B_W } }
+
+connections:
+    - { interface: uvmReuseStreamIf, src: uDrv, srcport: out, dst: u_uvmReuseChain, dstport: in }
+    - { interface: uvmReuseStreamIf, src: u_uvmReuseChain, srcport: out, dst: uSink, dstport: in }
+    - { interface: apbReg, src: uDrv, srcport: apbReg, dst: u_uvmReuseChain, dstport: apbReg }
+    - { interface: uvmReuseStreamIf, src: uLeafA, srcport: out, dst: uLeafB, dstport: in, interfaceName: mid }
+    - { interface: uvmReuseTickIf, src: uTick, srcport: out, dst: uTock, dstport: in, interfaceName: ticks }
+
+connectionMaps:
+    - { interface: uvmReuseStreamIf, block: uvmReuseChain, direction: dst, instance: uLeafA, instancePort: in, name: in }
+    - { interface: uvmReuseStreamIf, block: uvmReuseChain, direction: src, instance: uLeafB, instancePort: out, name: out }
