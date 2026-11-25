@@ -37,8 +37,8 @@ def sec_clock_half_ctor_init(args, prj, data):
 
 def sec_clock_start(args, prj, data, level='true'):
     # The HDL wrapper passes A2C_HDL_CLOCK_START, defined above its class: high
-    # under Verilator, low under VCS / Xcelium / Questa. The UVM wrapper's
-    # resets are born asserted, so its clocks start high.
+    # under Verilator, low under VCS / Xcelium / Questa. The UVM wrapper, built
+    # only under VCS and Xcelium, passes false.
     return '\n'.join(f"{row['clock']}.write({level});"
                      for row in data['clocks'] if row['direction'] == 'input')
 

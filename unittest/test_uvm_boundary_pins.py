@@ -551,8 +551,9 @@ def check_sc_files(work, design):
         problems += match(wrapperFile, 'shell pin type checks', asserts, expectedAsserts)
 
         for clock, reset in domains:
+            # Clocks start low, as the HDL wrapper's do on VCS and Xcelium.
             expected = [f'void clock_gen_{clock}() {{ clock_gen({clock}, {clock}_half_); }}',
-                        f'SC_THREAD(clock_gen_{clock});']
+                        f'SC_THREAD(clock_gen_{clock});', f'{clock}.write(false);']
             period = (design.blocks[block].get('clocks') or {}).get(clock, {}).get('period')
             if period is not None:
                 expected.append(f'{clock}_half_(sc_time({period}, SC_NS) / 2),')

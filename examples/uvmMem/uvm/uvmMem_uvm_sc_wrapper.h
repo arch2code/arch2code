@@ -149,7 +149,7 @@ public:
             }
         }
 
-        clk.write(true);
+        clk.write(false);
         SC_THREAD(clock_gen_clk);
         SC_THREAD(reset_driver_rst_n);
         SC_THREAD(uvm_watch);

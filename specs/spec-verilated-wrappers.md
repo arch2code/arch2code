@@ -104,11 +104,16 @@ Clocks and resets:
   its own `clock_gen_<clock>` thread at half its declared period. Under socket
   lockstep every clock must stop while the Python partner holds the quantum,
   and an `sc_clock` cannot pause.
-- Each reset signal starts released, at `true`. Its `reset_driver_<reset>`
-  thread writes it low at time 0 and high after the reset's `releaseCycles`
-  rising edges of its own clock. The first write is therefore a real falling
-  edge, which Verilator's asynchronous reset processes need to see. Under
-  socket lockstep the thread follows the partner's reset instead.
+- Each reset signal starts at `A2C_HDL_RESET_BORN` and each input clock at
+  `A2C_HDL_CLOCK_START`, both defined above the class. Under Verilator both
+  are `true`: the reset starts released, and its `reset_driver_<reset>`
+  thread writes it low at time 0, a real falling edge, which Verilator's
+  asynchronous reset processes need to see. Under `VCS_DUT`, `XCELIUM_DUT`
+  and `QUESTA_DUT` both are `false`: the reset starts asserted and the clock
+  low, so no 4-state flop is clocked at time 0 while its reset is X. The
+  thread releases the reset after `releaseCycles` rising edges of its own
+  clock. Under socket lockstep the thread follows the partner's reset
+  instead.
 - The wrapper observes an output clock or reset and never drives it. It
   counts the edges and warns at the end of the run if a clock never toggled
   or a reset never released.

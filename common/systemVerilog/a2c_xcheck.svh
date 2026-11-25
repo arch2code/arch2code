@@ -1,7 +1,8 @@
 // Shared body of the <type>_xcheck modules, included after their ports.
 // Checking starts once reset has been asserted and released, because the
-// wrappers start with reset released, before the DUT has been reset. Each
-// instance reports only its first X or Z, through a2c_xz_fail.
+// DUT's outputs are X until its first reset. The wrappers start with reset
+// asserted on the four-state simulators. Each instance reports only its first
+// X or Z, through a2c_xz_fail.
 
 import "DPI-C" function void a2c_xz_fail(string path, string signal);
 
