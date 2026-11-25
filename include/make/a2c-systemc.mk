@@ -322,7 +322,15 @@ endif
 # different __FILE__ in sc_assert; Clang 17 rejects them as different
 # definitions in different modules. Each sysc/<dir>/ holding such a copy maps
 # to the top directory, so both copies expand __FILE__ alike.
+# Clang 18 and later no longer check declarations in a global module fragment
+# for that (Clang 18 release notes, llvm-project #79240), so the maps are
+# passed only to an older or unrecognised compiler, and always with
+# QUESTA_PTRARRAY_COPY=1 (not tested without them). QUESTA_MACRO_PREFIX_MAP=1
+# or 0 forces the choice.
+QUESTA_CLANG_MAJOR := $(shell $(CXX) --version 2>/dev/null | sed -n 's/.*clang version \([0-9][0-9]*\).*/\1/p' | head -1)
+QUESTA_MACRO_PREFIX_MAP ?= $(if $(filter 1,$(QUESTA_PTRARRAY_COPY)),1,$(shell [ "0$(QUESTA_CLANG_MAJOR)" -ge 18 ] && echo 0 || echo 1))
 QUESTA_SC_INC = $(QUESTA_HOME)/include/systemc
+ifeq ($(QUESTA_MACRO_PREFIX_MAP),1)
 QUESTA_SYSC_DIRS := $(sort $(foreach h,$(wildcard $(QUESTA_SC_INC)/sysc/*/*.h $(QUESTA_SC_INC)/sysc/*/*/*.h),\
 	$(if $(wildcard $(QUESTA_SC_INC)/$(notdir $(h))),$(dir $(h)))))
 CXX_FLAGS += $(foreach d,$(QUESTA_SYSC_DIRS),-fmacro-prefix-map=$(d)=$(QUESTA_SC_INC)/)
@@ -331,6 +339,7 @@ CXX_FLAGS += $(foreach d,$(QUESTA_SYSC_DIRS),-fmacro-prefix-map=$(d)=$(QUESTA_SC
 ifeq ($(QUESTA_PTRARRAY_COPY),1)
 CXX_FLAGS += $(foreach d,$(QUESTA_SYSC_DIRS),-fmacro-prefix-map=$(subst $(QUESTA_SC_INC)/,$(QUESTA_SC_COPY)/,$(d))=$(QUESTA_SC_INC)/) \
 	-fmacro-prefix-map=$(QUESTA_SC_COPY)/=$(QUESTA_SC_INC)/
+endif
 endif
 endif
 

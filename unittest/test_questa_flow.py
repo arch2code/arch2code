@@ -327,10 +327,29 @@ def main():
             os.makedirs(os.path.dirname(os.path.join(inc, rel)), exist_ok=True)
             open(os.path.join(inc, rel), 'w').close()
         mapped = dryRun(rundir, 'all', *[a for a in QUESTA_ARGS if not a.startswith('QUESTA_HOME=')],
-                        f'QUESTA_HOME={fake}')
+                        f'QUESTA_HOME={fake}', 'QUESTA_MACRO_PREFIX_MAP=1')
         maps = {w for c in compiles(mapped.stdout) for w in c if w.startswith('-fmacro-prefix-map=')}
         if maps != {f'-fmacro-prefix-map={inc}/sysc/kernel/={inc}/'}:
             failures.append(f"Questa header maps are {sorted(maps)}")
+
+        # The maps by default only for a Clang older than 18 (or an
+        # unrecognised version): Clang 18 skips the global-module-fragment
+        # ODR check they work around. QUESTA_MACRO_PREFIX_MAP forces it.
+        for version, extra, want in (('17.0.6', (), True), ('18.1.8', (), False), ('20.1.8', (), False),
+                                     ('', (), True), ('18.1.8', ('QUESTA_MACRO_PREFIX_MAP=1',), True),
+                                     ('17.0.6', ('QUESTA_MACRO_PREFIX_MAP=0',), False)):
+            cc = os.path.join(work, f'fakeClang{version or "None"}', 'clang++')
+            os.makedirs(os.path.dirname(cc), exist_ok=True)
+            with open(cc, 'w') as f:
+                f.write(f'#!/bin/sh\necho "clang version {version}"\n' if version else '#!/bin/sh\necho "g++ (GCC) 13.2.0"\n')
+            os.chmod(cc, 0o755)
+            got = dryRun(rundir, 'all', *[a for a in QUESTA_ARGS if not a.startswith('QUESTA_HOME=')],
+                         f'QUESTA_HOME={fake}', f'A2C_CLANG={cc}', *extra)
+            cxx = compiles(got.stdout)
+            has = any(w.startswith('-fmacro-prefix-map=') for c in cxx for w in c)
+            if got.returncode != 0 or not cxx or has != want:
+                failures.append(f"compiler '{version}' {list(extra)}: prefix maps {'present' if has else 'absent'}, "
+                                f"expected {'present' if want else 'absent'} (exit {got.returncode})")
 
         failures += checkPtrarrayCopy(rundir, work)
 
