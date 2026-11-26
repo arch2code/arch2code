@@ -658,10 +658,50 @@ prj.data['interface_defs']['apb/_a2csystem']['sc_channel'] = {
 
 **Use Case**: When you need to organize related fields into a logical group but don't want the complexity of multi-entry nested tables. Common for optional field groups or fields specific to certain subtypes.
 
+## Schema Extensions
+
+A project or Pro adds sections and fields to the schema by listing fragment files under `schemaExtensions:` in `project.yaml`.
+
+```yaml
+schemaExtensions:
+  - $a2c/config/fwQueueSchema.yaml   # a builder fragment
+  - $root/schema/projectExtras.yaml  # a dirs: macro
+  - schema/moreExtras.yaml           # relative to the root project file
+```
+
+**Merge order.** `mergeProjectConfig()` appends the lists in base, Pro, user order (`list_append` in `MERGE_SPEC`). `Schema()` merges the fragments in that order, so a fragment may extend a section an earlier fragment added.
+
+**Paths.** An entry resolves the way a `postProcess:` script path does. `expandDirMacros()` expands a leading `$a2c` or a macro from the root project's `dirs:`, and `basePathRelative()` joins the result to the root project file's directory, which leaves an absolute path unchanged. A missing file stops the build. Base and Pro entries therefore start with `$a2c/`. A file listed more than once across the base, Pro and user lists stops the build with an error naming the layers that list it. So does a fragment whose top level is not a mapping, an empty file included. A root `schemaExtensions:` key that is not a list stops the build, naming the root project file.
+
+**Child projects.** Only the root project's list applies, after the base and Pro lists. A child project file may carry `schemaExtensions:` for its own standalone build, but a root that opens it ignores that list, so the root lists every fragment its build needs.
+
+**Fragment format.** A fragment has the format of `config/schema.yaml`. It may add a new top-level section, written as it would be in the schema file. It may add a field or a sub-table to an existing section or sub-table, by restating the path down to the new key:
+
+```yaml
+blocks:                 # existing section, restated as a path only
+  fwQueues:             # new sub-table
+    _attribs: [optional, multiple]
+    queue: key
+    depth: required
+```
+
+**Add-only rule.** A fragment may restate an existing section or sub-table only to reach a new key beneath it. Restating any other existing key, such as a field or a field's `_type` or `_validate`, is a redefinition. Every `_`-prefixed directive (`_attribs`, `_key`, `_singular`, `_mapto` and the rest) under an existing node counts as a redefinition, even where the node does not set it, because it changes how existing rows parse. A `_mapto` alias such as `enums` cannot be extended, so extend the section it names. A key added by an earlier fragment counts as existing. `Schema()` reports a redefinition with the fragment's file and line, the file that defined the key, and the full key path, then stops.
+
+**Declaration order.** A new key goes after the existing keys of the node it extends. The schema file's order is kept, and an added field is processed after the existing fields of its row.
+
+**Validation.** `Schema()` validates the merged schema in one pass, as if it were one file, so a fragment field may reference base sections and fields. A schema error inside a fragment names the fragment file, with a line number where the schema error already reports one. A `post(...)` or `auto(...)` type in a fragment names a `projectCreate` method, as in the schema file, so a fragment can only use functions that already exist there. `projectOpen` loads the saved merged schema, so a fragment table loads like any other table. Its rows are in `prj.data`, and nested rows attach to their parent row.
+
+**`dbSchema`.** Fragments merge onto whichever schema file `dbSchema:` names.
+
+**Derived rows.** A fragment adds no processing step. A feature that derives rows from a fragment table does it in a script listed under `postProcess:`.
+
+**Rebuild tracking.** The build manifest lists every fragment in `A2C_YAML_FILES`, so editing one rebuilds the db.
+
 ## Processing Flow
 
 ### 1. Schema Validation (`schema.py`)
 - Parse schema.yaml
+- Merge the `schemaExtensions:` fragments onto it (see Schema Extensions)
 - Validate field types are in `valid_field_types`
 - Build node/field hierarchy
 - Check for reserved key usage

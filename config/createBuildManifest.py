@@ -464,7 +464,8 @@ def create(prj):
     svDepFiles.update(svPackageFiles)
 
     projectYaml = os.path.join(g.yamlBasePath, os.path.basename(prj.projFile))
-    yamlFiles = sorted({os.path.abspath(f) for f in prj.includeValid} | {projectYaml})
+    yamlFiles = sorted({os.path.abspath(f) for f in prj.includeValid} | {projectYaml}
+                       | set(prj.schemaExtensionFiles))
 
     manifest = {
         'mode':          rootLayout['mode'],
