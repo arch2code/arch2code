@@ -88,9 +88,18 @@ module bridgeApbDecode_hdl_sv_wrapper
     );
 
     `ifdef VCS_DEBUG
+    // Module scope, so %m names this module and not the initial block.
+    string a2c_waves_scope;
     initial if ($test$plusargs("fsdbTrace")) begin
-        $fsdbDumpvars($sformatf("%m"), "+all");
+        if (!$value$plusargs("a2c_waves_scope=%s", a2c_waves_scope)) a2c_waves_scope = $sformatf("%m");
+        $fsdbDumpvars(0, "instance=", a2c_waves_scope, "+all");
     end
+    `endif
+
+    `ifndef VERILATOR
+    apb_xcheck apbReg_uBridgeIp0_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uBridgeIp0));
+    apb_xcheck apbReg_uBridgeIp1_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uBridgeIp1));
+    apb_xcheck apbReg_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg));
     `endif
 
 endmodule : bridgeApbDecode_hdl_sv_wrapper

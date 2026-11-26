@@ -113,9 +113,10 @@ These stop the run with exit status 2 and print what was expected:
 
 ## Ending a run and reporting failures
 *   The framework owns simulation control. `sc_main` calls `sc_start`, and the run stops once every end-of-test voter has voted. Never call `sc_start` or `sc_stop` from a testbench.
-*   A framework watchdog fails a run that has no end-of-test voter and no `--scTimeLimit`, and a run that stops making progress once the watchdog is enabled. The first prints `no end-of-test voter after <n> ms of wall clock` and stops with `No end-of-test voter is registered and no --scTimeLimit is set, so this run can never terminate`. The second prints `no design progress in <n> ms of wall clock` and stops with `Simulation stuck Watchdog timeout`.
+*   A framework watchdog fails a run that has no end-of-test voter and no `--scTimeLimit`, and a run that stops making progress once the watchdog is enabled. The first prints `no end-of-test voter after <n> ms of wall clock` and stops with `No end-of-test voter is registered and no --scTimeLimit is set, so this run can never terminate`. The second prints `no design progress in <n> ms of wall clock` and stops with `Simulation stuck Watchdog timeout`. Under the UVM testbench the stall check is off and UVM's own checks bound a stall; see `verify-uvm`.
 *   End a run by voting, never with `endOfTestState::GetInstance().forceEndOfTest()`. That call is what `Q_ASSERT` uses on failure: it latches end-of-test without a vote and without notifying the External's `eotThread`, so the run stops later, when the watchdog polls, and `final()` still checks the tests.
 *   Under co-simulation, `--vlInst <dut>` replaces the DUT's model with its RTL, and a voter inside the DUT's model goes with it. Put the voter in a block the External instantiates, such as a sink BFM beside the DUT. In `examples/axi4sDemo`, the sink driver `axi4s_s_drv` holds the voter, so the same testbench ends with or without `--vlInst`.
+*   A block with `hasUvm: true` also gets a generated UVM testbench, which runs against the model, the RTL, or both side by side. Writing, running and debugging its tests is the `verify-uvm` skill.
 *   Report a check failure with `errorCode::fail(msg)`. It records the failure and sets the exit status, and the run continues. There is no `logError`. `Q_ASSERT` stops the run instead; see `debug`.
 
 ```cpp
@@ -132,6 +133,13 @@ void myScoreboard::check(const transaction &actual)
 ```
 
 *   To follow tags and commands through the design, use trackers; see `debug`. For RTL against the model, see `verify-cosimulation`, and in A2C Pro, `run-tandem`.
+
+## Check outputs without the model
+Comparing the RTL with the model catches a disagreement and misses an error both make. Give each output a check from the specification and the stimulus too, never from the model.
+
+*   In the SystemC testbench, a scoreboard in the External or a sink BFM that computes the expected output from what the test sent.
+*   In the UVM testbench, a scoreboard in `<block>_tb_env`, a contract-style check the bench writes, or an assertion; see `verify-uvm`.
+*   Nothing warns about an output with no such check. Decide per output, and say in the bench why an output has none.
 
 ## Test sequencing with `testController`
 *   A testbench lists its tests, in run order, with `testController::GetInstance().set_test_names({...})` from `createTestBench` or `handleProgramOptions`. Call it before any block that uses `ADD_TEST` is built, so put it before `createTbTop()`. The scaffolded `final()` asserts `are_all_tests_complete()`, which fails until every listed test has completed.

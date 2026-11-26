@@ -532,6 +532,13 @@ public:
     }
     virtual bool isActive() override { return m_addr_in->isActive(); }
     virtual bool isNotActive() override { return m_addr_in->isNotActive(); }
+    // True when sendDataCycle would block until the next sendAddr: the
+    // receiver is transactional, so it needs a burst's address before its
+    // data, and a new burst would start with no address queued.
+    bool sendDataCycleWaitsForAddr() const
+    {
+        return !m_receiver_cycle_transaction && m_data_sender_new_transaction && m_send_transactions.empty();
+    }
     virtual void setExternalEvent( sc_event *event ) override { m_addr_in->setExternalEvent(event); }
 
     // other methods
@@ -755,14 +762,9 @@ void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::sendData( const axiWriteD
 template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
 inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::sendDataCycle( const axiWriteDataSt<D, S, WU, ID, IDW>& data_)
 {
-    if (!m_receiver_cycle_transaction && m_data_sender_new_transaction) {
-        // receiver is not cycle based, so we must enforce addr before data
-        if (m_send_transactions.empty()) {
-            // for the case of sender clocked and receiver transactional, we need to wait for address
-            // otherwise we have no size context to use the interface
-            wait(m_address_synch_event);
-        }
-
+    if (sendDataCycleWaitsForAddr()) {
+        // A transactional receiver takes its size context from the address.
+        wait(m_address_synch_event);
     }
     if (m_data_sender_new_transaction) {
         manageSendDataTransaction(data_);

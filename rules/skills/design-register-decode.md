@@ -101,7 +101,8 @@ What this means for common layouts:
     `<block>Base` stays self-contained. A block with no `ports:` section may
     omit it and infer its register bus (§6).
 6.  **Forward a container's own register to a child** with a
-    `registerConnections:` row.
+    `registerConnections:` row. For an array register (`count:`), the row
+    forwards the whole array, or one element with `index:` (§9).
 7.  Run `make db`, `make newmodule`, then `make gen` (see `manage-build.md`).
 
 Never create `<block>_regs` blocks by hand and never set `isRegHandler`. The
@@ -414,16 +415,40 @@ instances:
   uAPBDecode: { container: mixed,    instanceType: apbDecode }
   uBlockD:    { container: blockB,   instanceType: blockD }
   uBlockF0:   { container: blockB,   instanceType: blockF, variant: variant0 }
+  uBlockF1:   { container: blockB,   instanceType: blockF, variant: variant1 }
 registers:
   - {register: rwD, regType: rw, block: blockB, structure: dRegSt, desc: A Read Write register}
 registerConnections:
-  - {register: rwD, block: blockB, instance: uBlockD }
   - {register: rwD, block: blockB, instance: uBlockF0 }
+  - {register: rwD, block: blockB, instance: uBlockF1 }
+  - {register: rwD, block: blockB, instance: uBlockD }
 connections:
   - {interface: apbReg, src: uCPU, dst: u_mixed, name: cpu_main}
 connectionMaps:
   - {interface: apbReg, block: mixed, direction: dst, instance: uAPBDecode, name: cpu_main}
 ```
+
+An array register follows the same placement rule as a scalar. `blockB` also
+owns the arrays `rwArr` and `extArr`, and its handler `blockBRegs` decodes every
+element. A row without `index:` forwards the whole array, and the child gets an
+array port. A row with `index: k` forwards element k, and the child gets a
+scalar port. Both ports take the register's name:
+
+```yaml
+registers:
+  - {register: rwArr, regType: rw, block: blockB, structure: dRegSt, count: REGARR_N, desc: A Read Write register array}
+  - {register: extArr, regType: ext, block: blockB, structure: dRegSt, count: REGARR_N, desc: An External register array}
+registerConnections:
+  - {register: rwArr, block: blockB, instance: uBlockF0 }            # whole array
+  - {register: rwArr, block: blockB, instance: uBlockF1 }            # whole array
+  - {register: rwArr, block: blockB, instance: uBlockD, index: 2 }   # element 2
+  - {register: extArr, block: blockB, instance: uBlockD }            # whole array, one consumer
+```
+
+An array the owner uses itself needs no row. `blockA` in `examples/apbDecode`
+owns `rwArr` and `roArr` and drives `roArr` from `rwArr` in its own logic. The
+validation rules for `count:` and `index:` are under "Register connections" in
+`design-architecture.md`. `manage-address-space.md` gives the address layout.
 
 ## 10. Walkthrough C: reusable IP and a nested router (`examples/ip_test`)
 

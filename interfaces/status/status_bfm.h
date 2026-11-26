@@ -4,6 +4,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include "bfmContractCheck.h"
 #include "status_channel.h"
 
 template<typename VL_DATA_T>
@@ -25,6 +26,7 @@ public:
     SC_HAS_PROCESS (status_src_bfm);
 
     status_src_bfm(sc_module_name modulename) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
     }
 
@@ -53,6 +55,7 @@ public:
     SC_HAS_PROCESS (status_dst_bfm);
 
     status_dst_bfm(sc_module_name modulename) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
     }
 

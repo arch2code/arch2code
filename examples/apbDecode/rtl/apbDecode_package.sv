@@ -5,6 +5,8 @@
 package apbDecode_package;
 localparam int unsigned ASIZE = 32'h0000_001D;  // The size of A
 localparam int unsigned DWORD = 32'h0000_0020;  // size of a double word
+localparam int unsigned REGARR_N = 32'h0000_0004;  // Number of elements of the rwArr and roArr register arrays
+localparam int unsigned ROARR_BIAS = 32'h0000_1000;  // Added to each roArr element blockA derives from rwArr
 localparam int unsigned MEMORYA_WORDS = 32'h0000_0013;  // Address wordlines for memory A
 localparam int unsigned MEMORYA_WORDS_LOG2 = 32'h0000_0005;  // Address wordlines for memory A log2
 localparam int unsigned MEMORYA_WIDTH = 32'h0000_003F;  // Bit width of content for memory A, more than 32, less than 64
@@ -55,6 +57,10 @@ typedef struct packed {
 typedef struct packed {
     aSizeT index; //
 } aSizeRegSt;
+
+typedef struct packed {
+    u16T d; //Register array element payload
+} arrRegSt;
 
 typedef struct packed {
     apbAddrT address; //

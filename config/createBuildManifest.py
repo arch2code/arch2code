@@ -3,7 +3,7 @@ import os
 import pysrc.arch2codeGlobals as g
 import pysrc.artifactPaths as artifactPaths
 import pysrc.migrateCommon as migrateCommon
-from pysrc.arch2codeHelper import printWarning
+from pysrc.arch2codeHelper import printWarning, printError, warningAndErrorReport
 
 # Generated-source toolchain split, mirroring the make find globs: the C++ build
 # consumes .cpp/.h/.cppm, the SystemVerilog/verilator build consumes .sv/.svh.
@@ -74,6 +74,30 @@ def _writeBuildManifestMk(rootDir, manifest):
     # The compiled registration TUs that include the per-top DUT headers, so
     # the VCS and Xcelium flows can order them after shell generation.
     lines.append(f"A2C_VL_REGISTRAR_SRC := {asList(manifest['vlRegistrarFiles'])}")
+    # UVM testbench tops of the harness owner's hasUvm blocks. Only the UVM flow
+    # reads these; each top's port map sits beside the RTL tops' under .gen/vl.
+    lines.append(f"A2C_UVM_SRC_DIRS := {asList(manifest['uvmDirs'])}")
+    lines.append(f"A2C_UVM_TOPS := {asList([t['qualifiedTop'] for t in manifest['uvmTops']])}")
+    lines.append(f"A2C_UVM_REGISTRAR_SRC := {asList(manifest['uvmRegistrarFiles'])}")
+    # UVM_TOP names a top by its stem; a2c-uvm.mk maps it to the testbench
+    # module and defines A2C_UVM_PKG as the module's variant package.
+    lines.append(f"A2C_UVM_TOP_STEMS := {asList([t['stem'] for t in manifest['uvmTops']])}")
+    for block in sorted(manifest['uvmDefaultTops']):
+        lines.append(f"A2C_UVM_DEFAULT_TOP_{block} := {manifest['uvmDefaultTops'][block]}")
+    for top in manifest['uvmTops']:
+        name = top['qualifiedTop']
+        lines.append(f"A2C_UVM_TB_TOP_{top['stem']} := {name}")
+        lines.append(f"A2C_UVM_PKG_{name} := {top['pkgName']}")
+        lines.append(f"A2C_UVM_TESTBENCH_{name} := {top['testbench']}")
+        lines.append(f"A2C_UVM_PKG_SV_{name} := {top['pkgSv']}")
+        # Compiled before the top's own package, in this order.
+        lines.append(f"A2C_UVM_REUSED_SV_{name} := {asList(top['reusedPkgSv'])}")
+        lines.append(f"A2C_UVM_TEST_SV_{name} := {top['testSv']}")
+        lines.append(f"A2C_UVM_TB_SV_{name} := {top['tbSv']}")
+        lines.append(f"A2C_UVM_PORTMAP_{name} := {top['portmap']}")
+        lines.append(f"A2C_UVM_HDL_TOP_{name} := {top['hdlTop']}")
+        # The first is UVM_DUT's default.
+        lines.append(f"A2C_UVM_DUTS_{name} := {asList(top['duts'])}")
     lines.append("")
     with open(os.path.join(genDir, 'build.mk'), 'w') as f:
         f.write('\n'.join(lines))
@@ -161,8 +185,9 @@ def create(prj):
                     svGenFiles.add(genFile)
         if 'cppm' in fileDef['ext']:
             moduleFiles.add(filePath + '.' + fileDef['ext']['cppm'])
-        scGenSrcFiles.update(filePath + '.' + extVal for extVal in fileDef['ext'].values()
-                             if extVal == 'cpp')
+        if role != 'uvm':
+            scGenSrcFiles.update(filePath + '.' + extVal for extVal in fileDef['ext'].values()
+                                 if extVal == 'cpp')
         # Managed SV modules: role 'sv' selects rtlModule (vl wrappers and
         # packages are listed elsewhere); svCompile drops blocks outside this
         # build's hierarchy.
@@ -173,10 +198,16 @@ def create(prj):
 
     # block mode: one artifact per block per matching block-mode entry, one
     # per variant stem when the entry varies per variant.
+    def isUvmRow(row):
+        return row['layout']['segments'][row['fileDef']['basePath']]['buildGroup'] == 'uvm'
+
     for row in rows:
         if row['mode'] != 'block':
             continue
         if row['fileDef'].get('dutVariant', False) and row['owner'] != harnessOwner:
+            continue
+        # A reused child's UVM testbench belongs to the child's own build.
+        if isUvmRow(row) and row['owner'] != harnessOwner:
             continue
         record(row['fileDef'], row['stem'], row['layout'], row['owner'] == rootProject,
                svCompile=row['blockKey'] in reachableBlockKeys)
@@ -354,6 +385,69 @@ def create(prj):
         if row['mode'] == 'block' and dutTopVariantByBlock.get(row['blockKey']) == row['variant']:
             dutTops[blockByKey[row['blockKey']]['block']] = topName
 
+    # One record per UVM testbench top, pairing the tb module's file with its
+    # variant package and its block's test package. Named as UVMNAMES names
+    # them.
+    uvmNames = prj.config.getConfig('UVMNAMES')
+    uvmFiles = dict()
+    uvmRegistrarFiles = list()
+    # A reused child's variant package is its own project's file, which this
+    # build compiles and never regenerates.
+    uvmPkgFiles = dict()
+    for row in rows:
+        if row['mode'] == 'block' and isUvmRow(row) and row['fileType'] == 'uvmPkg':
+            uvmPkgFiles[(row['blockKey'], row['variant'])] = (row['files']['sv'], row['owner'])
+        if row['mode'] == 'block' and isUvmRow(row) and row['owner'] == harnessOwner:
+            if row['fileType'] in ('uvmTb', 'uvmPkg', 'uvmTest'):
+                uvmFiles[(row['fileType'], row['blockKey'], row['variant'])] = row['files']['sv']
+            elif row['fileType'] == 'uvmRegistrar':
+                uvmRegistrarFiles.append(row['files']['src'])
+
+    def reusedPkgSv(top):
+        # Another project's make gen writes its child's file before this
+        # make db, so a missing one means that child has not been generated.
+        # This project's own files come from its make gen, after this.
+        files = list()
+        for reused in top['reuse']:
+            child = blockByKey[reused['blockKey']]['block']
+            key = (reused['blockKey'], reused['variant'])
+            if key not in uvmPkgFiles:
+                printError(f"UVM top {top['stem']} reuses the variant package {reused['pkgName']} of {child}, "
+                           f"but the build has no uvmPkg file for it. Check the fileMap of {child}'s project.")
+                exit(warningAndErrorReport())
+            path, owner = uvmPkgFiles[key]
+            if owner != harnessOwner and not os.path.exists(path):
+                printError(f"UVM top {top['stem']} reuses {path}, the variant package of {child}, which does "
+                           f"not exist. Run make gen in project {owner}, then make db here.")
+                exit(warningAndErrorReport())
+            files.append(path)
+        return files
+
+    uvmTops = list()
+    # A block's default UVM top is the one at the variant of its DUT-top
+    # wrapper, A2C_VL_TOP_<block>.
+    uvmDefaultTops = dict()
+    for blockKey, names in uvmNames.items():
+        if prj.contextOwningProject[blockByKey[blockKey]['_context']] != harnessOwner:
+            continue
+        if dutTopVariantByBlock.get(blockKey) in names['tops']:
+            uvmDefaultTops[blockByKey[blockKey]['block']] = names['tops'][dutTopVariantByBlock[blockKey]]['stem']
+        for variant, top in names['tops'].items():
+            uvmTops.append({
+                'stem':         top['stem'],
+                'pkgName':      top['pkgName'],
+                'testbench':    names['testbenchName'],
+                'qualifiedTop': top['tbModule'],
+                'pkgSv':        uvmFiles[('uvmPkg', blockKey, variant)],
+                'reusedPkgSv':  reusedPkgSv(top),
+                'tbSv':         uvmFiles[('uvmTb', blockKey, variant)],
+                'testSv':       uvmFiles[('uvmTest', blockKey, '')],
+                'portmap':      top['portmap'],
+                'xceliumShell': top['xceliumShell'],
+                'hdlTop':       top['hdlTop'],
+                'duts':         names['duts'],
+            })
+
     # The SV a verilate run reads, as distinct from the modules named on its
     # command line. Project-wide: every top is verilated against the same rtl.f
     # and module set, and A2C_VL_SV_<top> names the one file that differs.
@@ -394,6 +488,10 @@ def create(prj):
         'cppExcludeFiles': sorted(cppExcludeFiles),
         'dutTops':       dutTops,
         'vlRegistrarFiles': sorted(vlRegistrarFiles),
+        'uvmTops':       sorted(uvmTops, key=lambda t: t['qualifiedTop']),
+        'uvmDefaultTops': uvmDefaultTops,
+        'uvmRegistrarFiles': sorted(uvmRegistrarFiles),
+        'uvmDirs':       sorted(dirs['uvm']),
     }
     prj.config.setConfig('BUILDMANIFEST', manifest)
 

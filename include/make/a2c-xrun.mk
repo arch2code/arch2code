@@ -2,8 +2,8 @@
 # into its shared library, elaborates and writes one snapshot per DUT topology in
 # XRUN_RUNDIR. Xcelium fixes the SystemC topology at elaboration, so the snapshot
 # is elaborated with the topology's testbench arguments and build/run_<topology>
-# is a script that re-simulates it with the test's arguments passed through as
-# +systemc_args+; the command line matches the other flows.
+# is a script that simulates it with the test's arguments, so the command line
+# matches the other flows.
 
 # xrun links the SystemC objects with the GCC release named by -gcc_vers, which
 # must match the libstdc++ they were compiled against; the install-specific
@@ -15,8 +15,39 @@ endif
 XRUN ?= xrun
 XRUN_OPTS ?= -64bit -sv -sysc -sc_main -timescale 1ns/1ps
 XRUN_OPTS += -gcc_vers $(XRUN_GCC_VERS)
+# The build stops at elaboration and so takes no simulation licence; only the
+# run script's xrun -R does. Without -elaborate, xrun would also simulate the
+# elaboration arguments' testbench to the end, and a UVM snapshot, which has no
+# +UVM_TESTNAME there, would end in a UVM_FATAL.
+XRUN_OPTS += -elaborate
+# UVM 1.2; without -uvmhome xrun picks CDNS-1.1d.
+ifdef USE_UVM
+XRUN_OPTS += -uvm -uvmhome CDNS-1.2
+# The registrar includes every UVM top's shell from .gen/vl.
+$(A2C_UVM_REGISTRAR_SRC:%.cpp=$(BUILD_DIR)/%.o): $(VL_BOUNDARY_STAMP)
+endif
 # Per-simulation options; -nolog so concurrent runs do not fight over xrun.log.
 XRUN_R_OPTS ?= -64bit -nolog
+# WAVES=1 elaborates with read access, which probes need and which slows the
+# simulation, and has the run script source a2c-waves-xrun.tcl.
+ifdef WAVES
+XRUN_OPTS += -access +r
+XRUN_R_OPTS += -input $(A2C_ROOT)/include/make/a2c-waves-xrun.tcl
+endif
+# UVM_COV=1 (a2c-uvm.mk) elaborates with XRUN_COV_OPTS: block, expression,
+# FSM and toggle coverage of the RTL DUT, and covergroups and assertions (u).
+# A model DUT's snapshot holds the RTL only as an idle top, so it takes u
+# alone. Each run writes its database to cov/<snapshot>/<test>.<seed> under
+# the directory it starts from, or under RL_RUN_DIR, which regrLauncher.py
+# sets to each run's directory.
+XRUN_COV_CODE ?= b:e:f:t
+XRUN_COV_OPTS ?= $(if $(filter model,$(UVM_DUT)),-coverage u,-coverage $(XRUN_COV_CODE):u -covdut $(UVM_COV_DUT))
+ifdef UVM_COV
+ifndef USE_UVM
+$(error UVM_COV=1 needs USE_UVM=1)
+endif
+XRUN_OPTS += $(XRUN_COV_OPTS)
+endif
 
 # Boost enters the shared-library link, so it must be a shared or PIC library
 # (BOOST_LIBS, shared with the plain/VCS flows in a2c-systemc.mk). Boost.System
@@ -38,7 +69,12 @@ ifdef VL_DUT
 XRUN_HDL = -makelib $(XRUN_DUT_LIB) -F $(A2C_ROOT)/common/systemVerilog/a2c.f \
 	$(A2C_HDL_ARGS) $(EXTRA_XRUN_LIB_OPTS) \
 	-F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(XRUN_INCDIRS) $(XRUN_TOP_SV) -endlib
-XRUN_HDL_DEPS = $(wildcard $(A2C_SV_DEP_FILES) $(EXTRA_SV_GEN_FILES)) $(A2C_RTL_DOT_F) $(XRUN_TOP_SV) $(A2C_HDL_DEPS)
+# xrun reaches the X/Z checkers through a2c.f's -y dirs, which no prerequisite
+# names, so they and their shared include are listed here. A builder layer's
+# -y units are the ones it names for VCS in A2C_LAYER_VCS_LIB_SV_FILES.
+XRUN_HDL_DEPS = $(wildcard $(A2C_SV_DEP_FILES) $(EXTRA_SV_GEN_FILES)) $(A2C_RTL_DOT_F) $(XRUN_TOP_SV) $(A2C_HDL_DEPS) \
+	$(wildcard $(A2C_ROOT)/interfaces/*/*_xcheck.sv) $(A2C_ROOT)/common/systemVerilog/a2c_xcheck.svh \
+	$(A2C_LAYER_VCS_LIB_SV_FILES)
 # The foreign-module shells the registrars include are generated under .gen/vl.
 $(A2C_VL_REGISTRAR_SRC:%.cpp=$(BUILD_DIR)/%.o): $(VL_BOUNDARY_STAMP)
 endif
@@ -59,22 +95,80 @@ $(XRUN_STAMP): $(OBJ) $(XRUN_HDL_DEPS) $(XRUN_OPTS_STAMP)
 	cd $(XRUN_RUNDIR) && $(XRUN) $(XRUN_OPTS) -clean -xmlibdirname $(XRUN_SNAPSHOT_DIR) $(EXTRA_XRUN_OPTS) $(XRUN_HDL) $(OBJ) $(XRUN_LD_LIBS) $(addprefix +systemc_args+,$(DUT_ELAB_ARGS)) -l xrun_$(XRUN_SNAPSHOT_DIR:%.d=%).log
 	touch $@
 
-# The script carries the licence setting the build ran with, so a test launched
-# outside this make environment finds the same servers. Its per-simulation
-# options and licence list are recorded so a change rewrites the script.
+# The script passes + arguments to the simulator and the rest to sc_main as
+# +systemc_args+; --seed N also goes to the SV solver as -svseed N, and a
+# seed of random is drawn once here, so both sides get one 32-bit value.
+# Under USE_UVM, UVM_TEST is the +UVM_TESTNAME of a run that names none. The
+# simulator also gets +a2c_seed and +a2c_rerun, the command that repeats the
+# run with the seed drawn, which a2c_rerun prints. A WAVES=1 run writes
+# waves.shm in the directory it starts from, A2C_WAVES_DIR. The build's
+# licence setting goes in too, so a test launched outside make finds the same
+# servers. What the script holds is recorded so a change rewrites it.
+XRUN_R_OPTS_TEXT = $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) $(LM_LICENSE_FILE) $(UVM_TEST) $(UVM_COV)
 XRUN_R_OPTS_STAMP = $(XRUN_STAMP_DIR)/r_opts
-$(shell [ "$$(cat $(XRUN_R_OPTS_STAMP) 2>/dev/null)" = "$(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) $(LM_LICENSE_FILE)" ] || printf '%s\n' "$(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) $(LM_LICENSE_FILE)" > $(XRUN_R_OPTS_STAMP))
+$(shell [ "$$(cat $(XRUN_R_OPTS_STAMP) 2>/dev/null)" = "$(XRUN_R_OPTS_TEXT)" ] || printf '%s\n' "$(XRUN_R_OPTS_TEXT)" > $(XRUN_R_OPTS_STAMP))
 
 $(BIN_DIR)/$(BIN): $(XRUN_STAMP) $(XRUN_R_OPTS_STAMP)
 	mkdir -p $(@D)
-	printf '%s\n' '#!/bin/sh' \
+	printf '%s\n' '#!/bin/bash' \
 		$(if $(LM_LICENSE_FILE),'export LM_LICENSE_FILE="$(LM_LICENSE_FILE)"') \
-		'for a; do set -- "$$@" "+systemc_args+$$a"; shift; done' \
+		'export A2C_WAVES_DIR=$$PWD' \
+		'r=$$(printf %q "$$0"); s=; t=; seed=' \
+		'for a; do' \
+		'    shift' \
+		'    case "$$s:$$a" in' \
+		'        1:random|:--seed=random) a=$${a%random}$$(od -An -tu4 -N4 /dev/urandom | tr -d " ") ;;' \
+		'    esac' \
+		'    r="$$r $$(printf %q "$$a")"' \
+		'    if [ -n "$$s" ]; then s=; seed=$$a; set -- "$$@" "+systemc_args+$$a" -svseed "$$a"; continue; fi' \
+		'    case "$$a" in' \
+		'        +UVM_TESTNAME=*) t=1; set -- "$$@" "$$a" ;;' \
+		'        +*) set -- "$$@" "$$a" ;;' \
+		'        --seed) s=1; set -- "$$@" "+systemc_args+$$a" ;;' \
+		'        --seed=*) seed=$${a#--seed=}; set -- "$$@" "+systemc_args+$$a" -svseed "$$seed" ;;' \
+		'        *) set -- "$$@" "+systemc_args+$$a" ;;' \
+		'    esac' \
+		'done' \
+		$(if $(and $(USE_UVM),$(UVM_TEST)),'[ -n "$$t" ] || set -- "$$@" +UVM_TESTNAME=$(UVM_TEST)') \
+		$(if $(UVM_COV),$(XRUN_COV_RUN_LINES)) \
+		'[ -z "$$seed" ] || set -- "$$@" "+a2c_seed=$$seed"' \
+		'set -- "$$@" "+a2c_rerun=cd $$(printf %q "$$PWD") && $$r"' \
 		'cd $(XRUN_RUNDIR) && exec $(XRUN) -R -xmlibdirname $(XRUN_SNAPSHOT_DIR) $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) "$$@"' > $@
 	chmod +x $@
 
+# The run script lines of a UVM_COV=1 snapshot. They name the run's database
+# <test>.<seed>, from its +UVM_TESTNAME, which UVM_TEST may have added, and
+# its seed.
+XRUN_COV_RUN_LINES = 'n=notest; for a; do case "$$a" in +UVM_TESTNAME=*) n=$${a\#+UVM_TESTNAME=} ;; esac; done' \
+	'set -- "$$@" -covworkdir "$${RL_RUN_DIR:-$$PWD}/cov" -covscope $(DUT_TOPOLOGY) -covtest "$$n$${seed:+.$$seed}" -covoverwrite'
+
+# Merges every run database under UVM_COV_RUNS, which by default holds those
+# of the runs started here and, under regr/, those of every regression, into
+# UVM_COV_REPORT/merged, and writes UVM_COV_REPORT/summary.txt, by instance,
+# covergroups.txt, every covergroup bin with the register model's, which no
+# instance holds, and an HTML report in UVM_COV_REPORT/html. The merged model
+# is the union of the runs', so runs of different snapshots merge. imc runs in
+# UVM_COV_REPORT, where it writes imc.log, and ships with vManager, not
+# Xcelium.
+IMC ?= imc
+UVM_COV_RUNS ?= .
+UVM_COV_REPORT ?= cov_report
+.PHONY: uvm_cov_merge
+uvm_cov_merge:
+	runs=$$(find $(abspath $(UVM_COV_RUNS)) -path '*/cov/*' -name '*.ucd' -printf '%h\n' | sort -u); \
+	[ -n "$$runs" ] || { echo "uvm_cov_merge: no Xcelium coverage database under $(UVM_COV_RUNS)" >&2; exit 1; }; \
+	mkdir -p $(UVM_COV_REPORT) && printf '%s\n' \
+		"merge $$(echo $$runs) -out $(abspath $(UVM_COV_REPORT))/merged -overwrite -initial_model union_all" \
+		'load -run $(abspath $(UVM_COV_REPORT))/merged' \
+		'report -summary -inst -metrics all -out $(abspath $(UVM_COV_REPORT))/summary.txt' \
+		'report -detail -metrics covergroup -all -out $(abspath $(UVM_COV_REPORT))/covergroups.txt' \
+		'report_metrics -summary -out $(abspath $(UVM_COV_REPORT))/html -overwrite' exit > $(UVM_COV_REPORT)/merge.tcl && \
+	cd $(UVM_COV_REPORT) && $(IMC) -exec merge.tcl -nocopyright > /dev/null && \
+	echo "uvm_cov_merge: $$(echo $$runs | wc -w) runs merged, see $(UVM_COV_REPORT)/summary.txt"
+
 help::
 	@echo "  XCELIUM_TOOLS / XRUN_GCC_VERS    - Xcelium install tools directory and -gcc_vers release (required with USE_XCELIUM=1)"
+	@echo "  WAVES=1                          - elaborate with -access +r; each run probes WAVES_SCOPE (default sc_main) into waves.shm"
 	@echo "  xrun_snapshots                   - build run_model and one snapshot per DUT_TOPOLOGIES entry"
 	@echo "                                     (<inst>:<cfg>[,<cfg>]... with cfg = verif|model[:tandem]; normally set from the regression file build command)"
 

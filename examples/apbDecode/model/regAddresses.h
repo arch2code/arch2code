@@ -19,10 +19,16 @@
 //register addresses
 #define REG_BLOCKB_RWUN0B                   0x200
 #define REG_BLOCKB_ROB                      0x208
-#define REG_BLOCKA_ROA                      0x200
-#define REG_BLOCKA_RWUN0A                   0x208
-#define REG_BLOCKA_ROUN0A                   0x210
-#define REG_BLOCKA_EXTA                     0x218
+#define REG_BLOCKA_ROA                      0x240
+#define REG_BLOCKA_RWUN0A                   0x248
+#define REG_BLOCKA_ROUN0A                   0x250
+#define REG_BLOCKA_EXTA                     0x258
+#define REG_BLOCKA_RWARR                    0x200
+#define REG_BLOCKA_RWARR_STRIDE             0x8
+#define REG_BLOCKA_RWARR_COUNT              4
+#define REG_BLOCKA_ROARR                    0x220
+#define REG_BLOCKA_ROARR_STRIDE             0x8
+#define REG_BLOCKA_ROARR_COUNT              4
 //memories base addresses
 #define REG_BLOCKA_BLOCKATABLE0             0x0
 #define REG_BLOCKA_BLOCKATABLE1             0x100

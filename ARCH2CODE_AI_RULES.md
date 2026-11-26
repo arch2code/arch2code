@@ -1216,6 +1216,7 @@ registers:
     structure: <structure_name>
     addressStruct: <structure_name> # Optional structure for memory reg
     wordLines: <depth_or_param>      # Required for regType: memory
+    count: <integer_or_constant>     # Optional, rw/ro/ext only: an array of count elements
     desc: "<description>"
 ```
 
@@ -1231,6 +1232,7 @@ registers:
 4. **Memory Register Depth**: For `regType: memory`, `wordLines` is a literal integer or a constant
 5. **Worst-Case Sizing**: Parameterizable registers are allocated using the structure's worst-case `maxBitwidth`; generated `maxBytes` is internal metadata and should not be written by users. A parameterizable `rw` or `ro` register decodes every word of that allocation in every variant, in the RTL and the model. Words above the bound variant's width read 0 and drop writes
 6. **Description**: Required for documentation
+7. **Array Registers**: `count` makes an `rw`, `ro` or `ext` register an array, even at 1. It is an integer or a constant that is not parameterizable and resolves to at least 1. `make db` rejects a block parameter, and `count` on `regType: memory`. The array is one contiguous range of `count * stride` bytes, where the stride is the element's 4-byte-rounded decode size rounded up to the `addressObjects.registers` alignment. The opt-in `regAddresses` firmware header (`manage-address-space.md` section 4) defines `REG_<BLOCK>_<REG>` (element 0), `REG_<BLOCK>_<REG>_STRIDE` and `REG_<BLOCK>_<REG>_COUNT`, and firmware addresses element k at `BASE_ADDR_<INSTANCE> + REG_<BLOCK>_<REG> + k * REG_<BLOCK>_<REG>_STRIDE`. RTL ports are interface arrays (`status_if.src rwArr [REGARR_N]`), indexed only with constants or genvars. A whole-array port and a container's channels are `sc_vector`. A leaf that owns the array holds a `std::array` of `hwRegister`. See `design-architecture.md` (Register connections) and `manage-address-space.md`
 
 #### Automatic Block-Level Register Handler Generation
 
@@ -1384,15 +1386,40 @@ A register connection wires a register the container block owns to one of its ch
 ```yaml
 registerConnections:
   - {register: <register_name>, block: <owning_container_block>, instance: <child_instance>}
+  - {register: <array_register>, block: <owning_container_block>, instance: <child_instance>, index: <element>}  # one element of an array
 ```
 
-**Example** (`examples/mixed`: container `blockB` owns `rwD` and forwards it to its child `uBlockF0`):
+**Example** (`examples/mixed`: container `blockB` owns `rwD` and forwards it to its children `uBlockF0`, `uBlockF1` and `uBlockD`):
 ```yaml
 registers:
   - {register: rwD, regType: rw, block: blockB, structure: dRegSt, desc: "A Read Write register"}
 
 registerConnections:
   - {register: rwD, block: blockB, instance: uBlockF0}
+  - {register: rwD, block: blockB, instance: uBlockF1}
+  - {register: rwD, block: blockB, instance: uBlockD}
+```
+
+**Array registers.** An array reaches its users in one of three forms. With no row, the owner uses the array itself. A row without `index` gives the child the whole array as an array port named after the register, bound `.rwArr (rwArr)`. A row with `index: k` gives the child a scalar port of the same name, bound `.rwArr (rwArr[k])`. `index` is allowed only on a register with `count`, and must resolve to 0 to `count - 1`. Slices and instance arrays are not supported. See `design-architecture.md` (Register connections).
+
+**Row checks.** For scalar and array registers alike, `make db` rejects:
+- a second row for the same register and instance
+- a row whose `instance` is not a child of `block`, such as a sibling of the owner or the topInstance
+- an instance of a child block, in a container this project builds, with no row from its own container giving it a register its block takes as a port elsewhere
+- an `ro` or `ext` register or element with more than one consumer, or an element of an `index`-connected array with none. A scalar or a whole array goes to at most one instance, and a whole array has no `index` rows beside it. With no row the owner uses it itself. An `rw` element may have any number of readers
+- owners that give one child block's port a different `regType`, structure, `count` or form
+
+For an array register it also rejects:
+- rows for one child block in one container that mix `index` and no `index`
+- a register or `regAccess` memory of the owner whose define matches the array's `_STRIDE` or `_COUNT` define, or whose name is an element name `<reg>_<k>`
+- a port named `<reg>_<k>` on a block that takes the whole array
+
+```yaml
+registerConnections:   # examples/mixed: rwArr and extArr have count: REGARR_N
+  - {register: rwArr, block: blockB, instance: uBlockF0}            # whole
+  - {register: rwArr, block: blockB, instance: uBlockF1}            # whole, every blockF instance has a row
+  - {register: rwArr, block: blockB, instance: uBlockD, index: 2}   # element 2
+  - {register: extArr, block: blockB, instance: uBlockD}            # whole, its one consumer
 ```
 
 ### Memory Definitions
@@ -1525,6 +1552,7 @@ addressObjects:
 
 - Key order sets placement. Within each block, offsets start at 0 and the first key's objects take the low offsets.
 - `alignment` is a byte count, or `memsize` for memories to align each memory to its own size. Pair `memsize` with `sizeRoundUpPowerOf2: true`.
+- The register bus decodes 32-bit words, so the `registers` alignment is an integer that is a multiple of 4, and defaults to 4. `make db` rejects any other value, `memsize` included.
 - `sizeRoundUpPowerOf2` rounds a memory's size up to a power of two, at least 4 bytes.
 - `sortDescending` places the largest objects first. Without it, objects keep their declaration order.
 - A `regType: memory` register is placed with the `registers` key but takes its alignment and rounding from the `memories` row, so a project with one needs both rows.

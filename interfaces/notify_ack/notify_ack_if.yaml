@@ -3,6 +3,7 @@ interface_defs:
   notify_ack : 
     timing: elastic
     backpressure: { default: true, overridable: false }
+    uvmAgent: true
     parameters : {}
     signals: 
       notify : bool
