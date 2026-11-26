@@ -14,8 +14,11 @@ A new project starts from a clean, empty git repository. Arch2Code is added as a
 git init myChip && cd myChip
 git submodule add https://github.com/arch2code/arch2code.git builder
 pip3 install -r builder/requirements.txt
+make -C builder selftest
 ./builder/arch2code.py --newproject
 ```
+
+`make -C builder selftest` checks the environment before you create a project. It checks the tools and Python packages the build needs and the SystemC and Boost environment variables. Then it creates a throwaway project in a temporary directory and takes it through the steps below: create, run, a first design change, build, lint and run again. It prints one pass/fail table and exits non-zero if any row fails. Tool and Python rows show the version found, and each step row names its log. When a step fails, the selftest keeps the temporary directory and prints the end of that step's log.
 
 ## What `--newproject` asks and produces
 

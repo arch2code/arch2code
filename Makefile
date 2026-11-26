@@ -701,6 +701,15 @@ pipeline-test:
 	$(MAKE) -j$(PIPELINE_JOBS) $(PIPELINE_TARGETS)
 push-test: clean unittest pipeline-test
 
+.PHONY : selftest
+# Checks this machine with a throwaway project in a temporary directory; needs
+# no project of its own.
+selftest:
+	python3 $(A2C_ROOT)/selfTest.py $(A2C_ROOT)
+
+help::
+	@echo "  selftest - Check the tools, Python packages and environment variables a project build needs, then build, lint and run a throwaway project; prints a pass/fail table"
+
 # AI agent rule/skill install targets (agents-setup, agent-dev-setup, ...).
 # Included last so the default goal stays the first target above.
 include $(REPO_ROOT)/include/make/a2c-agents.mk
