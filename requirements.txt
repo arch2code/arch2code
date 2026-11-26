@@ -1,5 +1,4 @@
 graphviz>=0.16
-ruamel.base>=1.0.0
 ruamel.yaml
 pyyaml>=5.4
 colorama==0.4.4

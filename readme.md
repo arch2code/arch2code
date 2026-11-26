@@ -39,13 +39,46 @@ This installs the Arch2Code rules and skills for Claude Code, Gemini CLI, OpenCo
 make -C rundir run
 ```
 
-The first run does not finish. The scaffolded `tb/<name>/<name>External.cppm` has its first test and its end-of-test voter commented out, so nothing can end the run, and after about a second of wall-clock time the watchdog stops it with `No end-of-test voter is registered and no --scTimeLimit is set, so this run can never terminate`. Write the test and the voter as the comments in that file describe, and rename the `test_replace_me` placeholder in `tb/<name>/<name>Config.cpp` to match.
+The first run does not finish. The scaffolded `tb/<name>/<name>External.cppm` has its first test and its end-of-test voter commented out, so nothing can end the run, and after about a second of wall-clock time the watchdog stops it with `No end-of-test voter is registered and no --scTimeLimit is set, so this run can never terminate`. The `[Q_ASSERT][final] Not all tests completed` lines that follow are expected too. The run binary exits with code 1, so `make` prints `Error 1` and exits with code 2. Every new project fails this way, and it does not mean the install is broken. Write the test and the voter as the comments in that file describe, and rename the `test_replace_me` placeholder in `tb/<name>/<name>Config.cpp` to match.
 
 When RTL was selected, the RTL may also be linted:
 
 ```
 make -C rtl lint
 ```
+
+## A first design change
+
+The seed design declares blocks and instances only. To check that a YAML edit regenerates and builds, add a constant and a type above `blocks:` in `yaml/<name>.yaml`:
+
+```yaml
+constants:
+  DATA_WIDTH: {value: 32, desc: "Data bus width"}
+
+types:
+  data_t: {width: DATA_WIDTH, desc: "Data word"}
+```
+
+Then create and fill the new files:
+
+```
+make newmodule
+make gen
+```
+
+`make gen` never creates a file, so `make newmodule` comes first. `make newmodule` creates `model/<name>Includes.cppm` and `rtl/<name>_package.sv`, plus `fw/<name>IncludesFW.h` and `fw/<name>IncludesFW.cpp` when firmware was selected. `make gen` then writes `DATA_WIDTH` and `data_t` into the `.cppm`, the `.sv` package and the firmware `.h`. Build the model without running it:
+
+```
+make -C rundir
+```
+
+When RTL was selected, lint the RTL as well:
+
+```
+make -C rtl lint
+```
+
+`make -C rundir run` still stops at the watchdog until a test is written.
 
 # Directory Structure & key files in the root of the repository
 

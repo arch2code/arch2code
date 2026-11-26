@@ -76,8 +76,10 @@ addressObjects:
 # schema flag for it. The entry merges by key over the inherited base file map.
 firmwareFileMapTemplate = \
 """  # Firmware header generation: one <context>IncludesFW.{{h,cpp}} per yaml
-  # context that has firmware-visible content. Headers appear once the design
-  # declares registers or regAccess memories.
+  # context that has firmware-visible content. make newmodule creates them once
+  # the context's yaml file declares constants, types or structures, or
+  # arch2code adds types to it for an encoders: section or an addressBlock:
+  # router.
   fileMap:
     includeFW   : {{ name : "IncludesFW", ext: {{hdr: "h", src: "cpp"}}, cond: {{smartInclude: true}}, mode: context, basePath: fwInc, langDomain: fw, desc: "yaml based fw include file"}}
     # name: is used verbatim as the basename.
@@ -327,6 +329,7 @@ class newProject:
         print("to scaffold the implementation files for any blocks you add.")
         if firmware:
             print("")
-            print("Firmware is enabled. Firmware headers are generated once the design")
-            print("declares registers or regAccess memories - see the design-register-decode")
-            print("and manage-address-space skills. Put firmware sources in fw/src.")
+            print("Firmware is enabled. 'make newmodule' creates the firmware headers once")
+            print("the design declares constants, types or structures. For firmware access")
+            print("to registers and memories, see the design-register-decode and")
+            print("manage-address-space skills. Put firmware sources in fw/src.")
