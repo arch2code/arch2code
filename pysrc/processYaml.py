@@ -4873,7 +4873,8 @@ class projectCreate:
     #custom section require complete custom section handling including the main loop
     customSections = {"connections", "ipParameters"}
     # any section inbetween has a per entry handler
-    ignoreSections = {"include", "flows", "includeName", "blockDir", "svFilePrefix", "scFilePrefix", "fwFilePrefix" } # note all project file field are added later
+    # schemaExtensions is listed because a child project file may carry it when the root does not
+    ignoreSections = {"include", "flows", "includeName", "blockDir", "svFilePrefix", "scFilePrefix", "fwFilePrefix", "schemaExtensions" } # note all project file field are added later
     generatorTemplates = {"cppConfig", "svConfig", "docConfig" }
     dontValidate = {'_topInstance'} # list of keys that should not be validated if validator is present
     stdFields = {"context"}
@@ -6936,6 +6937,8 @@ class projectCreate:
         # like postProcess: script paths.
         def resolve(entry):
             return os.path.abspath(basePathRelative(expandDirMacros(entry)))
+        if not isinstance(self._userProjRaw.get('schemaExtensions', []), list):
+            self.logError(f"schemaExtensions: in {self._rootProjFileAbs} must be a list of schema fragment files.")
         files = [resolve(entry) for entry in self.proj.get('schemaExtensions', [])]
         for extensionFile in sorted({f for f in files if files.count(f) > 1}):
             layers = [layer for layer, proj in (('base', self._a2cBaseProj), ('pro', self._a2cProProj),

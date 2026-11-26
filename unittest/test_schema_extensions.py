@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Coverage for `schemaExtensions:`: fragment paths, rows read back through
-projectOpen, the build manifest, and the errors Schema() and projectCreate
-report for a bad fragment."""
+projectOpen, the build manifest, a child project's ignored list, and the
+errors Schema() and projectCreate report for a bad fragment."""
 
 import contextlib
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -162,6 +163,14 @@ def _manifest_lists(prj, tmp_dir, paths):
     return all(p in manifest_yaml and p in yaml_line.split() for p in paths)
 
 
+def _names_base_schema(out):
+    """Whether out names the base schema file under any spelling. In an a2cPro
+    tree $a2c/config is a symlink to base/config, so projectCreate spells the
+    same file with a different path."""
+    named = [p for p in re.findall(r"/[^\s:']+\.yaml", out) if os.path.exists(p)]
+    return any(os.path.samefile(p, BASE_SCHEMA_PATH) for p in named)
+
+
 def _line_of(text, key):
     """1-based line of the first line of text that starts with key."""
     return next(i for i, line in enumerate(text.splitlines(), 1) if line.lstrip().startswith(key))
@@ -255,6 +264,81 @@ def test_project_under_builder():
             os.chdir(original_cwd)
 
 
+def _child_tree(tmp_dir, root_entries):
+    """Write a child project ip/ipProject.yaml that lists frag.yaml and has an
+    fwNotes row, and a root project that opens it. root_entries is the root's
+    schemaExtensions: list, and an empty list writes no key. Returns (root
+    project path, child project path)."""
+    _write(tmp_dir, 'ip/frag.yaml', TOP_SECTION_EXT)
+    _write(tmp_dir, 'ip/arch.yaml', 'fwNotes:\n  hello: {text: "a note"}\n')
+    child_path = _write(tmp_dir, 'ip/ipProject.yaml', '\n'.join([
+        "projectName: ipPrj", "yamlFormat: 2", "dirs:", "  root: .", "fileGeneration:", "  template: none",
+        "projectFiles:", "  - arch.yaml", "schemaExtensions:", "  - frag.yaml"]) + '\n')
+    lines = ["projectName: rootPrj", "yamlFormat: 2", "dirs:", "  root: .", "projectFiles:", "  - ip/ipProject.yaml"]
+    if root_entries:
+        lines += ["schemaExtensions:"] + [f"  - {entry}" for entry in root_entries]
+    return _write(tmp_dir, 'project.yaml', '\n'.join(lines) + '\n'), child_path
+
+
+def _arch2code(project_path):
+    """Build a project with arch2code.py in a subprocess, because projectCreate
+    runs once per process. Returns (build, db path)."""
+    db_path = os.path.join(os.path.dirname(project_path), 'ext.db')
+    build = subprocess.run([sys.executable, os.path.join(base_dir, 'arch2code.py'),
+                            '-y', project_path, '--db', db_path], capture_output=True, text=True)
+    return build, db_path
+
+
+def test_child_projects():
+    """Only the root project's list applies. A child project file may carry
+    schemaExtensions: for its own build, and a root that opens it ignores it."""
+    original_cwd = os.getcwd()
+
+    def notes_after(build, db_path):
+        if build.returncode != 0:
+            print(build.stdout + build.stderr)
+            return None
+        try:
+            return list(projectOpen(db_path).data['fwNotes'])
+        finally:
+            _release_db()
+            os.chdir(original_cwd)
+
+    def root_lists_child_fragment():
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root_path, _ = _child_tree(tmp_dir, ['ip/frag.yaml'])
+            return notes_after(*_arch2code(root_path)) == ['hello/ip/arch.yaml']
+
+    def root_does_not_list_it():
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root_path, _ = _child_tree(tmp_dir, [])
+            build, _ = _arch2code(root_path)
+            out = build.stdout + build.stderr
+            return build.returncode != 0 and "Unknown section: fwNotes found in ip/arch.yaml" in out \
+                and "Unknown section: schemaExtensions" not in out
+
+    def child_list_unused():
+        # The child's design file does not use the fragment, so the build
+        # passes only if the child's schemaExtensions: key is ignored.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root_path, _ = _child_tree(tmp_dir, [])
+            _write(tmp_dir, 'ip/arch.yaml', 'constants:\n  C1: {value: 1, desc: "a constant"}\n')
+            build, _ = _arch2code(root_path)
+            if build.returncode != 0:
+                print(build.stdout + build.stderr)
+            return build.returncode == 0
+
+    def child_alone():
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            _, child_path = _child_tree(tmp_dir, [])
+            return notes_after(*_arch2code(child_path)) == ['hello/arch.yaml']
+
+    return all([_run_case("root lists the child's fragment", root_lists_child_fragment),
+                _run_case("root ignores the child's list", root_does_not_list_it),
+                _run_case("root builds when the child's list is unused", child_list_unused),
+                _run_case("child built alone uses its own list", child_alone)])
+
+
 def test_redefinition_errors():
     """Restating an existing key stops the build, naming both files and the
     full key path."""
@@ -264,19 +348,19 @@ def test_redefinition_errors():
         text = "blocks:\n  desc: optional\n"
         stopped, out, (ext,) = _build_fails('ext_existing_field', [_local('ext.yaml', text)])
         return stopped and f"{ext}:{_line_of(text, 'desc')}" in out \
-            and BASE_SCHEMA_PATH in out and "'blocks.desc'" in out
+            and _names_base_schema(out) and "'blocks.desc'" in out
 
     def existing_reserved_key():
         text = "blocks:\n  _attribs: [flat]\n"
         stopped, out, (ext,) = _build_fails('ext_reserved_key', [_local('ext.yaml', text)])
         return stopped and f"{ext}:{_line_of(text, '_attribs')}" in out \
-            and BASE_SCHEMA_PATH in out and "'blocks._attribs'" in out
+            and _names_base_schema(out) and "'blocks._attribs'" in out
 
     def nested_validate_key():
         text = "blocks:\n  params:\n    paramSource:\n      _validate: {section: types, field: type}\n"
         stopped, out, (ext,) = _build_fails('ext_nested_validate', [_local('ext.yaml', text)])
         return stopped and f"{ext}:{_line_of(text, 'paramSource')}" in out \
-            and BASE_SCHEMA_PATH in out and "'blocks.params.paramSource'" in out
+            and _names_base_schema(out) and "'blocks.params.paramSource'" in out
 
     def two_extensions_same_key():
         first = "blocks:\n  fwLevel: optional\n"
@@ -311,7 +395,7 @@ def test_redefinition_errors():
 
 def test_fragment_file_errors():
     """A fragment that is not a mapping, or is listed twice, stops the build
-    with a message naming the file."""
+    with a message naming the file. So does a key with no list."""
     results = []
 
     def empty_fragment():
@@ -329,9 +413,18 @@ def test_fragment_file_errors():
         return stopped and f"Schema extension {ext} is listed more than once" in out \
             and "user, user" in out and "already declared" not in out
 
+    def key_with_no_list():
+        # _project writes a bare schemaExtensions: key when there are no entries.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_path, _, _ = _project(tmp_dir, 'ext_no_list', [])
+            build, _ = _arch2code(project_path)
+        return build.returncode != 0 \
+            and f"schemaExtensions: in {os.path.abspath(project_path)} must be a list" in build.stdout + build.stderr
+
     for label, fn in [("empty fragment", empty_fragment),
                       ("fragment whose top level is a list", list_fragment),
-                      ("fragment listed twice", listed_twice)]:
+                      ("fragment listed twice", listed_twice),
+                      ("schemaExtensions: key with no list", key_with_no_list)]:
         results.append(_run_case(label, fn))
     return all(results)
 
@@ -344,13 +437,13 @@ def test_errors_name_the_fragment():
     def bad_type_in_new_section():
         text = "fwBad:\n  item: key\n  size: notAType\n"
         stopped, out, (ext,) = _build_fails('ext_bad_section', [_local('ext.yaml', text)])
-        return stopped and f"{ext}:" in out and "notAType" in out and BASE_SCHEMA_PATH not in out
+        return stopped and f"{ext}:" in out and "notAType" in out and not _names_base_schema(out)
 
     def bad_scalar_field_on_base_section():
         text = "blocks:\n  fwLevel: notAType\n"
         stopped, out, (ext,) = _build_fails('ext_bad_field', [_local('ext.yaml', text)])
         return stopped and f"{ext}:{_line_of(text, 'fwLevel')}" in out \
-            and BASE_SCHEMA_PATH not in out
+            and not _names_base_schema(out)
 
     def bad_foreign_key_on_base_section():
         # Caught by the post-pass foreign-key check, which has no line.
@@ -396,6 +489,7 @@ def run_all_tests():
     # raised for the rest of the process.
     results = [test_list_order(),
                test_project_under_builder(),
+               test_child_projects(),
                test_extension_tables_round_trip(),
                test_redefinition_errors(),
                test_fragment_file_errors(),

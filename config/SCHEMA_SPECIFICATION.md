@@ -671,7 +671,9 @@ schemaExtensions:
 
 **Merge order.** `mergeProjectConfig()` appends the lists in base, Pro, user order (`list_append` in `MERGE_SPEC`). `Schema()` merges the fragments in that order, so a fragment may extend a section an earlier fragment added.
 
-**Paths.** An entry resolves the way a `postProcess:` script path does. `expandDirMacros()` expands a leading `$a2c` or a macro from the root project's `dirs:`, and `basePathRelative()` joins the result to the root project file's directory, which leaves an absolute path unchanged. A missing file stops the build. Base and Pro entries therefore start with `$a2c/`. A file listed more than once across the base, Pro and user lists stops the build with an error naming the layers that list it. So does a fragment whose top level is not a mapping, an empty file included.
+**Paths.** An entry resolves the way a `postProcess:` script path does. `expandDirMacros()` expands a leading `$a2c` or a macro from the root project's `dirs:`, and `basePathRelative()` joins the result to the root project file's directory, which leaves an absolute path unchanged. A missing file stops the build. Base and Pro entries therefore start with `$a2c/`. A file listed more than once across the base, Pro and user lists stops the build with an error naming the layers that list it. So does a fragment whose top level is not a mapping, an empty file included. A root `schemaExtensions:` key that is not a list stops the build, naming the root project file.
+
+**Child projects.** Only the root project's list applies, after the base and Pro lists. A child project file may carry `schemaExtensions:` for its own standalone build, but a root that opens it ignores that list, so the root lists every fragment its build needs.
 
 **Fragment format.** A fragment has the format of `config/schema.yaml`. It may add a new top-level section, written as it would be in the schema file. It may add a field or a sub-table to an existing section or sub-table, by restating the path down to the new key:
 
