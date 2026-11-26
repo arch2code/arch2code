@@ -8,8 +8,10 @@ description: Guide for creating testbenches, configuring verification components
 1.  Set `hasTb: true` on the DUT block in the YAML.
 2.  Run `make newmodule`, then `make gen`. `make newmodule` creates three files in `tb/<dut>/`, each seeded with `--block=<dut>`. When the DUT declares its own `params:`, each line also carries `--variant=<first declared variant>`, which selects the DUT's Config; edit it to test another declared variant. Without it `make gen` fails.
     *   `<dut>Testbench.cppm`, the testbench top. Its generated regions instantiate the DUT and the External and bind them, so you write no testbench top yourself.
-    *   `<dut>External.cppm`, the test environment around the DUT.
+    *   `<dut>External.cppm`, the test environment around the DUT. It ships a live placeholder test, `test_replace_me`, which only logs a warning, and a live `endOfTestVoter`, so the first run passes.
     *   `<dut>Config.cpp`, the testbench configuration. It builds the hierarchy and declares the tests.
+
+    Replace `test_replace_me` in both files together: its function and `ADD_TEST` line in the External, and its name in the Config's `set_test_names` list. A name left in only one of them fails the run.
 3.  To surround the DUT with other blocks, edit only the External's `GENERATED_CODE_PARAM` line, then run `make gen` again. See the next section.
 
 The binary runs a testbench by its name: `build/run <dut> [options]`.

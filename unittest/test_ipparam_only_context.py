@@ -10,9 +10,9 @@ emitting a package, INCLUDEFILES carries no `package_sv` key at all.
 
 The suite copies the fixture to a temp tree and runs the same make targets a
 user runs: `db`, `newmodule`, `gen`, then `lint` in `rtl/` and `run` in
-`rundir/`. Before `gen` it fills the scaffolded testbench's user regions with
-one empty test and an end-of-test voter, so the run ends and passes. After
-`gen` it checks that no file imports the context's package or module.
+`rundir/`. The scaffolded testbench's placeholder test and end-of-test voter
+end the run. After `gen` it checks that no file imports the context's package
+or module.
 
 The design file sits in the `ipp/` node, so rtl.f is `ipp/rtl/rtl.f` while lint
 runs in the project's `rtl/`. Before `gen` the suite adds a relative `+incdir+`
@@ -35,32 +35,6 @@ FIXTURE = os.path.join(test_dir, 'fixtures', 'ipparam-only-context')
 CONTEXT_IMPORT = re.compile(r'^\s*import\s+(ipp_package\b|ipp\s*;)', re.MULTILINE)
 BUILD_JOBS = '8'
 
-EXTERNAL = os.path.join('ipp', 'tb', 'ipp', 'ippExternal.cppm')
-# Fills the scaffold's user regions as its own comments describe: the seeded
-# placeholder test runs as an ADD_TEST and one voter waits for it. Anchored on
-# the scaffold's text, so a scaffold reword fails here rather than leaving a run
-# that never ends.
-TESTBENCH = [
-    ('// Plain non-modular headers, including any whose definitions live in a .cpp.\n',
-     '// Plain non-modular headers, including any whose definitions live in a .cpp.\n'
-     '#include "testController.h"\n'),
-    ('    // external implementation members\n',
-     '    // external implementation members\n'
-     '    void test_replace_me(void)\n'
-     '    {\n'
-     '    }\n'
-     '\n'
-     '    void endOfTestVoter(void)\n'
-     '    {\n'
-     '        endOfTest eot(true);\n'
-     '        testController::GetInstance().wait_all_tests_complete();\n'
-     '        eot.setEndOfTest(true);\n'
-     '    }\n'),
-    ('    // ADD_TEST(test_replace_me);\n', '    ADD_TEST(test_replace_me);\n'),
-    ('    // SC_THREAD(endOfTestVoter);\n', '    SC_THREAD(endOfTestVoter);\n'),
-]
-
-
 RTL_DIR = os.path.join('ipp', 'rtl')
 INCLUDE_DIR = 'inc'
 HEADER = 'ippInc.svh'
@@ -77,18 +51,6 @@ def make(target, project, *, directory=None, jobs=None):
     cmd.append(target)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600, env=env)
     return result.returncode, result.stdout + result.stderr
-
-
-def fill_testbench(project):
-    path = os.path.join(project, EXTERNAL)
-    with open(path) as f:
-        text = f.read()
-    for old, new in TESTBENCH:
-        if old not in text:
-            raise RuntimeError(f"{EXTERNAL} no longer carries the anchor {old!r}")
-        text = text.replace(old, new)
-    with open(path, 'w') as f:
-        f.write(text)
 
 
 def add_rtl_include(project):
@@ -121,7 +83,6 @@ def context_importers(project):
 def check(project):
     for target in ('db', 'newmodule', 'gen'):
         if target == 'gen':
-            fill_testbench(project)
             add_rtl_include(project)
         rc, output = make(target, project, jobs=BUILD_JOBS if target == 'gen' else None)
         if rc != 0:

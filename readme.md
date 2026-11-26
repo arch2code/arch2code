@@ -39,7 +39,7 @@ This installs the Arch2Code rules and skills for Claude Code, Gemini CLI, OpenCo
 make -C rundir run
 ```
 
-The first run does not finish. The scaffolded `tb/<name>/<name>External.cppm` has its first test and its end-of-test voter commented out, so nothing can end the run, and after about a second of wall-clock time the watchdog stops it with `No end-of-test voter is registered and no --scTimeLimit is set, so this run can never terminate`. The `[Q_ASSERT][final] Not all tests completed` lines that follow are expected too. The run binary exits with code 1, so `make` prints `Error 1` and exits with code 2. Every new project fails this way, and it does not mean the install is broken. Write the test and the voter as the comments in that file describe, and rename the `test_replace_me` placeholder in `tb/<name>/<name>Config.cpp` to match.
+The first run passes. The scaffolded `tb/<name>/<name>External.cppm` holds a placeholder test, `test_replace_me`, which checks nothing, and an end-of-test voter that ends the run once the test completes. Until you replace the placeholder, each run prints `WARNING: test_replace_me is a placeholder with no checks; replace it with a real test in <name>External.cppm`. Write your tests as the comments in that file describe. Rename or remove `test_replace_me` in both files together: the function and its `ADD_TEST` line in the External, and its entry in the list in `tb/<name>/<name>Config.cpp`.
 
 When RTL was selected, the RTL may also be linted:
 
@@ -78,7 +78,11 @@ When RTL was selected, lint the RTL as well:
 make -C rtl lint
 ```
 
-`make -C rundir run` still stops at the watchdog until a test is written.
+Then run it. The run passes and prints the placeholder warning:
+
+```
+make -C rundir run
+```
 
 # Directory Structure & key files in the root of the repository
 

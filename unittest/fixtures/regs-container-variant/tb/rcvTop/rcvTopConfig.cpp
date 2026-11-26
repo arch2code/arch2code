@@ -31,9 +31,11 @@ public:
     {
         // Seed the testController with this testbench's tests, before sc_start().
         // rcvCpu registers and completes test_cfg_readback around its readback.
+        // The scaffolded External runs the placeholder test_replace_me.
         testController &controller = testController::GetInstance();
         controller.set_test_names({
-            "test_cfg_readback"
+            "test_cfg_readback",
+            "test_replace_me"
         });
 
         // The testbench top self-registers; just call createTbTop().

@@ -587,7 +587,9 @@ tbConfigTemplate = \
         // Seed the testController with this testbench's tests, before sc_start().
         // final() fails until every name here has completed. Run each from an
         // ADD_TEST function (recommended) or an old-style model, BFM or External
-        // thread; replace the placeholder with the names.
+        // thread. test_replace_me is the External's placeholder test. Rename or
+        // remove it here together with its function and ADD_TEST line in the
+        // External.
         testController &controller = testController::GetInstance();
         controller.set_test_names({
             "test_replace_me"
@@ -760,37 +762,41 @@ def testBench_cppm(args, prj, data):
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 
-# Guidance seeded into a fresh External's member slot: how to write a test that
-# terminates cleanly. The matching registration lines live in the constructor
-# body slot below it.
-_TB_EXTERNAL_STIMULUS_GUIDE = [
-    '// Your tests go here. A test is a member function that takes no arguments.',
-    '// Its name is the test name, and it must match a name in the Config\'s',
-    '// set_test_names list, which sets the run order. createTestBench() seeds',
-    '// the placeholder "test_replace_me"; rename it there and here. Register',
-    '// each test in the constructor with ADD_TEST, and add',
-    '// #include "testController.h" to the user #includes slot. --test runs only',
-    '// the tests you name.',
-    '//',
-    '// void test_replace_me(void)',
-    '// {',
-    '//     // ... drive and check the DUT here ...',
-    '// }',
-    '//',
-    '// The generated eotThread above stops the simulation when end-of-test',
-    '// latches, and only a vote latches it. A voter that never votes hangs the',
-    '// run unless --scTimeLimit is set. Vote from one thread that waits for',
-    '// every test. Keep the voter out of the test functions: a test that is',
-    '// not run never votes, and one that runs early can end the run before',
-    '// later tests start.',
-    '//',
-    '// void endOfTestVoter(void)',
-    '// {',
-    '//     endOfTest eot(true);',
-    '//     testController::GetInstance().wait_all_tests_complete();',
-    '//     eot.setEndOfTest(true);',
-    '// }',
-    '',
+# The placeholder test and end-of-test voter seeded into a fresh External's
+# member slot, and their registration lines for its constructor body, so a new
+# project's first run completes. The migration port removes these exact lines.
+def tb_external_placeholder_members(fileName):
+    lines = [
+        '// Your tests go here. A test is a member function that takes no arguments.',
+        '// Its name is the test name, and it must match a name in the Config\'s',
+        '// set_test_names list, which sets the run order. test_replace_me is a',
+        '// placeholder that checks nothing. Replace it with your tests, and keep',
+        '// each name the same here, in its ADD_TEST line in the constructor and in',
+        '// createTestBench(). --test runs only the tests you name.',
+        'void test_replace_me(void)',
+        '{',
+        f'    log_.logPrint("WARNING: test_replace_me is a placeholder with no checks; '
+        f'replace it with a real test in {fileName}", LOG_ALWAYS);',
+        '}',
+        '',
+        '// The generated eotThread above stops the simulation when end-of-test',
+        '// latches, and only a vote latches it. This voter votes once every test',
+        '// has completed. Keep the voter out of the test functions: a test that is',
+        '// not run never votes, and one that runs early can end the run before',
+        '// later tests start.',
+        'void endOfTestVoter(void)',
+        '{',
+        '    endOfTest eot(true);',
+        '    testController::GetInstance().wait_all_tests_complete();',
+        '    eot.setEndOfTest(true);',
+        '}',
+    ]
+    return [f'    {line}\n' if line else '\n' for line in lines]
+
+TB_EXTERNAL_PLACEHOLDER_REGISTRATIONS = [
+    '    // Register your tests and the voter here (see the member slot above).\n',
+    '    ADD_TEST(test_replace_me);\n',
+    '    SC_THREAD(endOfTestVoter);\n',
 ]
 
 # C++20 module interface unit for a block's testbench External (the inverted
@@ -804,6 +810,7 @@ def tbExternal_cppm(args, prj, data):
     out.append('// GENERATED_CODE_BEGIN --template=moduleScaffold --section=tbExternalModuleHeader\n')
     out.append('// GENERATED_CODE_END\n')
     out.append(USER_INCLUDES_SLOT)
+    out.append('#include "testController.h"\n')
     out.append('// GENERATED_CODE_BEGIN --template=moduleExport --fileMapKey=tbExternal\n')
     out.append('// GENERATED_CODE_END\n')
     out.append(USER_IMPORTS_SLOT)
@@ -811,17 +818,15 @@ def tbExternal_cppm(args, prj, data):
     out.append('\n')
     out.append('    // GENERATED_CODE_END\n')
     out.append('    // external implementation members\n\n')
-    for line in _TB_EXTERNAL_STIMULUS_GUIDE:
-        out.append(f'    {line}\n' if line else '\n')
+    out += tb_external_placeholder_members(data["headerName"])
+    out.append('\n')
     out.append('};\n\n')
     out.append('// GENERATED_CODE_BEGIN --template=tbExternal --section=init\n')
     out.append('// GENERATED_CODE_END\n')
     out.append('// GENERATED_CODE_BEGIN --template=tbExternal --section=body\n')
     out.append('    // GENERATED_CODE_END\n')
     out.append('\n')
-    out.append('    // Register your tests and the voter here (see the member slot above).\n')
-    out.append('    // ADD_TEST(test_replace_me);\n')
-    out.append('    // SC_THREAD(endOfTestVoter);\n')
+    out += TB_EXTERNAL_PLACEHOLDER_REGISTRATIONS
     out.append('};\n')
     return("".join(out))
 

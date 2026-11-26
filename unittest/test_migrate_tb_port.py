@@ -177,7 +177,7 @@ def _read(path):
 
 
 def _scaffoldData():
-    return {"block": BLOCK, "variant": "",
+    return {"block": BLOCK, "variant": "", "headerName": f"{BLOCK}External.cppm",
             "fileGeneration": {"fileCopyrightStatement": "copyright test"}}
 
 
@@ -396,6 +396,12 @@ def test_external_slots_land_in_their_own_zones():
             check(dropped not in text,
                   f"{dropped} is dropped (a generated region now owns it)")
 
+        # The scaffold's placeholder test and voter are not carried: the legacy
+        # Config does not list test_replace_me, so its ADD_TEST would stop the run.
+        for seeded in ("test_replace_me", "endOfTestVoter"):
+            check(seeded not in text,
+                  f"the scaffold's placeholder {seeded} is dropped from the ported External")
+
 
 def test_external_port_is_idempotent():
     print("test_external_port_is_idempotent")
@@ -407,6 +413,76 @@ def test_external_port_is_idempotent():
         check(not report.applied and report.clean and not report.written,
               "a re-run over an already-ported block is a silent no-op")
         check(_read(p["cppm"]) == first, "the ported .cppm is unchanged by the re-run")
+
+
+MEMBER_LABEL = "    // external implementation members\n"
+CTOR_REG_LABEL = "    // Register your tests and the voter here"
+HAND_MEMBER = "    int movedByHand = 0;\n"
+HAND_THREAD = "    SC_THREAD(myHandPortedThread);\n"
+
+
+def test_external_rerun_keeps_code_moved_by_hand():
+    """TODO_PORT_SLOT0 has the user move a declaration into the .cppm and re-run.
+    The re-run removes the scaffold's placeholder and keeps the moved code."""
+    print("test_external_rerun_keeps_code_moved_by_hand")
+    with tempfile.TemporaryDirectory() as root:
+        p = _stageExternal(root)
+        text = _read(p["cppm"]).replace(MEMBER_LABEL, MEMBER_LABEL + HAND_MEMBER)
+        _write(p["cppm"], text.replace(CTOR_REG_LABEL, HAND_THREAD + CTOR_REG_LABEL))
+        report = portTbExternals(_FakePrj(root), write=True)
+        ported = _read(p["cppm"])
+        check([i.kind for i in report.applied] == [TB_EXTERNAL_PORTED],
+              "the re-run ports the External")
+        check(HAND_MEMBER in ported, "a member moved into the class by hand survives")
+        check(HAND_THREAD in ported, "a constructor line moved by hand survives")
+        check("test_replace_me" not in ported and "endOfTestVoter" not in ported,
+              "the placeholder test and voter are removed")
+
+
+def test_external_test_controller_include_is_not_duplicated():
+    print("test_external_test_controller_include_is_not_duplicated")
+    with tempfile.TemporaryDirectory() as root:
+        include = '#include "testController.h"'
+        p = _stageExternal(root, hText=LEGACY_H.replace('#include "logging.h"\n',
+                                                        f'#include "logging.h"\n{include}\n'))
+        portTbExternals(_FakePrj(root), write=True)
+        check(_read(p["cppm"]).count(include) == 1,
+              "the legacy testController.h include is dropped, not added beside the scaffold's")
+
+
+def test_external_edited_placeholder_is_left_whole():
+    """An edited placeholder is not the scaffold's text, so the port removes none of
+    it. The run then stops on the unlisted test instead of losing user code."""
+    print("test_external_edited_placeholder_is_left_whole")
+    with tempfile.TemporaryDirectory() as root:
+        p = _stageExternal(root)
+        _write(p["cppm"], _read(p["cppm"]).replace("ADD_TEST(test_replace_me);",
+                                                   "ADD_TEST(test_mine);"))
+        portTbExternals(_FakePrj(root), write=True)
+        ported = _read(p["cppm"])
+        for kept in ("ADD_TEST(test_mine);", "SC_THREAD(endOfTestVoter);",
+                     "void test_replace_me(void)", "void endOfTestVoter(void)"):
+            check(kept in ported, f"{kept} is kept")
+
+
+def test_external_placeholder_drop_is_safe_with_plain_brace_ctor():
+    """The target's constructor closes with a plain `}` and a definition follows it.
+    The legacy constructor body is empty, so the transplant inserts nothing there,
+    and this checks only that the placeholder removal stops at its own lines."""
+    print("test_external_placeholder_drop_is_safe_with_plain_brace_ctor")
+    with tempfile.TemporaryDirectory() as root:
+        cppText = LEGACY_CPP[:LEGACY_CPP.index("    SC_THREAD(stimulusThread);")] + "}\n"
+        p = _stageExternal(root, cppText=cppText)
+        tail = f"\nvoid {BLOCK}External::handWritten(void)\n{{\n}}\n"
+        text = _read(p["cppm"])
+        check(text.endswith("\n};\n"), "the scaffold closes its constructor with `};`")
+        _write(p["cppm"], text[:-len("};\n")] + "}\n" + tail)
+        portTbExternals(_FakePrj(root), write=True)
+        ported = _read(p["cppm"])
+        check(ported.endswith("}\n" + tail),
+              "the constructor's `}` and the definition after it survive")
+        check("ADD_TEST(test_replace_me);" not in ported,
+              "the placeholder registration is removed")
 
 
 def test_stray_slot0_import_is_flagged_not_placed():
@@ -1027,6 +1103,10 @@ def main():
     test_block_shape_shares_the_same_transplant()
     test_external_slots_land_in_their_own_zones()
     test_external_port_is_idempotent()
+    test_external_rerun_keeps_code_moved_by_hand()
+    test_external_test_controller_include_is_not_duplicated()
+    test_external_edited_placeholder_is_left_whole()
+    test_external_placeholder_drop_is_safe_with_plain_brace_ctor()
     test_stray_slot0_import_is_flagged_not_placed()
     test_unseen_slot_boundary_trips_the_no_loss_guard()
     test_param_disagreement_and_missing_target_are_reported()

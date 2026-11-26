@@ -84,6 +84,8 @@ from pysrc.migrateCommon import (_read, _write, _isGenerated, _loc, _regions,
                                  restampParamLine, userRegionLines)
 from pysrc.migrateOrphans import LEGACY_FILEMAP, TODO_USER_INCLUDE
 from pysrc.artifactPaths import expandNewModulePath, fileMapCondMatch
+from templates.fileGen.fileGen import (tb_external_placeholder_members,
+                                       TB_EXTERNAL_PLACEHOLDER_REGISTRATIONS)
 
 
 # Applied-edit kinds.
@@ -150,7 +152,8 @@ BLOCK_SHAPE = PortShape(
 # Testbench External: `<block>External.h` + `.cpp` -> `<block>External.cppm`. The
 # `tbExternalModuleHeader` GMF section emits the systemc/logging baseline its own
 # generated lines need and `moduleExport` emits `import a2c.endOfTest;`, so the
-# legacy pair's copies of those are dropped rather than relocated. `workerThread.h`
+# legacy pair's copies of those are dropped rather than relocated, as is
+# `testController.h`, which the scaffold's user slot already includes. `workerThread.h`
 # is NOT dropped: no generated line names a `worker*` symbol, so it is the user's
 # stimulus-thread prerequisite and relocates to the GMF user slot like any other
 # genuinely external header.
@@ -158,7 +161,7 @@ TB_EXTERNAL_SHAPE = PortShape(
     classTemplate="tbExternal", classSection="header",
     ctorTemplate="tbExternal", gmfSection="tbExternalModuleHeader",
     implComment=_EXT_MEMBERS_COMMENT,
-    dropIncludes=("systemc.h", "logging.h"),
+    dropIncludes=("systemc.h", "logging.h", "testController.h"),
     dropImports=("a2c.endOfTest",))
 
 
@@ -478,6 +481,35 @@ def _afterCommentBlock(lines, start):
             break
         i += 1
     return i
+
+
+def _seqIndex(lines, seq, start, end):
+    """Index of the first run of `seq` in lines[start:end], or None."""
+    for i in range(start, end - len(seq) + 1):
+        if lines[i:i + len(seq)] == seq:
+            return i
+    return None
+
+
+def _dropTbPlaceholder(cppmText, fileName):
+    """Remove the placeholder test, the voter and their registrations that the
+    scaffold seeds into a fresh External. A ported External must not run them: its
+    Config does not list test_replace_me, and the legacy code ends the run itself.
+    Unless every seeded line is present unedited, nothing is removed, and the run
+    stops on the unlisted test instead of losing user code."""
+    lines = cppmText.splitlines(keepends=True)
+    regions = _regions(cppmText)
+    cls = _find(regions, TB_EXTERNAL_SHAPE.classTemplate, TB_EXTERNAL_SHAPE.classSection)
+    bod = _find(regions, TB_EXTERNAL_SHAPE.ctorTemplate, "body")
+    members = tb_external_placeholder_members(fileName)
+    regs = TB_EXTERNAL_PLACEHOLDER_REGISTRATIONS
+    m = _seqIndex(lines, members, cls.end + 1, bod.begin)
+    r = _seqIndex(lines, regs, bod.end + 1, len(lines))
+    if m is None or r is None:
+        return cppmText
+    del lines[r:r + len(regs)]
+    del lines[m:m + len(members)]
+    return "".join(lines)
 
 
 def _buildPorted(cppmText, slots, shape):
@@ -894,7 +926,8 @@ def portTbExternals(prj, write=False):
                 f"code)"))
             continue
 
-        portedText = _buildPorted(cppmText, slots, TB_EXTERNAL_SHAPE)
+        portedText = _buildPorted(_dropTbPlaceholder(cppmText, os.path.basename(cppmPath)),
+                                  slots, TB_EXTERNAL_SHAPE)
         # (True, None) means the line already reads the retargeted tail (the sentinel
         # path, where the scaffold's seeded `--block=<dut>` is already correct).
         _, retargeted = restampParamLine(portedText, f"{hTail} {MODULE_MODE_PARAM}")

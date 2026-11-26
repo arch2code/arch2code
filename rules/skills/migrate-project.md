@@ -59,7 +59,11 @@ The target runs eight steps:
     `class` and `registration`, merges each legacy `<block>External.{h,cpp}`
     into the scaffolded `<block>External.cppm` with its `GENERATED_CODE_PARAM`
     line, and carries each legacy `<block>Testbench` pair's DUT `--variant=`
-    onto `<block>Testbench.cppm` before deleting the pair. It runs before `gen`
+    onto `<block>Testbench.cppm` before deleting the pair. The merge removes
+    the scaffold's placeholder test and voter when they are unedited. When you
+    port an External by hand after a refused port, delete the
+    `test_replace_me` function, its `ADD_TEST`, the `endOfTestVoter` function
+    and its `SC_THREAD` yourself. The port runs before `gen`
     because `gen` rejects the legacy `<block>Config.cpp` region
     (`ValueError: Unknown section ''`) and would scaffold the External with the
     wrong `--block`. Between this step and `gen`, `<block>Config.cpp` does not
