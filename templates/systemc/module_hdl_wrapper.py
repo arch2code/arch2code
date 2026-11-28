@@ -35,10 +35,7 @@ def sec_clock_half_ctor_init(args, prj, data):
                       f'{SC_TIME_UNIT[row["timeUnit"]]}) / 2)'
                       for row in data['clocks'] if row['direction'] == 'input')
 
-def sec_clock_start(args, prj, data, level='true'):
-    # The HDL wrapper passes A2C_HDL_CLOCK_START, defined above its class: high
-    # under Verilator, low under VCS / Xcelium / Questa. The UVM wrapper, built
-    # only under VCS and Xcelium, passes false.
+def sec_clock_start(args, prj, data, level):
     return '\n'.join(f"{row['clock']}.write({level});"
                      for row in data['clocks'] if row['direction'] == 'input')
 

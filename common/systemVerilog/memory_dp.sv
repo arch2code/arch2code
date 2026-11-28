@@ -15,8 +15,7 @@ module memory_dp #(
 );
 
     // The widths go through localparams: Questa 2026.3 rejects $bits of an
-    // interface port member directly in these typedefs (vsim-12078, seen in
-    // examples/simple_ip and ip_test).
+    // interface port member directly in these typedefs (vsim-12078).
     localparam int ADDR_A_W = $bits(mem_portA.addr);
     localparam int ADDR_B_W = $bits(mem_portB.addr);
     typedef logic [ADDR_A_W-1:0] _addrA_t;
