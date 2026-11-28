@@ -140,7 +140,8 @@ $(shell [ "$$(cat $(QUESTA_R_OPTS_STAMP) 2>/dev/null)" = "$(QUESTA_R_OPTS)" ] ||
 # vsim exits 0 after an HDL $error or a failed assertion, even under the
 # onerror handler, so the script passes vsim's output through and fails the run
 # on a "# ** Error", "# ** Fatal" or "# ** Failure" line: vsim's own non-zero
-# exit code wins, else 1.
+# exit code wins, else 1. The exit code follows on a line of its own, since a
+# crashed vsim can stop mid-line.
 QUESTA_LOG_CHECK = awk "/^a2c_vsim_rc=/ { rc = substr(\$$0, 13); next } { print; fflush() } \
 	/^\# \\*\\* (Error|Fatal|Failure)/ { e++ } \
 	END { if (rc != 0) exit rc; if (e) { print \"a2c: vsim reported \" e \" error line(s)\" > \"/dev/stderr\"; exit 1 } }"
@@ -151,7 +152,7 @@ $(BIN_DIR)/$(BIN): $(QUESTA_STAMP) $(QUESTA_R_OPTS_STAMP)
 		$(if $(SALT_LICENSE_SERVER),'export SALT_LICENSE_SERVER="$(SALT_LICENSE_SERVER)"') \
 		'for a; do set -- "$$@" -sc_arg "$$a"; shift; done' \
 		'cd $(QUESTA_RUNDIR) || exit 1' \
-		'{ $(VSIM) -ini $(QUESTA_INI) $(QUESTA_RUN_ARGS) -lib $(QUESTA_OPT_LIB) $(QUESTA_VOPT_LIBS) $(QUESTA_SNAPSHOT) "$$@" -do "$(QUESTA_VSIM_DO)" 2>&1; echo "a2c_vsim_rc=$$?"; } | $(QUESTA_LOG_CHECK)' > $@
+		'{ $(VSIM) -ini $(QUESTA_INI) $(QUESTA_RUN_ARGS) -lib $(QUESTA_OPT_LIB) $(QUESTA_VOPT_LIBS) $(QUESTA_SNAPSHOT) "$$@" -do "$(QUESTA_VSIM_DO)" 2>&1; rc=$$?; echo; echo "a2c_vsim_rc=$$rc"; } | $(QUESTA_LOG_CHECK)' > $@
 	chmod +x $@
 
 help::

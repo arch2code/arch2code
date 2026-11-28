@@ -30,8 +30,9 @@ QUESTA_HOME, so they need no Questa install. Checks:
   and runs the topology's design with vsim, whose -do script quits with code 1
   on an error or break before run -all, searching the libraries vopt did;
 - the run script, written by the dry run's own command around a stub vsim,
-  passes the output, the arguments and a non-zero exit code through, exits 0
-  on a clean log, and exits 1 when vsim exits 0 but printed a "# ** Error",
+  passes the output, the arguments and a non-zero exit code through, also
+  when vsim's output ends without a newline, exits 0 on a clean log, and
+  exits 1 when vsim exits 0 but printed a "# ** Error",
   "# ** Error (suppressible)", "# ** Fatal" or "# ** Failure" line (the
   negative controls);
 - VL_DUT= builds without -DQUESTA_DUT, vlog and -L a2c_dut, and
@@ -96,6 +97,7 @@ case "$A2C_STUB" in
   fatal) echo '# ** Fatal: negative control: $fatal'; exit 0 ;;
   failure) echo '# ** Failure: negative control: assertion of severity failure'; exit 0 ;;
   rc3) echo '# ** Note: quit -code 3'; exit 3 ;;
+  crash211) printf '# ** Note: vsim dies mid-line'; exit 211 ;;
 esac
 """
 
@@ -175,7 +177,7 @@ def checkRunScript(rundir, work, binary):
     script = os.path.join(work, 'run_script_under_test')
     subprocess.run(['sh', '-c', writers[0].replace(f'> {binary}', f'> {script}')], check=True)
     os.chmod(script, 0o755)
-    want = {'pass': 0, 'rc3': 3, 'error': 1, 'suppressible': 1, 'fatal': 1, 'failure': 1}
+    want = {'pass': 0, 'rc3': 3, 'crash211': 211, 'error': 1, 'suppressible': 1, 'fatal': 1, 'failure': 1}
     for mode, rc in want.items():
         e = env()
         e['A2C_STUB'] = mode
