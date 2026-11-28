@@ -34,6 +34,9 @@ import a2c.endOfTest;
 #endif
 #endif
 
+// Generated sc_pack and sc_unpack copy sc_bv data as 32-bit sc_digit words.
+static_assert(sizeof(sc_dt::sc_digit) == 4, "generated sc_pack and sc_unpack assume 32-bit sc_digit words");
+
 #ifdef VCS
 extern "C" void VcsSetExitFunc(int (*)(int));
 

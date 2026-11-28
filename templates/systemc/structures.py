@@ -843,8 +843,9 @@ def registerFeatures(vars, indent, prj, useConfig):
     out.append(f"{indent}}}")
     return out
 
-# The sc_digit words of an sc_bv<_bitWidth>, as a constant inside a struct member.
-SC_DIGIT_COUNT = "(_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE"
+# The 32-bit sc_digit words of an sc_bv<_bitWidth>, as a constant inside a
+# struct member. common/scmain/main.cpp checks the digit size.
+SC_DIGIT_COUNT = "(_bitWidth + 31) / 32"
 
 # _packedSt is a uint64_t array exactly when the packed width exceeds 64 bits.
 def packedStIsArray(vars):
@@ -894,10 +895,9 @@ def sc_pack(handle, args, vars, indent, prj=None):
         out.append(f"{indent}}}")
         # pack() leaves an out-of-range top field unmasked so a bad value fails
         # fast. The assert catches the bits it sets past _bitWidth in the last
-        # digit, which sc_bv requires to be zero. const, not constexpr: Questa's
-        # SystemC declares SC_DIGIT_SIZE extern, so it is no constant expression.
-        out.append(f"{indent}const int _last = {SC_DIGIT_COUNT} - 1;")
-        out.append(f"{indent}Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,")
+        # digit, which sc_bv requires to be zero.
+        out.append(f"{indent}constexpr int _last = {SC_DIGIT_COUNT} - 1;")
+        out.append(f"{indent}Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,")
         out.append(f'{indent}             "{structName}", "a field holds more bits than its type");')
     out.append(f"{indent}return packed_data;")
     indent = indent[:-4]
