@@ -16,6 +16,8 @@ import apbDecode_blockA.base;
 #include "blockA_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "blockA_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "blockA_hdl_sv_wrapper_questa.h"
 #else
 #include "VblockA_hdl_sv_wrapper.h"
 #endif
@@ -31,11 +33,22 @@ using namespace apbDecode_ns;
 #include "apb_bfm.h"
 
 #include "socketSync.h"
+// Time-0 levels of the generated clocks and resets. The 4-state simulators
+// start the clocks low with the resets asserted, so no flop sees a clock edge
+// at time 0 while its reset is X; Verilator keeps a rising clock edge and a
+// reset negedge at time 0, which its 2-state flops need to be reset then.
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
+#define A2C_HDL_CLOCK_START false
+#define A2C_HDL_RESET_BORN false
+#else
+#define A2C_HDL_CLOCK_START true
+#define A2C_HDL_RESET_BORN true
+#endif
 class blockA_hdl_sc_wrapper: public sc_module, public blockBase, public blockABase {
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     blockA_hdl_sv_wrapper *dut_hdl;
 #else
     VblockA_hdl_sv_wrapper *dut_hdl;
@@ -53,10 +66,10 @@ public:
         blockABase(name(), variant),
         clk("clk"),
         apbReg_bfm_inst("apbReg_bfm_inst"),
-        rst_n("rst_n", true),
+        rst_n("rst_n", A2C_HDL_RESET_BORN),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new blockA_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VblockA_hdl_sv_wrapper("dut_hdl");
@@ -78,7 +91,7 @@ public:
         apbReg_bfm_inst.clk(clk);
         apbReg_bfm_inst.rst_n(rst_n);
 
-        clk.write(true);
+        clk.write(A2C_HDL_CLOCK_START);
         SC_THREAD(clock_gen_clk);
         SC_THREAD(reset_driver_rst_n);
 

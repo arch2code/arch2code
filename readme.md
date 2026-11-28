@@ -83,4 +83,4 @@ LICENSE                 = license file
 See `ARCH2CODE_AI_RULES.md` for the YAML sections and the project file, and `rules/skills/setup-project.md` for the directory layout.
 
 ## Simulators
-`specs/SIMULATOR_INTEGRATION.md` covers building and running under VCS and Xcelium.
+`specs/SIMULATOR_INTEGRATION.md` covers building and running under VCS, Xcelium and Questa.

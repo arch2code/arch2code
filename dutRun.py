@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Run a test on the simulator snapshot that matches its DUT topology.
 
-VCS and Xcelium fix the SystemC topology of a snapshot at elaboration, so the
-simulator flows build one snapshot per topology (vcs_snapshots, xrun_snapshots)
-and a regression file keeps a single run command: it names the base binary and
-the test's own --vlInst/--vlType/--vlTandem arguments select the snapshot
-<base>_<topology>. The topology name follows DUT_TOPOLOGY in a2c-systemc.mk:
-<inst>_<type>[_tandem], dots kept as-is since they are legal in file/target
-names, and `model` for a test without --vlInst. A model test with --vlInst and
-without --vlTandem is not a listed topology and runs on `model` as well. A UVM
-test carries --uvmDut <dut> and --uvmTop <top> and runs on uvm_<top>_<dut>,
-the snapshot uvm_snapshots builds; either option without the other is an
-error.
+VCS and Xcelium fix the SystemC topology of a snapshot at elaboration, and
+Questa the RTL it instantiates, so the simulator flows build one snapshot per
+topology (vcs_snapshots, xrun_snapshots, questa_snapshots) and a regression
+file keeps a single run command: it names the base binary and the test's own
+--vlInst/--vlType/--vlTandem arguments select the snapshot <base>_<topology>.
+The topology name follows DUT_TOPOLOGY in a2c-systemc.mk: <inst>_<type>[_tandem],
+dots kept as-is since they are legal in file/target names, and `model` for a
+test without --vlInst. A model test with --vlInst and without --vlTandem is not
+a listed topology and runs on `model` as well. A UVM test carries --uvmDut <dut>
+and --uvmTop <top> and runs on uvm_<top>_<dut>, the snapshot uvm_snapshots
+builds; either option without the other is an error.
 
 usage: dutRun.py <base binary> <simulation arguments...>
 """
@@ -52,7 +52,7 @@ def main():
     binary = f'{base}_{topology(args)}'
     if not os.access(binary, os.X_OK):
         sys.exit(f'dutRun: no snapshot {binary} for arguments {" ".join(args)}; '
-                 f'build it with the vcs_snapshots, xrun_snapshots or uvm_snapshots target')
+                 f'build it with the vcs_snapshots, xrun_snapshots, questa_snapshots or uvm_snapshots target')
     # simv warns RT_UO for every a2c option it does not know; the warnings are
     # harmless and a2c parses those options itself.
     os.execv(binary, [binary] + args)

@@ -146,8 +146,11 @@ def render_class(args, prj, data):
                 f'        if ({run}::modelDut) {{',
                 indented('\n'.join(model), 12),
                 '        }']
+    # The UVM wrapper builds only under VCS and Xcelium (uvmRegistrar.py), the
+    # four-state simulators, so its clocks start low there as the HDL
+    # wrapper's do; its resets are born asserted (above).
     out += ['',
-            indented(sec_clock_start(args, prj, data), 8),
+            indented(sec_clock_start(args, prj, data, 'false'), 8),
             indented(sec_clock_threads(args, prj, data), 8),
             indented(sec_reset_threads(args, prj, data), 8),
             '        SC_THREAD(uvm_watch);',

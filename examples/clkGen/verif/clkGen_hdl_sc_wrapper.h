@@ -16,6 +16,8 @@ import clkGen.base;
 #include "clkGen_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "clkGen_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "clkGen_hdl_sv_wrapper_questa.h"
 #else
 #include "VclkGen_hdl_sv_wrapper.h"
 #endif
@@ -28,11 +30,22 @@ import clkGen.base;
 #endif
 
 #include "socketSync.h"
+// Time-0 levels of the generated clocks and resets. The 4-state simulators
+// start the clocks low with the resets asserted, so no flop sees a clock edge
+// at time 0 while its reset is X; Verilator keeps a rising clock edge and a
+// reset negedge at time 0, which its 2-state flops need to be reset then.
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
+#define A2C_HDL_CLOCK_START false
+#define A2C_HDL_RESET_BORN false
+#else
+#define A2C_HDL_CLOCK_START true
+#define A2C_HDL_RESET_BORN true
+#endif
 class clkGen_hdl_sc_wrapper: public sc_module, public blockBase, public clkGenBase {
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     clkGen_hdl_sv_wrapper *dut_hdl;
 #else
     VclkGen_hdl_sv_wrapper *dut_hdl;
@@ -51,10 +64,10 @@ public:
         clkGenBase(name(), variant),
         clkRef("clkRef"),
         clkDiv("clkDiv"),
-        rstRef_n("rstRef_n", true),
+        rstRef_n("rstRef_n", A2C_HDL_RESET_BORN),
         clkRef_half_(sc_time(10, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new clkGen_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VclkGen_hdl_sv_wrapper("dut_hdl");
@@ -66,7 +79,7 @@ public:
 
         
 
-        clkRef.write(true);
+        clkRef.write(A2C_HDL_CLOCK_START);
         SC_THREAD(clock_gen_clkRef);
         SC_THREAD(reset_driver_rstRef_n);
         SC_METHOD(clkDiv_edge_count); sensitive << clkDiv.value_changed_event(); dont_initialize();

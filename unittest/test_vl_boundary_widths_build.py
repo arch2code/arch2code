@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Every HDL wrapper top's boundary pins agree in every emitter.
 
-Four artifacts describe each pin of a Verilated wrapper top: the VCS port map
-and the Xcelium foreign-module shell (both from `--vlBoundary`), the
+Five artifacts describe each pin of a Verilated wrapper top: the VCS port map
+and the Xcelium and Questa foreign-module shells (all from `--vlBoundary`), the
 SystemVerilog top (its port list and Verilator's own `V<top>.h`), and the
 SystemC HDL bridge (compiled against the Verilated class by the Verilated
 build). A disagreement mis-sizes or mis-types a simulator port. The pins
 Verilator declares in `V<top>.h` are the ones the SystemC side binds, so each
-top's header must list exactly the pins of its port map and Xcelium shell, with
+top's header must list exactly the pins of its port map and both shells, with
 the same direction and SystemC type.
 
 Each top is compared against the full ordered pin list (pin, direction, width,
@@ -126,7 +126,7 @@ UNBOUND = {'aruser_t': 1, 'ruser_t': 1, 'awuser_t': 1, 'wuser_t': 1, 'buser_t': 
            'id_t': 4, 'tuser_t': 1, 'o1_t': 2, 'o2_t': 3, 'o3_t': 5}
 
 PORTMAP_TYPES = {True: ('bitvector', 'sc_bv'), False: ('bit', 'bool')}
-XCELIUM_PIN = re.compile(r'sc_(in|out)<(bool|sc_bv<(\d+)>)> (\w+);')
+SHELL_PIN = re.compile(r'sc_(in|out)<(bool|sc_bv<(\d+)>)> (\w+);')
 # Every port member of the Verilated class, whatever its type, so a pin
 # Verilator types other than bool or sc_bv still reaches the comparison.
 VERILATED_PIN = re.compile(r'sc_core::sc_(in|out)<(.+?)>\s*&(\w+);')
@@ -263,10 +263,10 @@ def read_portmap(path):
         return [tuple(line.split()) for line in f if line.strip() and not line.startswith('#')]
 
 
-def read_xcelium(path):
+def read_shell(path):
     with open(path) as f:
         return [(m.group(4), DIRECTION[m.group(1)], pin_type(m.group(2) != 'bool', m.group(3)))
-                for m in XCELIUM_PIN.finditer(f.read())]
+                for m in SHELL_PIN.finditer(f.read())]
 
 
 def read_sv_top(work, top):
@@ -289,7 +289,8 @@ def read_sv_top(work, top):
 
 
 def check_boundary_files(work, design):
-    """Port map, Xcelium shell and SystemVerilog top port list of every top."""
+    """Port map, Xcelium and Questa shells and SystemVerilog top port list of
+    every top."""
     problems = []
     vl = os.path.join(work, 'top', '.gen', 'vl')
     listed = {os.path.basename(p)[:-len('.portmap')] for p in glob.glob(os.path.join(vl, '*.portmap'))}
@@ -305,7 +306,11 @@ def check_boundary_files(work, design):
             problems += compare(top, 'Xcelium shell',
                                 [(pin, direction, pin_type(vector, width))
                                  for pin, direction, width, vector in expected],
-                                read_xcelium(os.path.join(vl, f'{top}_xcelium.h')))
+                                read_shell(os.path.join(vl, f'{top}_xcelium.h')))
+            problems += compare(top, 'Questa shell',
+                                [(pin, direction, pin_type(vector, width))
+                                 for pin, direction, width, vector in expected],
+                                read_shell(os.path.join(vl, f'{top}_questa.h')))
         svTop = read_sv_top(work, top)
         if svTop is None:
             problems.append(f"{top}: no SystemVerilog module of that name")
@@ -329,7 +334,7 @@ def read_verilated(path):
 def check_verilated_build(work, design):
     """Verilate every top and compile the SystemC side, including the BFM
     conversions; then read each top's pins back from Verilator's own header
-    and hold them to the expected pins, the port map and the Xcelium shell."""
+    and hold them to the expected pins, the port map and both shells."""
     built = make(work, 'all', os.path.join('top', 'rundir'), extra=('VL_DUT=1',))
     problems = []
     if built.returncode != 0:
@@ -349,8 +354,10 @@ def check_verilated_build(work, design):
                           for pin, direction, width, vector in design.expected_pins(block, values))
         problems += compare(top, 'Verilated header', expected, actual)
         vl = os.path.join(work, 'top', '.gen', 'vl')
-        shell = sorted(read_xcelium(os.path.join(vl, f'{top}_xcelium.h')))
+        shell = sorted(read_shell(os.path.join(vl, f'{top}_xcelium.h')))
         problems += compare(top, 'Verilated header against the Xcelium shell', shell, actual)
+        questa = sorted(read_shell(os.path.join(vl, f'{top}_questa.h')))
+        problems += compare(top, 'Verilated header against the Questa shell', questa, actual)
         portmap = sorted((pin, pin_type(scType == 'sc_bv', width))
                          for pin, width, _, scType in read_portmap(os.path.join(vl, f'{top}.portmap')))
         problems += compare(top, 'Verilated header against the port map', portmap,

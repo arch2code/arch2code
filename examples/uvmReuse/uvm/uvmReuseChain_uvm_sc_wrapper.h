@@ -124,8 +124,8 @@ public:
             apbReg_bfm_inst->rst_n(rst_n);
         }
 
-        clk.write(true);
-        clkAux.write(true);
+        clk.write(false);
+        clkAux.write(false);
         SC_THREAD(clock_gen_clk);
         SC_THREAD(clock_gen_clkAux);
         SC_THREAD(reset_driver_rst_n);

@@ -97,18 +97,18 @@ struct wrapEqSt_v {
         sc_bv<wrapEqSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "wrapEqSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<wrapEqSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -178,18 +178,18 @@ struct wrapOrderSt_v {
         sc_bv<wrapOrderSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "wrapOrderSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<wrapOrderSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -250,18 +250,18 @@ struct wrapSignSt_v {
         sc_bv<wrapSignSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "wrapSignSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<wrapSignSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -325,18 +325,18 @@ struct wrapNestHdrSt {
         sc_bv<wrapNestHdrSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "wrapNestHdrSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<wrapNestHdrSt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -424,18 +424,18 @@ struct wrapNestSt_v {
         sc_bv<wrapNestSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)(_packed[i >> 1] >> ((i & 1) * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "wrapNestSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<wrapNestSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> &packed_data)
     {
         _packedSt _words{};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _words[i >> 1] |= (uint64_t)packed_data.get_word(i) << ((i & 1) * 32);
         }
         unpack(_words);

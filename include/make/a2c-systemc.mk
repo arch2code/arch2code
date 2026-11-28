@@ -15,10 +15,10 @@ ifndef PROJECT_RUNDIR
 $(error PROJECT_RUNDIR is not set - please set to the root of your project run directory)
 endif
 # SYSTEMC_INCLUDE/SYSTEMC_LIBDIR are the plain and VCS flows' own SystemC
-# inputs. Xcelium compiles against its own SystemC (XCELIUM_TOOLS, below), so
-# it never reads them. Boost is common to all flows; Xcelium links it through
-# XRUN_LD_LIBS.
-ifndef USE_XCELIUM
+# inputs. Xcelium and Questa compile against their own SystemC (XCELIUM_TOOLS,
+# QUESTA_HOME, below), so they never read them. Boost is common to all flows;
+# Xcelium links it through XRUN_LD_LIBS, Questa through QUESTA_LD_LIBS.
+ifeq ($(USE_XCELIUM)$(USE_QUESTA),)
 ifndef SYSTEMC_INCLUDE
 $(error SYSTEMC_INCLUDE is not set - please set to systemc-2.3.4 <install directory>/include)
 endif
@@ -58,9 +58,9 @@ CPP_STD ?= $(C_STD_VER)
 
 # The simulator flows exist to elaborate the RTL DUT; VL_DUT= on the command
 # line still selects a model-only snapshot.
-ifneq ($(USE_VCS)$(USE_XCELIUM),)
-ifneq ($(and $(USE_VCS),$(USE_XCELIUM)),)
-$(error USE_VCS and USE_XCELIUM are exclusive)
+ifneq ($(USE_VCS)$(USE_XCELIUM)$(USE_QUESTA),)
+ifneq ($(word 2,$(if $(USE_VCS),VCS) $(if $(USE_XCELIUM),XCELIUM) $(if $(USE_QUESTA),QUESTA)),)
+$(error USE_VCS, USE_XCELIUM and USE_QUESTA are exclusive)
 endif
 VL_DUT ?= 1
 endif
@@ -78,6 +78,27 @@ ifndef XCELIUM_TOOLS
 $(error XCELIUM_TOOLS is not set - point it at the Xcelium install's tools directory to build with USE_XCELIUM)
 endif
 SYSTEMC_INCLUDE = $(XCELIUM_TOOLS)/systemc/include
+endif
+ifdef USE_QUESTA
+ifndef QUESTA_HOME
+$(error QUESTA_HOME is not set - point it at the Questa release directory (the one holding bin/vsim and include/systemc) to build with USE_QUESTA)
+endif
+SYSTEMC_INCLUDE = $(QUESTA_HOME)/include/systemc
+# QUESTA_PTRARRAY_COPY=1 builds against a copy of Questa's SystemC include
+# directory, written into the build tree from the install, whose ptrarray.h
+# defines ptrarray<T*>::m_default_init_size in the class (Siemens case
+# #02437403): Clang rejects Questa's out-of-class definition when a port type
+# from a C++20 module meets it in two module units (SIMULATOR_INTEGRATION.md
+# section 2.3). Off by default.
+QUESTA_PTRARRAY_COPY ?= 0
+ifeq ($(QUESTA_PTRARRAY_COPY),1)
+QUESTA_SC_COPY := $(QUESTA_BIN_DIR)/questa_systemc
+$(shell $(A2C_ROOT)/common/systemc/questa/a2c_questa_ptrarray_copy.sh $(QUESTA_HOME)/include/systemc $(QUESTA_SC_COPY) >&2)
+ifneq ($(.SHELLSTATUS),0)
+$(error QUESTA_PTRARRAY_COPY=1: the copy of $(QUESTA_HOME)/include/systemc could not be written)
+endif
+SYSTEMC_INCLUDE = $(QUESTA_SC_COPY)
+endif
 endif
 # /usr/include is already a system dir, and -isystem on it breaks libstdc++'s #include_next.
 CPP_INCLUDES = $(addprefix -isystem,$(filter-out /usr/include,$(BOOST_INCLUDE) $(SYSTEMC_INCLUDE))) -I/usr/local/include
@@ -196,7 +217,7 @@ CPP_INCLUDES += $(foreach dir, $(A2C_VL_WRAP_DIRS), -I$(dir))
 ifdef USE_VCS
 # The `-sc_model` shell headers the VlRegistrar #includes land under csrc in VCS_RUNDIR.
 CPP_INCLUDES += -I$(VCS_RUNDIR)/csrc/sysc/include -I$(VCS_HOME)/include
-else ifdef USE_XCELIUM
+else ifneq ($(USE_XCELIUM)$(USE_QUESTA),)
 # The foreign-module shells the VlRegistrar #includes are generated under .gen/vl.
 CPP_INCLUDES += -I$(A2C_VL_GEN_INC)
 else
@@ -213,6 +234,12 @@ CPP_INCLUDES += -I$(XCELIUM_TOOLS)/systemc/include/cci -I$(XCELIUM_TOOLS)/system
 	-I$(XCELIUM_TOOLS)/systemc/include/tlm2 -I$(XCELIUM_TOOLS)/include -I$(XCELIUM_TOOLS)/inca/include
 endif
 
+# The builder's systemc.h shim (common/systemc/questa) comes first, ahead of
+# Questa's own, which it includes; then the directories sccom itself adds.
+ifdef USE_QUESTA
+CPP_INCLUDES += -I$(A2C_ROOT)/common/systemc/questa -I$(QUESTA_HOME)/include -I$(QUESTA_HOME)/include/ac_types
+endif
+
 # All include directories.
 CPP_INCLUDES += $(foreach dir, $(A2C_SRC_DIRS), -I$(dir))
 CPP_INCLUDES += $(foreach dir, $(PRJ_SRC_DIRS), -I$(dir))
@@ -220,9 +247,10 @@ CPP_INCLUDES += $(foreach dir, $(PRJ_SRC_DIRS), -I$(dir))
 # Put all auto generated stuff to this build dir. BIN_DIR comes from a2c-common.mk
 # so that `clean` owns it from either directory.
 BIN = run
-ifneq ($(USE_VCS)$(USE_XCELIUM),)
-# VCS and Xcelium elaborate the SystemC/HDL topology into the snapshot, so each
-# DUT topology (see a2c-vcs.mk, a2c-xrun.mk) is its own snapshot and binary:
+ifneq ($(USE_VCS)$(USE_XCELIUM)$(USE_QUESTA),)
+# VCS, Xcelium and Questa elaborate the SystemC/HDL topology into the snapshot,
+# so each DUT topology (see a2c-vcs.mk, a2c-xrun.mk, a2c-questa.mk) is its own
+# snapshot and binary:
 # run_<inst>_<type>[_tandem], or run_model when no RTL instance is elaborated
 # (VL_INST= on the command line keeps the compiled objects of a VL_DUT build).
 ifdef VL_DUT
@@ -232,7 +260,7 @@ VL_TYPE ?= verif
 VL_TANDEM ?= 0
 DUT_TOPOLOGY ?= $(if $(VL_INST),$(VL_INST)_$(VL_TYPE)$(if $(filter 1,$(VL_TANDEM)),_tandem),model)
 BIN = run_$(DUT_TOPOLOGY)
-# Both simulators run sc_main up to its first sc_start to elaborate the
+# The simulators run sc_main up to its first sc_start to elaborate the
 # topology, so the snapshot build needs the testbench command line the
 # snapshot is later run with.
 DUT_TESTBENCH ?= $(HDL_TOP_MODULE)
@@ -240,7 +268,8 @@ DUT_ELAB_ARGS ?= $(DUT_TESTBENCH) $(if $(VL_INST),--vlInst $(VL_INST) --vlType $
 # Regression snapshots, one entry per block: <inst>:<type>[:tandem][,<type>[:tandem]]...
 # e.g. top:verif,verif:tandem,model:tandem. Regression files pass one
 # DUT_TOPOLOGIES+=<entry> per block on the build command line. Every test that
-# instantiates no RTL runs on run_model. See vcs_snapshots and xrun_snapshots.
+# instantiates no RTL runs on run_model. See vcs_snapshots, xrun_snapshots and
+# questa_snapshots.
 DUT_TOPOLOGIES ?= $(HDL_TOP_MODULE):verif,verif:tandem
 comma := ,
 space := $(subst ,, )
@@ -276,9 +305,46 @@ CXX_FLAGS += -DXCELIUM_DUT
 endif
 endif
 
+# QUESTA selects the simulator glue in main.cpp; QUESTA_DUT selects the
+# foreign-module shell as the `_verif` DUT in the VlRegistrar. MTI_SYSTEMC is
+# what sccom passes to its own compiler, and DONT_USE_MTI_EXIT keeps exit() a
+# function rather than Questa's macro; -fPIC because sccom -link links the
+# objects into a shared library.
+ifdef USE_QUESTA
+CXX_FLAGS += -DQUESTA -DMTI_SYSTEMC -DDONT_USE_MTI_EXIT -D_GLIBCXX_USE_CXX11_ABI=1 -fPIC
 ifdef VL_DUT
-ifndef USE_VCS
-ifndef USE_XCELIUM
+CXX_FLAGS += -DQUESTA_DUT
+endif
+# Questa's include/systemc holds most headers twice, at the top and under
+# sysc/<dir>/, with the same content. systemc.h reads the top copies and a2c's
+# channels include some by their sysc/ path, so a translation unit and a module
+# it imports can read different copies, whose inline functions then carry a
+# different __FILE__ in sc_assert; Clang 17 rejects them as different
+# definitions in different modules. Each sysc/<dir>/ holding such a copy maps
+# to the top directory, so both copies expand __FILE__ alike.
+# Clang 18 and later no longer check declarations in a global module fragment
+# for that (Clang 18 release notes, llvm-project #79240), so the maps are
+# passed only to an older or unrecognised compiler, and always with
+# QUESTA_PTRARRAY_COPY=1 (not tested without them). QUESTA_MACRO_PREFIX_MAP=1
+# or 0 forces the choice.
+QUESTA_CLANG_MAJOR := $(shell $(CXX) --version 2>/dev/null | sed -n 's/.*clang version \([0-9][0-9]*\).*/\1/p' | head -1)
+QUESTA_MACRO_PREFIX_MAP ?= $(if $(filter 1,$(QUESTA_PTRARRAY_COPY)),1,$(shell [ "0$(QUESTA_CLANG_MAJOR)" -ge 18 ] && echo 0 || echo 1))
+QUESTA_SC_INC = $(QUESTA_HOME)/include/systemc
+ifeq ($(QUESTA_MACRO_PREFIX_MAP),1)
+QUESTA_SYSC_DIRS := $(sort $(foreach h,$(wildcard $(QUESTA_SC_INC)/sysc/*/*.h $(QUESTA_SC_INC)/sysc/*/*/*.h),\
+	$(if $(wildcard $(QUESTA_SC_INC)/$(notdir $(h))),$(dir $(h)))))
+CXX_FLAGS += $(foreach d,$(QUESTA_SYSC_DIRS),-fmacro-prefix-map=$(d)=$(QUESTA_SC_INC)/)
+# The copy of QUESTA_PTRARRAY_COPY reaches the same headers by its own paths;
+# they map to Questa's directory alike.
+ifeq ($(QUESTA_PTRARRAY_COPY),1)
+CXX_FLAGS += $(foreach d,$(QUESTA_SYSC_DIRS),-fmacro-prefix-map=$(subst $(QUESTA_SC_INC)/,$(QUESTA_SC_COPY)/,$(d))=$(QUESTA_SC_INC)/) \
+	-fmacro-prefix-map=$(QUESTA_SC_COPY)/=$(QUESTA_SC_INC)/
+endif
+endif
+endif
+
+ifdef VL_DUT
+ifeq ($(USE_VCS)$(USE_XCELIUM)$(USE_QUESTA),)
 CXX_FLAGS += -DVERILATOR
 ifdef VL_COV
 CXX_FLAGS += -DVL_COV
@@ -294,7 +360,6 @@ VL_WRAP_LIB = $(wildcard $(A2C_VL_BUILD_DIR)/lib$(PROJECTNAME)vl_s_wrap.a)
 CXX_FLAGS += -Wno-sign-compare
 endif
 endif
-endif
 
 # The project's flags come last so they can override a builder flag.
 CXX_FLAGS += $(EXTRA_CXX_FLAGS)
@@ -306,7 +371,9 @@ LD_FLAGS  += $(EXTRA_LD_FLAGS)
 CPP_MODULE_PCM := $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.pcm)
 CPP_MODULE_OBJ := $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.module.o)
 CPP_MODULE_FLAGS := $(foreach module,$(CPP_MODULE_NAMES),-fmodule-file=$(module)=$(call cpp_module_pcm,$(call cpp_module_src_for,$(module))))
-CPP_MODULE_OBJ_FLAGS := $(filter-out -I% -isystem/%,$(CXX_FLAGS))
+# A module object compiles from its PCM, which needs no include path and no
+# macro path map (Clang reports the maps unused there).
+CPP_MODULE_OBJ_FLAGS := $(filter-out -I% -isystem/% -fmacro-prefix-map=%,$(CXX_FLAGS))
 
 # Build-flavor stamp. The model and VL (VL_DUT=1) builds share the same
 # BIN/BUILD_DIR paths and the same object files; toggling VL_DUT only changes the
@@ -320,7 +387,7 @@ CPP_MODULE_OBJ_FLAGS := $(filter-out -I% -isystem/%,$(CXX_FLAGS))
 # prerequisite of every flag-carrying compile rule forces just the affected
 # objects to recompile (and the binary to relink) on a flip, without changing any
 # output path that downstream consumers of build/run depend on.
-BUILD_FLAVOR := $(if $(USE_VCS),vcs-,)$(if $(USE_XCELIUM),xrun-,)$(if $(VL_DUT),vl$(if $(VL_COV),-cov,),model)
+BUILD_FLAVOR := $(if $(USE_VCS),vcs-,)$(if $(USE_XCELIUM),xrun-,)$(if $(USE_QUESTA),questa-$(if $(filter 1,$(QUESTA_PTRARRAY_COPY)),ptrarray-copy-),)$(if $(VL_DUT),vl$(if $(VL_COV),-cov,),model)
 FLAVOR_STAMP := $(BUILD_DIR)/.build_flavor
 $(shell mkdir -p $(BUILD_DIR); [ "$$(cat $(FLAVOR_STAMP) 2>/dev/null)" = "$(BUILD_FLAVOR)" ] || printf '%s\n' "$(BUILD_FLAVOR)" > $(FLAVOR_STAMP))
 
@@ -358,13 +425,11 @@ endif
 # line, once each ($^ drops an object listed twice); the library reaches the link
 # through -l.
 $(BIN_DIR)/$(BIN) : $(OBJ) $(VL_WRAP_LIB)
-ifndef USE_VCS
-ifndef USE_XCELIUM
+ifeq ($(USE_VCS)$(USE_XCELIUM)$(USE_QUESTA),)
     # Create build directories - same structure as sources.
 	mkdir -p $(@D)
     # Just link all the object files.
 	$(CXX) -o $@ $(filter-out $(VL_WRAP_LIB),$^) $(LD_FLAGS)
-endif
 endif
 
 # -O3 compiles: the systemc runtime files above, the user's EXTRA_O3_CPP_SRC and
@@ -450,6 +515,9 @@ endif
 ifdef USE_XCELIUM
 include $(A2C_ROOT)/include/make/a2c-xrun.mk
 endif
+ifdef USE_QUESTA
+include $(A2C_ROOT)/include/make/a2c-questa.mk
+endif
 
 #------------------------------------------------------------------------
 # Systemc build phony targets
@@ -460,10 +528,8 @@ endif
 
 all: gen
 ifdef VL_DUT
-ifndef USE_VCS
-ifndef USE_XCELIUM
+ifeq ($(USE_VCS)$(USE_XCELIUM)$(USE_QUESTA),)
 	mkdir -p $(A2C_VL_BUILD_DIR) && $(MAKE) -C $(A2C_VL_BUILD_DIR) -f $(A2C_ROOT)/include/make/a2c-vl-build-entry.mk vlwrap REPO_ROOT=$(REPO_ROOT) VL_CXX='$(VL_CXX)' VL_CXX_FLAGS='$(VL_CXX_FLAGS)' VL_LD_FLAGS='$(VL_LD_FLAGS)'
-endif
 endif
 endif
 	$(MAKE) $(BIN_DIR)/$(BIN)
@@ -482,6 +548,7 @@ help::
 	@echo "  VL_TIMING=1	- Verilate and lint with --timing"
 	@echo "  USE_VCS=1	- Compile for VCS and link with vcs (with VL_DUT=1: RTL DUT elaborated by VCS)"
 	@echo "  USE_XCELIUM=1	- Compile for Xcelium and build its snapshot with xrun (with VL_DUT=1: RTL DUT elaborated by Xcelium)"
+	@echo "  USE_QUESTA=1	- Compile for Questa and build its optimized design with vlog/sccom/vopt (with VL_DUT=1: RTL DUT elaborated by Questa)"
 
 #------------------------------------------------------------------------
 # Generate compile_commands.json for clangd/OpenCode

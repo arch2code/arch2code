@@ -32,7 +32,7 @@ Before editing, building, testing or verifying, you **must** load the project sk
 | **RTL->SC** | `rtl-to-systemc` (RTL to model conversion) |
 | **Verification** | `verify-testbench` (Testbenches, scoreboards) |
 | **UVM Testbench** | `verify-uvm` (Tests on a generated `hasUvm` UVM bench: sequences, scoreboards, register and negative tests, running and debugging on Xcelium or VCS) |
-| **Regression Tests** | `run-regression-tests` (Create, run, filter, and triage regression tests with `regrLauncher.py` and `make regr`, including VCS/Xcelium snapshot regressions) |
+| **Regression Tests** | `run-regression-tests` (Create, run, filter, and triage regression tests with `regrLauncher.py` and `make regr`, including VCS/Xcelium/Questa snapshot regressions) |
 | **Co-Sim** | `verify-cosimulation` (Verilator co-simulation of RTL and SystemC) |
 | **Review RTL** | `review-rtl` (RTL review: conventions, best practices, FUSA, tandem) |
 | **Review Model** | `review-model` (Model review: conventions, correctness, tandem, quality) |

@@ -40,6 +40,14 @@ tests/out/*
 **/rundir/vc_hdrs.h
 **/rundir/waves.shm/
 **/rundir/ucli.key
+# Questa output in a project rundir: the build tree, libraries, ini and crash
+# reports. *.log covers the vopt logs.
+**/rundir/build_questa/
+**/rundir/a2c_dut/
+**/rundir/a2c_sc/
+**/rundir/a2c_opt_*/
+**/rundir/a2c_questa.ini
+**/rundir/*.vstf
 
 # database files
 *.db

@@ -85,18 +85,18 @@ struct uvmMemAddrSt {
         sc_bv<uvmMemAddrSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "uvmMemAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<uvmMemAddrSt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -151,18 +151,18 @@ struct uvmMemWordSt {
         sc_bv<uvmMemWordSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "uvmMemWordSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<uvmMemWordSt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -232,18 +232,18 @@ struct uvmMemCmdSt {
         sc_bv<uvmMemCmdSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "uvmMemCmdSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<uvmMemCmdSt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);

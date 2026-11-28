@@ -16,7 +16,8 @@ Checks:
   stamp leaves the RTL combinationally, so a delay in the generated wrapper
   assigns makes the checker read 0;
 - the generated wrapper's port assigns preprocess to `assign #0` with
-  VERILATOR undefined (VCS, Xcelium) and to a bare `assign` under Verilator;
+  VERILATOR undefined (VCS, Xcelium, Questa) and to a bare `assign` under
+  Verilator;
 - a repeat build with the same setting verilates nothing and relinks nothing;
 - VL_TIMING=0 re-verilates with --no-timing, and the Verilated leaf, its delay
   now ignored, stamps 0.

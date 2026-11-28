@@ -11,6 +11,6 @@ A spec is the normative description of how a feature works, written from the cod
 - `spec-project-composition.md`: composing projects: provider selection, file ownership, identity across projects, which top is built, and build and migration order.
 - `spec-register-bus-distribution.md`: how routers, routed leaves and address groups become the generated register-bus decode, handlers and firmware address enums.
 - `spec-verilated-wrappers.md`: Verilated HDL wrapper files, their names and owners, boundary pin widths, and the build-manifest top records.
-- `SIMULATOR_INTEGRATION.md`: building and running a project under VCS and Xcelium.
+- `SIMULATOR_INTEGRATION.md`: building and running a project under VCS, Xcelium and Questa.
 
 `plans/` holds only `backlog.md` and open plans.

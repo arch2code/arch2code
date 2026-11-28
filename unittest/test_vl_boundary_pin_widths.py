@@ -19,7 +19,7 @@ getVlTopBoundaryPins() looks up a pin's width there.
 2. An interface's eval-derived hdlparam (AXI4-Stream tstrb_t/tkeep_t, a byte
    count computed from tdata_t) must track the SELECTED TOP's resolved
    payload width, not the structure's nominal (default-value) width. At a
-   1-byte top it stays a vector pin, so Verilator, VCS and Xcelium all bind it
+   1-byte top it stays a vector pin, so Verilator, VCS, Xcelium and Questa all bind it
    as sc_bv<1>, the type the hand-written BFM reads.
 
 A third cell covers a signal whose signalType names a type (external_reg
@@ -461,7 +461,7 @@ parameters:
 def test_eval_derived_width_at_variant():
     """At variant 'wide' (WIDTH=16) the payload is DOUBLE_WIDTH=32 plus
     TAG_WIDTH=8 bits, as the RTL computes it, in the pin, the VCS port map and
-    the Xcelium shell, not the default-valued 16 plus 4."""
+    the Xcelium and Questa shells, not the default-valued 16 plus 4."""
     print("eval-derived payload width at a non-default variant")
     db_path, project_path, arch_paths = build_database(
         EVAL_DERIVED_ARCH, top_instance='top_tb', project_name='vl_boundary_eval')
@@ -481,6 +481,12 @@ def test_eval_derived_width_at_variant():
         if shellLine not in vlBoundaryGen.xceliumShell(top, pins).splitlines():
             print(f"FAIL: {top} Xcelium shell lacks '{shellLine.strip()}':\n"
                   f"{vlBoundaryGen.xceliumShell(top, pins)}")
+            ok = False
+        questa = vlBoundaryGen.questaShell(top, pins).splitlines()
+        hdlName = f'sc_foreign_module(nm, "{top}")'
+        if shellLine not in questa or not any(hdlName in line for line in questa):
+            print(f"FAIL: {top} Questa shell lacks '{shellLine.strip()}' or '{hdlName}':\n"
+                  f"{vlBoundaryGen.questaShell(top, pins)}")
             ok = False
         if ok:
             print("PASS")

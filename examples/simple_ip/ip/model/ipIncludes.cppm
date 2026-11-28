@@ -164,18 +164,18 @@ struct ipDataSt_v {
         sc_bv<ipDataSt_v<IP_DATA_WIDTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)(_packed[i >> 1] >> ((i & 1) * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipDataSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipDataSt_v<IP_DATA_WIDTH>::_bitWidth> &packed_data)
     {
         _packedSt _words{};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _words[i >> 1] |= (uint64_t)packed_data.get_word(i) << ((i & 1) * 32);
         }
         unpack(_words);
@@ -260,18 +260,18 @@ struct ipCfgSt_v {
         sc_bv<ipCfgSt_v<IP_DATA_WIDTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)(_packed[i >> 1] >> ((i & 1) * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipCfgSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipCfgSt_v<IP_DATA_WIDTH>::_bitWidth> &packed_data)
     {
         _packedSt _words{};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _words[i >> 1] |= (uint64_t)packed_data.get_word(i) << ((i & 1) * 32);
         }
         unpack(_words);
@@ -339,18 +339,18 @@ struct ipMemSt_v {
         sc_bv<ipMemSt_v<IP_DATA_WIDTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)(_packed[i >> 1] >> ((i & 1) * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipMemSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipMemSt_v<IP_DATA_WIDTH>::_bitWidth> &packed_data)
     {
         _packedSt _words{};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _words[i >> 1] |= (uint64_t)packed_data.get_word(i) << ((i & 1) * 32);
         }
         unpack(_words);
@@ -409,18 +409,18 @@ struct ipMemAddrSt_v {
         sc_bv<ipMemAddrSt_v<IP_MEM_DEPTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipMemAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipMemAddrSt_v<IP_MEM_DEPTH>::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -494,18 +494,18 @@ struct ipBurstSt_v {
         sc_bv<ipBurstSt_v<IP_DATA_WIDTH, IP_MEM_DEPTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)(_packed[i >> 1] >> ((i & 1) * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipBurstSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipBurstSt_v<IP_DATA_WIDTH, IP_MEM_DEPTH>::_bitWidth> &packed_data)
     {
         _packedSt _words{};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _words[i >> 1] |= (uint64_t)packed_data.get_word(i) << ((i & 1) * 32);
         }
         unpack(_words);
@@ -565,18 +565,18 @@ struct ipDerivedMemAddrSt_v {
         sc_bv<ipDerivedMemAddrSt_v<IP_MEM_DEPTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipDerivedMemAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipDerivedMemAddrSt_v<IP_MEM_DEPTH>::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -632,18 +632,18 @@ struct ipFixedSt {
         sc_bv<ipFixedSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipFixedSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipFixedSt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -698,18 +698,18 @@ struct ipFixedAddrSt {
         sc_bv<ipFixedAddrSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipFixedAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipFixedAddrSt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -779,18 +779,18 @@ struct ipFixedHeaderSt {
         sc_bv<ipFixedHeaderSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipFixedHeaderSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipFixedHeaderSt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -880,18 +880,18 @@ struct ipFixedSignedSt {
         sc_bv<ipFixedSignedSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipFixedSignedSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipFixedSignedSt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -996,18 +996,18 @@ struct ipFixedArraySt {
         sc_bv<ipFixedArraySt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipFixedArraySt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipFixedArraySt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -1073,18 +1073,18 @@ struct ipFixedLog2St {
         sc_bv<ipFixedLog2St::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipFixedLog2St", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipFixedLog2St::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -1213,18 +1213,18 @@ struct ipFixedNestedSt {
         sc_bv<ipFixedNestedSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)(_packed[i >> 1] >> ((i & 1) * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipFixedNestedSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipFixedNestedSt::_bitWidth> &packed_data)
     {
         _packedSt _words{};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _words[i >> 1] |= (uint64_t)packed_data.get_word(i) << ((i & 1) * 32);
         }
         unpack(_words);
@@ -1324,18 +1324,18 @@ struct ipParamNestedSt_v {
         sc_bv<ipParamNestedSt_v<IP_DATA_WIDTH>::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)(_packed[i >> 1] >> ((i & 1) * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipParamNestedSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipParamNestedSt_v<IP_DATA_WIDTH>::_bitWidth> &packed_data)
     {
         _packedSt _words{};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _words[i >> 1] |= (uint64_t)packed_data.get_word(i) << ((i & 1) * 32);
         }
         unpack(_words);
@@ -1395,18 +1395,18 @@ struct ipRegAddrSt {
         sc_bv<ipRegAddrSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipRegAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipRegAddrSt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);
@@ -1463,18 +1463,18 @@ struct ipRegDataSt {
         sc_bv<ipRegDataSt::_bitWidth> packed_data;
         _packedSt _packed;
         pack(_packed);
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
         }
-        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
-        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+        constexpr int _last = (_bitWidth + 31) / 32 - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * 32))) == 0,
                      "ipRegDataSt", "a field holds more bits than its type");
         return packed_data;
     }
     inline void sc_unpack(const sc_bv<ipRegDataSt::_bitWidth> &packed_data)
     {
         uint64_t _word{0};
-        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+        for (int i = 0; i < (_bitWidth + 31) / 32; i++) {
             _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
         unpack((_packedSt)_word);

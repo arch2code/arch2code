@@ -5,7 +5,8 @@
 A block with `hasVl: true` gets an HDL verification wrapper: a SystemVerilog
 top that flattens the block's interface ports into plain pins, and a SystemC
 class that drives those pins from the block's channels. A simulator compiles
-the SV top (Verilator, VCS `vlogan -sc_model`, or Xcelium as a foreign module),
+the SV top (Verilator, VCS `vlogan -sc_model`, or Xcelium or Questa as a
+foreign module),
 and a per-assembler registrar registers the SystemC class with the instance
 factory as `<block>_verif`, so `--vlInst` can swap it in for the model at run
 time. A parameterized block has one shared parameterized wrapper body and one
@@ -16,7 +17,7 @@ run on an X or Z at a port of a type with a UVM agent (section 9).
 
 Scope: this spec covers the generated wrapper files, their names and owners,
 pin widths, the manifest records and the make rules that consume them. It does
-not cover the VCS and Xcelium snapshot flows (`specs/SIMULATOR_INTEGRATION.md`),
+not cover the VCS, Xcelium and Questa snapshot flows (`specs/SIMULATOR_INTEGRATION.md`),
 variant declaration and Config ownership (`specs/spec-parameter-inheritance.md`),
 or tandem. The user-facing side is taught by the `verify-cosimulation` skill,
 with build targets in `manage-build`.
@@ -103,11 +104,16 @@ Clocks and resets:
   its own `clock_gen_<clock>` thread at half its declared period. Under socket
   lockstep every clock must stop while the Python partner holds the quantum,
   and an `sc_clock` cannot pause.
-- Each reset signal starts released, at `true`. Its `reset_driver_<reset>`
-  thread writes it low at time 0 and high after the reset's `releaseCycles`
-  rising edges of its own clock. The first write is therefore a real falling
-  edge, which Verilator's asynchronous reset processes need to see. Under
-  socket lockstep the thread follows the partner's reset instead.
+- Each reset signal starts at `A2C_HDL_RESET_BORN` and each input clock at
+  `A2C_HDL_CLOCK_START`, both defined above the class. Under Verilator both
+  are `true`: the reset starts released, and its `reset_driver_<reset>`
+  thread writes it low at time 0, a real falling edge, which Verilator's
+  asynchronous reset processes need to see. Under `VCS_DUT`, `XCELIUM_DUT`
+  and `QUESTA_DUT` both are `false`: the reset starts asserted and the clock
+  low, so no 4-state flop is clocked at time 0 while its reset is X. The
+  thread releases the reset after `releaseCycles` rising edges of its own
+  clock. Under socket lockstep the thread follows the partner's reset
+  instead.
 - The wrapper observes an output clock or reset and never drives it. It
   counts the edges and warns at the end of the run if a clock never toggled
   or a reset never released.
@@ -126,10 +132,10 @@ Clocks and resets:
 `templates/systemc/vlRegistrar.py` fills `<child>VlRegistrar.cpp` from
 `projectOpen.getRegistrarConfigView(child, parent)`:
 
-- The whole file is guarded by `#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)`.
+- The whole file is guarded by `#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)`.
   In a model-only build it compiles to an empty TU.
 - For each distinct top it includes the simulator's DUT header (`V<top>.h`,
-  `<top>.h` from `vlogan`, or `<top>_xcelium.h`) and declares `<top>_dut_t`
+  `<top>.h` from `vlogan`, `<top>_questa.h` or `<top>_xcelium.h`) and declares `<top>_dut_t`
   as the simulator's class for that top.
 - It imports the Config modules the container imports, so the container's
   `dynamic_pointer_cast` sees the same type.
@@ -161,7 +167,7 @@ Clocks and resets:
 - The body is never a top. A module without parameter defaults cannot
   elaborate standalone, and the manifest records only `.sv` files as tops.
 - Every flow adds each `vl_wrap` directory as `+incdir` (`A2C_VL_WRAP_DIRS`):
-  `make lint`, each verilate, `vlogan` and `xrun`. A top reaches a reused
+  `make lint`, each verilate, `vlogan`, `xrun` and `vlog`. A top reaches a reused
   child's body through that path.
 
 A block without params gets no `.svh`. Its single `.sv` holds the whole
@@ -215,7 +221,7 @@ SV spelling is `intf_gen_utils.sv_signal_type`. SystemC bridge spelling is
 - Every top has fixed integer widths. The registrar pairs each top with the
   Config built from the same values the trampoline binds, so the SV width and
   the SystemC `_bitWidth` agree at compile time. `unittest/test_vl_boundary_widths_build.py`
-  checks that each top's `V<top>.h`, VCS port map and Xcelium shell list the
+  checks that each top's `V<top>.h`, VCS port map, Xcelium shell and Questa shell list the
   same pins.
 - A port that takes a whole array register is an interface array inside the
   wrapper and has one flat pin set per element, `<port>_<k>_<signal>`, in
@@ -225,7 +231,8 @@ SV spelling is `intf_gen_utils.sv_signal_type`. SystemC bridge spelling is
   taken with `index:`, is a scalar port with ordinary pins.
 
 **Width-1 rule.** A vector pin stays a vector at width 1: SV `bit [0:0]`,
-SystemC `sc_bv<1>`, VCS port map `1 bitvector sc_bv`, Xcelium `sc_bv<1>`. The
+SystemC `sc_bv<1>`, VCS port map `1 bitvector sc_bv`, Xcelium and Questa
+`sc_bv<1>`. The
 hand-written BFMs read `sc_bv` for these pins. Verilator runs with
 `--pins-bv 2`, which binds wider pins as `sc_bv` but a 1-bit pin as `bool`.
 On a Verilated top, every vector pin of width 1 at that top therefore carries
@@ -307,8 +314,8 @@ file name with `$(notdir)` or a pattern.
   the delay ends (verilator/verilator#8394).
 - Generated SV wrapper port assigns (`pysrc/intf_gen_utils.py`) carry
   `` `A2C_HDL_BOUNDARY_DLY ``, from `common/systemVerilog/hdlBoundary.svh`,
-  which every wrapper with port assigns includes. It is `#0` under VCS and
-  Xcelium, because VCS needs that delta delay inside the wrapper and a delay
+  which every wrapper with port assigns includes. It is `#0` under VCS,
+  Xcelium and Questa, because VCS needs that delta delay inside the wrapper and a delay
   at the port map is not equivalent. It is empty under Verilator, because
   under `--timing` a `#0` keeps a combinational output's update from reaching
   SystemC (measured on 5.052 and on master `a55d6c698`).
@@ -318,15 +325,16 @@ file name with `$(notdir)` or a pattern.
   each top under `VL_DUT`, so the registrar finds `V<top>.h`.
 - `include/make/a2c-vcs.mk` runs `vlogan -sc_model <top> -sc_portmap $(A2C_VL_PORTMAP_<top>)`
   on `$(A2C_VL_SV_<top>)` for each top.
-- `include/make/a2c-xrun.mk` compiles the sorted, de-duplicated set of
-  `A2C_VL_SV_<top>` files into the DUT library.
+- `include/make/a2c-xrun.mk` and `include/make/a2c-questa.mk` compile the
+  sorted, de-duplicated set of `A2C_VL_SV_<top>` files into the DUT library.
 
 `arch2code.py --vlBoundary` (`pysrc/vlBoundaryGen.py::vlBoundaryGen`) writes
-`.gen/vl/<top>.portmap` and `.gen/vl/<top>_xcelium.h` for every manifest top,
-from `getVlTopBoundaryPins`. `make gen` runs it only under `USE_VCS` or
-`USE_XCELIUM` when `A2C_VL_TOPS` is non-empty. Under `SKIP_GEN` the boundary
-files still rebuild, because the VCS port maps (`include/make/a2c-vcs.mk`) and
-the registrar objects of the Xcelium flow (`include/make/a2c-xrun.mk`) depend on
+`.gen/vl/<top>.portmap`, `.gen/vl/<top>_xcelium.h` and `.gen/vl/<top>_questa.h`
+for every manifest top, from `getVlTopBoundaryPins`. `make gen` runs it only
+under `USE_VCS`, `USE_XCELIUM` or `USE_QUESTA` when `A2C_VL_TOPS` is non-empty.
+Under `SKIP_GEN` the boundary files still rebuild, because the VCS port maps
+(`include/make/a2c-vcs.mk`) and the registrar objects of the Xcelium and Questa
+flows (`include/make/a2c-xrun.mk`, `include/make/a2c-questa.mk`) depend on
 `VL_BOUNDARY_STAMP`. File formats and the simulator flows are in
 `specs/SIMULATOR_INTEGRATION.md` §1.5.
 

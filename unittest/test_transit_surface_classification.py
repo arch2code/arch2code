@@ -352,6 +352,8 @@ def test_vl_registrar_emits_view_factory_project():
                     'vcsDutHeader': 'transitLeaf_hdl_sv_wrapper.h',
                     'xceliumDutClass': 'transitLeaf_hdl_sv_wrapper',
                     'xceliumDutHeader': 'transitLeaf_hdl_sv_wrapper_xcelium.h',
+                    'questaDutClass': 'transitLeaf_hdl_sv_wrapper',
+                    'questaDutHeader': 'transitLeaf_hdl_sv_wrapper_questa.h',
                     'factoryProject': 'child',
                 }],
                 'verifConfigModules': [],

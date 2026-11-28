@@ -1,6 +1,6 @@
-# VCS and Xcelium integration specification
+# VCS, Xcelium and Questa integration specification
 
-This document specifies how Arch2Code builds and runs a project under Synopsys VCS and Cadence Xcelium, and what a site must install and set to bring both flows up. It covers the make interface, the generated files, the environment, and the known failure modes. The make targets and hooks are summarised here. The full hook table and the general build workflow are in the `manage-build` skill (`rules/skills/manage-build.md`), and the regression file format is in `run-regression-tests` (`rules/skills/run-regression-tests.md`). Section 9 covers the UVM testbench flow, which runs on both simulators.
+This document specifies how Arch2Code builds and runs a project under Synopsys VCS, Cadence Xcelium and Siemens Questa, and what a site must install and set to bring the flows up. It covers the make interface, the generated files, the environment, and the known failure modes. The make targets and hooks are summarised here. The full hook table and the general build workflow are in the `manage-build` skill (`rules/skills/manage-build.md`), and the regression file format is in `run-regression-tests` (`rules/skills/run-regression-tests.md`). Section 9 covers the UVM testbench flow, which runs on VCS and Xcelium.
 
 ## 1. Scope and architecture
 
@@ -14,9 +14,10 @@ Every flow compiles the same SystemC testbench and models, written as C++20 modu
 | Verilator | `VL_DUT=1` | Clang | Clang, standalone SystemC | verilated to C++ | `rundir/build/run` |
 | VCS | `USE_VCS=1` | Clang | `vcs` (VCS SystemC kernel) | analysed by `vlogan`, elaborated by `vcs` | `rundir/build/run_<topology>` (a `simv`) |
 | Xcelium | `USE_XCELIUM=1` | Clang, `-fPIC` | `xrun` (Cadence SystemC kernel) | compiled and elaborated by `xrun` | `rundir/build_xrun/run_<topology>` (a script) |
+| Questa | `USE_QUESTA=1` | Clang, `-fPIC`, plus a one-file `sc_main` stub compiled by `sccom` | `sccom -link`, `vopt` and `vsim` (Questa SystemC kernel) | compiled by `vlog`, elaborated by `vopt` | `rundir/build_questa/run_<topology>` (a script) |
 
-- `USE_VCS` and `USE_XCELIUM` are exclusive. Setting both stops make with `USE_VCS and USE_XCELIUM are exclusive`.
-- Either switch implies `VL_DUT=1`. Pass an empty `VL_DUT=` on the command line for a model-only simulator binary.
+- `USE_VCS`, `USE_XCELIUM` and `USE_QUESTA` are exclusive. Setting two stops make with `USE_VCS, USE_XCELIUM and USE_QUESTA are exclusive`.
+- Each switch implies `VL_DUT=1`. Pass an empty `VL_DUT=` on the command line for a model-only simulator binary.
 - In the simulator flows Clang only compiles. The simulator links the objects with its own SystemC kernel and its own GCC.
 
 ### 1.2 Preprocessor macros
@@ -27,7 +28,9 @@ Every flow compiles the same SystemC testbench and models, written as C++20 modu
 | `VCS_DUT` | `USE_VCS` and `VL_DUT` | registrars and SystemC HDL wrappers use the `vlogan -sc_model` shell `<top>` from `<top>.h` as the DUT class |
 | `XCELIUM`, `NCSC`, `CADENCE`, `LNX86`, `XMSC`, `_GLIBCXX_USE_CXX11_ABI=1` | `USE_XCELIUM` | `main.cpp` rethrows `xmsc_elab_exception`, which xmelab uses to end the elaboration run of `sc_main`, and sets the lock hierarchy prefix `sc_main`, which Xcelium puts in front of an HDL `%m`. The other defines are the ones xmsc passes to its own compiler |
 | `XCELIUM_DUT` | `USE_XCELIUM` and `VL_DUT` | registrars and wrappers use the generated foreign-module shell `<top>` from `<top>_xcelium.h` |
-| `VERILATOR` | `VL_DUT` with neither switch | the Verilator flow, including `--vlTrace` VCD tracing. `sc_main` passes its arguments to `Verilated::commandArgs`, so RTL plusargs read the run's command line |
+| `QUESTA`, `MTI_SYSTEMC`, `DONT_USE_MTI_EXIT`, `_GLIBCXX_USE_CXX11_ABI=1` | `USE_QUESTA` | `main.cpp` compiles `sc_main` as `a2c_sc_main`, which the `sccom`-compiled stub calls, returns at the first `sc_start` when `vopt` runs it (`mti_IsVoptMode()`), and sets the lock hierarchy prefix `sc_main`, which Questa puts in front of an HDL `%m`. `MTI_SYSTEMC` is what `sccom` passes to its own compiler. `DONT_USE_MTI_EXIT` keeps `exit()` a function: Questa's `systemc` header otherwise defines it as a macro, and `std::exit` then fails to compile |
+| `QUESTA_DUT` | `USE_QUESTA` and `VL_DUT` | registrars and wrappers use the generated foreign-module shell `<top>` from `<top>_questa.h` |
+| `VERILATOR` | `VL_DUT` with no simulator switch | the Verilator flow, including `--vlTrace` VCD tracing. `sc_main` passes its arguments to `Verilated::commandArgs`, so RTL plusargs read the run's command line |
 | `VCS_DEBUG` (SystemVerilog) | `VCS_DEBUG=1`, or `WAVES=1` under `USE_VCS` | when the run passes `+fsdbTrace`, the HDL wrapper and the UVM testbench module call `$fsdbDumpvars` on the scope `+a2c_waves_scope` names, or else on themselves |
 | `VERILATOR` (SystemVerilog) | Verilator, set by the tool | the HDL wrapper leaves out its X/Z checker instances (section 9.4) |
 | `A2C_UVM_RTL_DUT` (SystemVerilog) | `USE_UVM` with `UVM_DUT=rtl` (section 9.7) | the generated UVM testbench module holds the RTL wrapper and ties off its pins toward SystemC |
@@ -36,10 +39,11 @@ Every flow compiles the same SystemC testbench and models, written as C++20 modu
 
 ### 1.3 DUT topologies and snapshots
 
-Both simulators fix the SystemC and HDL hierarchy when they build the snapshot.
+The simulators fix the HDL hierarchy, and VCS and Xcelium also the SystemC one, when they build the snapshot.
 
 - VCS runs `sc_main` up to its first `sc_start` to find the HDL models it must elaborate. It takes the arguments for that run from `-syscelab`, and it caches the discovered topology per output binary.
 - Xcelium runs `sc_main` under `xmelab` up to its first `sc_start` and stores the whole SystemC object set in the snapshot. A run whose arguments build a different hierarchy fails with `xmsim *F,SCOBNF`.
+- Questa runs `sc_main` under `vopt` up to its first `sc_start` (`-sc_arg` per argument) and optimizes the HDL units the SystemC side instantiates. `vsim` runs `sc_main` again and rebuilds the SystemC side on every run, so only the HDL is fixed. A run that instantiates an HDL top the optimized design lacks fails to load it (`vsim-3171`, tested with Questa 2026.3).
 
 A run must therefore use the topology its snapshot was built with, and each topology is its own snapshot. The make variables that select one are:
 
@@ -51,11 +55,11 @@ A run must therefore use the topology its snapshot was built with, and each topo
 | `DUT_TESTBENCH` | `HDL_TOP_MODULE` | testbench name passed as the first argument during elaboration. Set it when the testbench a project runs is not named after `HDL_TOP_MODULE` |
 | `DUT_ELAB_ARGS` | `$(DUT_TESTBENCH)` plus the `--vlInst`, `--vlType` and `--vlTandem` options above | the `sc_main` arguments of the elaboration run |
 | `DUT_TOPOLOGY` | `<VL_INST>_<VL_TYPE>[_tandem]`, or `model` when `VL_INST` is empty | snapshot name suffix |
-| `DUT_TOPOLOGIES` | `$(HDL_TOP_MODULE):verif,verif:tandem` | topology list for `vcs_snapshots` and `xrun_snapshots` |
+| `DUT_TOPOLOGIES` | `$(HDL_TOP_MODULE):verif,verif:tandem` | topology list for `vcs_snapshots`, `xrun_snapshots` and `questa_snapshots` |
 
-- The binary is `run_<DUT_TOPOLOGY>`. Dots in the instance path stay in the name, for example `run_top.u_child_verif`, so distinct paths never share a snapshot.
+- The binary is `run_<DUT_TOPOLOGY>`. Dots in the instance path stay in the name, for example `run_top.u_child_verif`, so distinct paths never share a snapshot. Questa's library and design-unit names spell each dot `__` (`a2c_opt_top__u_child_verif`, `opt_top__u_child_verif`), because a dot there reads as `library.unit`.
 - `run_model` holds no RTL instance. It serves every test without `--vlInst` and every model test without `--vlTandem`.
-- A model/model tandem test (`--vlType model --vlTandem`) constructs a second model instance, which a `run_model` snapshot does not hold under Xcelium. The dispatcher sends such a test to `run_<inst>_model_tandem` in both flows, so both need that snapshot.
+- A model/model tandem test (`--vlType model --vlTandem`) constructs a second model instance, which a `run_model` snapshot does not hold under Xcelium. The dispatcher sends such a test to `run_<inst>_model_tandem` in every simulator flow, so each needs that snapshot.
 - A `DUT_TOPOLOGIES` entry is `<inst>:<cfg>[,<cfg>]...`, where `<cfg>` is `verif`, `verif:tandem` or `model:tandem`.
 - The `tandem` configurations need a builder layer that registers tandem blocks (`<block>_tandem`). Without one, set `DUT_TOPOLOGIES=<top>:verif`.
 - Uninstantiated RTL tops cost nothing at run time under VCS (tested with VCS W-2024.09-SP2).
@@ -73,19 +77,20 @@ A run must therefore use the topology its snapshot was built with, and each topo
 | `--vlInst X --vlType model` without `--vlTandem` | `<base>_model` |
 | `--uvmDut D --uvmTop T` (section 9.7) | `<base>_uvm_T_D` |
 
-`--uvmDut` without `--uvmTop`, or `--uvmTop` without `--uvmDut`, stops `dutRun.py` with an error. A missing snapshot exits with `dutRun: no snapshot <binary> for arguments ...`. A regression file keeps one run command, for example `../builder/dutRun.py build/run <testbench>` for VCS and `../builder/dutRun.py build_xrun/run <testbench>` for Xcelium.
+`--uvmDut` without `--uvmTop`, or `--uvmTop` without `--uvmDut`, stops `dutRun.py` with an error. A missing snapshot exits with `dutRun: no snapshot <binary> for arguments ...`. A regression file keeps one run command, for example `../builder/dutRun.py build/run <testbench>` for VCS, `../builder/dutRun.py build_xrun/run <testbench>` for Xcelium and `../builder/dutRun.py build_questa/run <testbench>` for Questa.
 
 ### 1.5 Generated boundary files
 
 The RTL top of each DUT is the generated HDL verification wrapper (`<block>[_<variant>]_hdl_sv_wrapper`). Owner-qualified foreign tops (`<stub>_<label>_hdl_sv_wrapper`) and pair tops (`p<n>_<parentSv>_c<m>_<childSv>_<label>_hdl_sv_wrapper`) are tops too (`specs/spec-verilated-wrappers.md` §2). A top's pins are flat `bit` and `bit [N-1:0]` ports. Each top binds literal parameter values, so its widths are fixed, but they are written as parameter expressions (`specs/spec-verilated-wrappers.md` §5), which neither `vlogan -sc_model` nor a hand-written foreign module can size. So the generator evaluates them.
 
 - `make db` evaluates the width of every parameterizable structure and type at each top's parameter values and stores them in the database.
-- `make gen` runs `arch2code.py --vlBoundary` only when `USE_VCS` or `USE_XCELIUM` is set and the manifest lists HDL tops (`A2C_VL_TOPS`). It writes two whole files per top under `.gen/vl/`, with no user region:
+- `make gen` runs `arch2code.py --vlBoundary` only when `USE_VCS`, `USE_XCELIUM` or `USE_QUESTA` is set and the manifest lists HDL tops (`A2C_VL_TOPS`). It writes three whole files per top under `.gen/vl/`, with no user region:
 
 | File | Consumer | Content |
 | :--- | :--- | :--- |
 | `.gen/vl/<top>.portmap` | `vlogan -sc_model <top> -sc_portmap` | one line per pin: `<pin> <width> bit bool` or `<pin> <width> bitvector sc_bv` |
 | `.gen/vl/<top>_xcelium.h` | the registrar under `XCELIUM_DUT` | `class <top> : public xmsc_foreign_module` with one `sc_in<...>` or `sc_out<...>` per pin, typed `bool` or `sc_bv<W>`, and `hdl_name()` returning `<top>` |
+| `.gen/vl/<top>_questa.h` | the registrar under `QUESTA_DUT` | `class <top> : public sc_foreign_module`, constructed as `sc_foreign_module(nm, "<top>")`, with the same pins |
 
 - The VCS SystemC shells themselves (`<top>.h`) are written by `vlogan` into `$(VCS_RUNDIR)/csrc/sysc/include`.
 - The same run writes both files for each UVM testbench top, at the paths the manifest records (section 9.3).
@@ -96,13 +101,14 @@ The RTL top of each DUT is the generated HDL verification wrapper (`<block>[_<va
 
 | Component | Tested with | Notes |
 | :--- | :--- | :--- |
-| OS | RHEL 9.6 (glibc 2.34), RHEL 8.10 (glibc 2.28) | both simulator flows pass on both |
+| OS | RHEL 9.6 (glibc 2.34), RHEL 8.10 (glibc 2.28) | the VCS and Xcelium flows pass on both; the Questa flow was tested on RHEL 8.10 only |
 | Python | 3.10 with the packages in `requirements.txt` (`pip install -r requirements.txt`) | runs `arch2code.py`, `dutRun.py`, `regrLauncher.py` |
 | GNU Make | 4.3 (RHEL 9), 4.2.1 (RHEL 8) | |
 | Clang | 18.1.8 prebuilt LLVM release on both OS; 20.1.8 on RHEL 9 only | 20.1.8 prebuilt needs glibc 2.34. Only the `clang` driver and its `lib/clang/<ver>` resource directory are needed |
 | libstdc++ | GCC 13.2 | headers for the compile, runtime for VCS |
 | VCS | W-2024.09-SP2 | SystemC 2.3.4 shipped with VCS, GCC 13 build (`systemc234-gcc13`), `-sysc=234` |
 | Xcelium | 26.03-s002 | bundled SystemC 2.3.4 (Cadence), link with the bundled GCC 12.4 (`-gcc_vers 12.4`) |
+| Questa | 2026.3 | bundled SystemC 2.3.4 (Siemens), `sccom` compiles and links with the bundled GCC 13.4 (its default), `vsim` loads the install's own `libstdc++.so.6.0.32`. Clang 17.0.6 and 18.1.8 both compiled `examples/hierVlDemo` and an a2cPro tandem example for it. Releases that bundle only GCC 10.3 or older (2025.3 and earlier) carry a libstdc++ older than the objects need |
 | Boost | headers 1.74; shared `program_options` 1.75 (RHEL 9) and 1.66 (RHEL 8) | stacktrace and system are header-only |
 | Verilator | 5.038 | needed only for `make lint` in `rtl/` and the Verilator flow |
 
@@ -119,6 +125,7 @@ Tested and rejected:
 - **Pointing Clang at GCC 13.** The builder adds no `--gcc-install-dir` or `-isystem` flags. If the default Clang search does not find GCC 13's libstdc++, the site adds the flags through `EXTRA_CXX_FLAGS`. Tested in both simulator flows: `-nostdinc++ -isystem <gcc13>/include/c++/<ver> -isystem <gcc13>/include/c++/<ver>/<triple> --gcc-toolchain=<gcc13>`. `--gcc-install-dir=<gcc13>/lib/gcc/<triple>/<ver>` was tested in the plain flow and in an Xcelium compile probe.
 - **DWARF version, VCS only.** VCS's SystemC pre-elaboration reads the objects' debug information and aborts on DWARF 5, which Clang emits by default with `-g` (tested with VCS W-2024.09-SP2). Add `-gdwarf-4` through `EXTRA_CXX_FLAGS`. The builder does not add it.
 - **VCS link compiler.** `vcs` compiles its generated code and links `simv` with its configured GNU toolchain. Tested with GCC 13.2 from the Synopsys GNU package. Clang objects compiled against the same libstdc++ link with it.
+- **Questa link compiler.** `sccom -link` links the Clang objects into the SystemC library's `systemc.so` with the install's default GCC, 13.4 in 2026.3, beside the `sccom`-compiled `sc_main` stub. `-64` selects the 64-bit GCC; without it `sccom` takes the 32-bit one. `vsim` loads the install's `libstdc++.so.6.0.32`, which provides every `GLIBCXX` version objects compiled against GCC 13.2 headers need (tested with 2026.3).
 - **Xcelium link compiler.** `xrun -gcc_vers $(XRUN_GCC_VERS)` links the objects into a shared library with the named bundled GCC. Choose `XRUN_GCC_VERS` from the bundled releases. No bundled GCC matches GCC 13.2 headers in 26.03. What must hold is that every `GLIBCXX` version the objects need is provided by Xcelium's `tools/lib/64bit/libstdc++.so.6` (26.03: up to 3.4.31). Tested with `-gcc_vers 12.4` and GCC 13.2 headers.
 
 ### 2.3 SystemC per flow
@@ -128,20 +135,32 @@ Tested and rejected:
 | Plain, Verilator | `SYSTEMC_INCLUDE` (SystemC 2.3.4 install) | `-L$(SYSTEMC_LIBDIR) -lsystemc` |
 | VCS | `SYSTEMC_INCLUDE`, set to the SystemC VCS ships. The `VL_DUT` compile adds `$(VCS_HOME)/include` and `$(VCS_RUNDIR)/csrc/sysc/include` | `-L$(SYSTEMC_LIBDIR) -lsystemc` on the `vcs` command line, with `-sysc=234`. `SYSTEMC_LIBDIR` must be the matching VCS SystemC library directory |
 | Xcelium | `$(XCELIUM_TOOLS)/systemc/include` and its `cci`, `factory`, `tlm2` subdirectories, `$(XCELIUM_TOOLS)/include`, `$(XCELIUM_TOOLS)/inca/include` | linked by `xrun`. The build does not read `SYSTEMC_INCLUDE` or `SYSTEMC_LIBDIR` |
+| Questa | `$(QUESTA_HOME)/include/systemc`, behind the builder's `common/systemc/questa/systemc.h`, then `$(QUESTA_HOME)/include` and `$(QUESTA_HOME)/include/ac_types` | linked by `sccom -link`. The build does not read `SYSTEMC_INCLUDE` or `SYSTEMC_LIBDIR` |
+
+Questa's SystemC differs from the Accellera release in ways the builder works around:
+
+- Its `ptrarray<T*>` template defines the static data member `m_default_init_size` out of class (`ptrarray.h:142-143`). Clang (17.0.6 and 18.1.8 tested) rejects that definition in C++20 module units in two forms:
+    - For the specializations Questa's own inline code uses, in every module unit that includes `systemc.h` in its global module fragment: `declaration of 'm_default_init_size' in module <m> follows declaration in the global module`. The builder's `systemc.h` includes Questa's and declares those specializations `extern template` (`common/systemc/questa/a2c_questa_ptrarray.def`). The `sccom`-compiled stub defines them.
+    - For a port whose interface type comes from a module: one module unit instantiates the class `ptrarray<IF*>` (a non-dependent port member of a parameterized block's base class, for example) and a unit that imports it instantiates the member's definition (the registrar that constructs the block): `declaration of 'm_default_init_size' in module <registrar> follows declaration in module <base>`. No `extern template` list can cover it, because such a type cannot be named in a global module fragment. `examples/ip_test`, `simple_ip`, `mixed` and `xprojParam/rtInh` stop on it. `QUESTA_PTRARRAY_COPY=1` removes it: the build writes a copy of Questa's `include/systemc` into `build_questa/questa_systemc`, every entry a link to the install except `ptrarray.h`, in which the member is defined in the class (`static constexpr int m_default_init_size = 16;`, the out-of-class definition removed), and compiles against that copy (`common/systemc/questa/a2c_questa_ptrarray_copy.sh`). The copy is made from the site's own install; arch2code holds no Questa file. A `ptrarray.h` other than the expected one stops the build. The switch is off by default. This is Siemens case #02437403; a fixed `ptrarray.h` would make it unnecessary.
+- `SC_DIGIT_SIZE` is declared `extern const int`, so it is not a constant expression. Generated code does not use it: `sc_pack` and `sc_unpack` count 32-bit `sc_digit` words with literals, and `common/scmain/main.cpp` checks `sizeof(sc_dt::sc_digit) == 4` with a `static_assert`.
+- Most headers are shipped twice with the same content, at the top of `include/systemc` and under `sysc/<dir>/`. `systemc.h` reads the top copies and a2c's channel headers include some by their `sysc/` path, so a translation unit and a module it imports can read different copies, and the `__FILE__` in their inline `sc_assert` calls differs. Clang 17.0.6 rejects that as `'<name>' has different definitions in different modules`; Clang 18.1.8 does not (tested on an a2cPro tandem example). The builder passes `-fmacro-prefix-map=<sysc/dir>/=<top>/` for every `sysc/<dir>` that holds such a copy, after which Clang 17.0.6 compiles that example and a large multi-block design. Clang 18 and later skip that check for declarations in a global module fragment (Clang 18 release notes, llvm-project #79240), so the builder passes the maps only when `$(CXX) --version` reports a Clang older than 18 or no Clang version, and always with `QUESTA_PTRARRAY_COPY=1`; `QUESTA_MACRO_PREFIX_MAP` (section 3) forces the choice. Clang 18.1.8 without the maps gave the same results as Clang 17.0.6 with them on a downstream design (222 runs, every log identical).
+- `SC_HIERARCHY_CHAR` follows the ini variable `PathSeparator`, default `/`. a2c's instance names use `.`, so the flow's `a2c_questa.ini` sets `PathSeparator = .`.
+
 
 In a VCS install the GCC 13 build of SystemC 2.3.4 sits under `$VCS_HOME/etc/systemc/accellera_install/systemc234-gcc13/` (`include/` and `lib-linux64/`; tested with W-2024.09-SP2).
 
 ### 2.4 Boost
 
 - The build compiles against `BOOST_INCLUDE` and links only `program_options`. Boost.System and the stacktrace in `q_assert.cpp` are header-only, and the stacktrace needs only `-ldl`, which the builder adds.
-- Under Xcelium, Boost enters a shared library, so it must be a shared or position-independent build. A static non-PIC Boost fails the link with `R_X86_64_32` relocation errors.
+- Under Xcelium and Questa, Boost enters a shared library, so it must be a shared or position-independent build. A static non-PIC Boost fails the link with `R_X86_64_32` relocation errors.
 - Prefer Boost headers that match the shared library. A 1.74 header set against 1.75 and 1.66 runtimes worked in testing, but Boost does not support mixing versions.
 
 ### 2.5 Licences
 
 - VCS reads its licence from the Synopsys licence variables, for example `SNPSLMD_LICENSE_FILE`. The default `VCS_OPTS` and `VLOGAN_OPTS` carry `+vcs+lic+wait`, so a build or run waits for a free licence. Every VCS binary, `run_model` included, is a `simv` and takes a runtime licence.
 - Xcelium reads `LM_LICENSE_FILE`. The snapshot build stops at elaboration, so it never simulates and checks out no simulation licence. Each test's `xrun -R` run takes the licence. The build writes the value set at build time into each run script, so a run started outside the build environment finds the same servers. The script captures no other licence variable.
-- Keep regression parallelism within the licence seats the site holds under its vendor agreements (section 5.5).
+- Questa 2026.3 checked out a seat only through `SALT_LICENSE_SERVER`; the same server list in `LM_LICENSE_FILE` or `MGLS_LICENSE_FILE` made `vsim` exit with code 4. The build writes `SALT_LICENSE_SERVER` into each run script the way the Xcelium flow writes `LM_LICENSE_FILE`. One SystemC and HDL run holds one `msimhdlsim` and one `msimsystemc` seat. The Command Reference documents that `vsim` waits in the licence queue when no seat is free unless `-lic_noqueue` (or `License = noqueue` in the ini) is given.
+- Keep regression parallelism within the licence seats the site holds under its vendor agreements (section 5.6).
 
 ## 3. Environment variables
 
@@ -166,17 +185,17 @@ These are set in the project's `include/make/shared.mk` (and `rundir/Makefile`),
 
 | Variable | Flows | Required | Default | Meaning | Example |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `SYSTEMC_INCLUDE` | plain, Verilator, VCS | checked unless `USE_XCELIUM` | none | SystemC include directory | `/opt/systemc-2.3.4/include` |
-| `SYSTEMC_LIBDIR` | plain, Verilator, VCS | checked unless `USE_XCELIUM` | none | SystemC library directory | `/opt/systemc-2.3.4/lib` |
+| `SYSTEMC_INCLUDE` | plain, Verilator, VCS | checked unless `USE_XCELIUM` or `USE_QUESTA` | none | SystemC include directory | `/opt/systemc-2.3.4/include` |
+| `SYSTEMC_LIBDIR` | plain, Verilator, VCS | checked unless `USE_XCELIUM` or `USE_QUESTA` | none | SystemC library directory | `/opt/systemc-2.3.4/lib` |
 | `BOOST_INCLUDE` | all | checked | none | Boost include directory | `/opt/boost/include` |
 | `BOOST_LIBS` | all | optional | `-lboost_program_options -L$(LD_BOOST)` | whole Boost link line. An empty value, on the command line too, counts as unset and selects the default | `-L/opt/boost/lib -l:libboost_program_options.so.1.75.0` |
-| `LD_BOOST` | all | checked when `BOOST_LIBS` is empty, Xcelium included | none | Boost library directory for the default link line | `/opt/boost/lib` |
+| `LD_BOOST` | all | checked when `BOOST_LIBS` is empty, Xcelium and Questa included | none | Boost library directory for the default link line | `/opt/boost/lib` |
 | `A2C_CLANG` | all unless `USE_GCC` | optional | `clang++` on `PATH` | one Clang path, no launcher or flags | `/opt/llvm-18/bin/clang++` |
 | `CPP_STD` | all | optional | `c++23` | value of `-std=` | `c++2b` |
 | `EXTRA_CXX_FLAGS` | all | optional | empty | compile flags after every builder flag. The site route for libstdc++ selection and `-gdwarf-4` | see section 4 |
-| `EXTRA_LD_FLAGS` | all | optional | empty | link flags. Under Xcelium each word becomes `-Wld,<word>` | `-L/opt/site/lib -lmylib` |
+| `EXTRA_LD_FLAGS` | all | optional | empty | link flags. Under Xcelium each word becomes `-Wld,<word>`; under Questa they reach `sccom -link` as given | `-L/opt/site/lib -lmylib` |
 | `USE_GCC` | plain, Verilator | optional | unset | `1` selects `g++` and the GCC module rules. Not for the simulator flows | |
-| `VERILATOR_ROOT` | Verilator | optional | `/usr/local/share/verilator` | Verilator runtime headers. Unused by the VCS and Xcelium compiles | `/opt/verilator/share/verilator` |
+| `VERILATOR_ROOT` | Verilator | optional | `/usr/local/share/verilator` | Verilator runtime headers. Unused by the VCS, Xcelium and Questa compiles | `/opt/verilator/share/verilator` |
 | `LD_LIBRARY_PATH` | all, at run time | tool | | must resolve the shared SystemC (plain, Verilator, VCS), the shared Boost, and a GCC 13.2 or newer libstdc++ where the binary needs one | see section 4 |
 
 ### 3.3 Selectors
@@ -185,9 +204,10 @@ These are set in the project's `include/make/shared.mk` (and `rundir/Makefile`),
 | :--- | :--- | :--- |
 | `USE_VCS` | unset | `1` selects the VCS flow and implies `VL_DUT=1` |
 | `USE_XCELIUM` | unset | `1` selects the Xcelium flow and implies `VL_DUT=1` |
+| `USE_QUESTA` | unset | `1` selects the Questa flow and implies `VL_DUT=1` |
 | `VL_DUT` | `1` under a simulator switch, else unset | RTL DUT in the build. `VL_DUT=` gives a model-only binary |
 | `VL_TIMING` | unset | `1` verilates and lints with `--timing` and adds Verilator's timing runtime to the Verilator library. Verilator flow and `make lint` only. Set it in `shared.mk`, on the command line or in the environment. A rundir `Makefile` setting does not reach the Verilator build |
-| `SKIP_GEN` | unset | `1` skips the `gen` step. Under `USE_VCS` or `USE_XCELIUM` the build still runs `--vlBoundary` when `.gen/vl` is older than the database, because the `vlogan -sc_model` step and the registrar objects depend on it |
+| `SKIP_GEN` | unset | `1` skips the `gen` step. Under `USE_VCS`, `USE_XCELIUM` or `USE_QUESTA` the build still runs `--vlBoundary` when `.gen/vl` is older than the database, because the `vlogan -sc_model` step and the registrar objects depend on it |
 
 The topology variables (`VL_INST`, `VL_TYPE`, `VL_TANDEM`, `DUT_*`) are in section 1.3.
 
@@ -224,6 +244,23 @@ The topology variables (`VL_INST`, `VL_TYPE`, `VL_TANDEM`, `DUT_*`) are in secti
 | `LM_LICENSE_FILE` | read by the builder and the tool | none | licence servers, captured into each run script | `5280@<license-server>` |
 | `WAVES` | optional | unset | `1` elaborates with `-access +r` and has every run script source `include/make/a2c-waves-xrun.tcl`, which probes `WAVES_SCOPE` into `waves.shm` in the directory the run starts from. Read access slows the simulation | `1` |
 | `WAVES_SCOPE` | optional, read at run time | `sc_main` | the scope a `WAVES=1` run probes, with every level below it | `sc_main.uvmMem.tb_hdl.dut` |
+
+### 3.6 Questa
+
+| Variable | Required | Default | Meaning | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| `QUESTA_HOME` | checked (parse time) | none | the release directory, the one holding `bin/vsim`, `include/systemc` and the bundled GCC | `/opt/siemens/questasim/2026.3` |
+| `VLIB`, `VLOG`, `SCCOM`, `VOPT`, `VSIM` | optional | `$(QUESTA_HOME)/bin/<tool>` | tool commands. `VSIM` is also written into each run script | |
+| `QUESTA_VLOG_OPTS` | optional | `-64 -mfcu -sv -timescale 1ns/1ps` | `vlog` options for the DUT library. `-mfcu` makes the command line one compilation unit, as Verilator and `xrun` treat it; without it the macros `a2c.f`'s `flops.sv` defines (`` `DFF_INST ``) are undefined in the RTL (`vlog-2163`) | |
+| `QUESTA_SCCOM_OPTS` | optional | `-64 -DDONT_USE_MTI_EXIT` | `sccom` options for the stub and `-link` | |
+| `QUESTA_VOPT_OPTS` | optional | `-64 -noscmainscopename -suppress 10003 -enablescstdout` | `vopt` options. `-enablescstdout` shows a2c's output, an elaboration error included, on the build's standard output | |
+| `QUESTA_VSIM_OPTS` | optional | `-64 -batch -nolog -t 1ps -noscmainscopename -suppress 10003 -scasyncupdate` | per-simulation options in the run script. `-batch` returns `sc_main`'s exit code; `-nolog` keeps concurrent runs from sharing a transcript file; `-scasyncupdate` enables `async_request_update()`, which a2c's `asyncEvent` (firmware threads, sockets) calls | |
+| `QUESTA_VSIM_DO` | optional | `onerror {quit -code 1}; onbreak {quit -code 1}; run -all` | the Tcl each run executes. A project that wraps the run replaces it, keeping the `onerror`/`onbreak` handlers (without them, `vsim -batch` exits 0 after a Fatal SystemC error or an HDL `$fatal`) and ending in `run -all` | `do $(REPO_ROOT)/include/make/my.tcl` |
+| `QUESTA_DUT_LIB`, `QUESTA_SC_LIB` | optional | `a2c_dut`, `a2c_sc` | the HDL and SystemC library names, also their directories in `QUESTA_RUNDIR` | |
+| `QUESTA_RUNDIR` | optional | `$(PROJECT_RUNDIR)` | working directory of every Questa tool, where the libraries, the ini and the `vopt` logs live | |
+| `SALT_LICENSE_SERVER` | read by the builder and the tool | none | licence servers, captured into each run script | `1717@<license-server>` |
+| `QUESTA_MACRO_PREFIX_MAP` | optional | `1` for Clang older than 18 (or an unrecognised `--version`) and with `QUESTA_PTRARRAY_COPY=1`, else `0` | `1` passes the `-fmacro-prefix-map` list for Questa's duplicated `sysc/<dir>` headers (section 2.3), `0` passes none | `1` |
+| `QUESTA_PTRARRAY_COPY` | optional | `0` | `1` compiles against a copy of Questa's SystemC headers whose `ptrarray.h` defines `m_default_init_size` in the class (section 2.3). Changing it recompiles the C++ | `1` |
 
 ## 4. Sample site setup scripts
 
@@ -284,6 +321,27 @@ export BOOST_LIBS="-L<boost-libdir> -lboost_program_options"
 export LD_LIBRARY_PATH="<boost-libdir>${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ```
 
+### 4.3 Questa
+
+```bash
+# site-questa.sh: source before `make USE_QUESTA=1 ...` and before running build_questa/run_<topology>.
+export QUESTA_HOME=<questa-release-dir>                # holds bin/vsim, include/systemc and the bundled GCC 13
+export SALT_LICENSE_SERVER=<port>@<license-server>
+
+# Clang for the C++20 module units, against GCC 13's libstdc++ headers.
+GCC13=<gcc13-install>
+export A2C_CLANG=<llvm-install>/bin/clang++
+GXX_VER=<13.2 or later>
+GXX_TRIPLE=<triple>
+export EXTRA_CXX_FLAGS="-nostdinc++ -isystem $GCC13/include/c++/$GXX_VER \
+ -isystem $GCC13/include/c++/$GXX_VER/$GXX_TRIPLE --gcc-toolchain=$GCC13"
+
+# Boost: shared or PIC; sccom -link takes the -L/-l words as given.
+export BOOST_INCLUDE=<boost-install>/include
+export BOOST_LIBS="-L<boost-libdir> -lboost_program_options"
+export LD_LIBRARY_PATH="<boost-libdir>${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
 A project's own `include/make/shared.mk` or `rundir/Makefile` must append to `EXTRA_CXX_FLAGS` and `EXTRA_LD_FLAGS` with `+=`. A plain `=` there discards the site value.
 
 ## 5. Make targets and commands
@@ -301,18 +359,21 @@ Run every command from the project's `rundir/`.
 | `make -j8 USE_VCS=1 vcs_snapshots` | `build/run_model` plus one snapshot per `DUT_TOPOLOGIES` configuration. The links run in sequence because they share `AN.DB` and `csrc` |
 | `make -j8 USE_XCELIUM=1 all` | `build_xrun/run_<topology>`, same selection as VCS |
 | `make -j8 USE_XCELIUM=1 xrun_snapshots` | `build_xrun/run_model` plus one snapshot per configuration. The elaborations run in parallel |
-| `make USE_VCS=1 gen`, `make USE_XCELIUM=1 gen` | generation including `.gen/vl` boundary files |
-| `make help USE_VCS=1`, `make help USE_XCELIUM=1` | targets and flow variables. The parse checks need `VCS_HOME`, or `XCELIUM_TOOLS` and `XRUN_GCC_VERS`, and also `BOOST_INCLUDE` and `LD_BOOST` or `BOOST_LIBS`, plus `SYSTEMC_INCLUDE` and `SYSTEMC_LIBDIR` under VCS. Placeholders satisfy them |
+| `make -j8 USE_QUESTA=1 all` | `build_questa/run_<topology>`, same selection as VCS |
+| `make -j8 USE_QUESTA=1 questa_snapshots` | `build_questa/run_model`, whose build also compiles the HDL and links the SystemC library once, then one `vopt` per configuration, in parallel, each into its own library |
+| `make USE_VCS=1 gen`, `make USE_XCELIUM=1 gen`, `make USE_QUESTA=1 gen` | generation including `.gen/vl` boundary files |
+| `make help USE_VCS=1`, `make help USE_XCELIUM=1`, `make help USE_QUESTA=1` | targets and flow variables. The parse checks need `VCS_HOME`, or `XCELIUM_TOOLS` and `XRUN_GCC_VERS`, or `QUESTA_HOME`, and also `BOOST_INCLUDE` and `LD_BOOST` or `BOOST_LIBS`, plus `SYSTEMC_INCLUDE` and `SYSTEMC_LIBDIR` under VCS. Placeholders satisfy them |
 | `make help-hooks` | every `EXTRA_*` hook, the command it feeds, and its value |
-| `make clean` | the database, `.gen/`, `build/`, `build_xrun/`, and in the rundir `AN.DB`, `csrc`, `vc_hdrs.h`, `vcs.log`, `vlogan_*.log`, `xcelium*.d`, `xrun*.log`, `xrun*.history`, and any `waves.shm`, `waves.fsdb` or `tr_db.log`, whatever switch is set. Run it from the project root, which reads no toolchain variable. From `rundir/` it needs the same variables as a build |
+| `make clean` | the database, `.gen/`, `build/`, `build_xrun/`, `build_questa/`, and in the rundir `AN.DB`, `csrc`, `vc_hdrs.h`, `vcs.log`, `vlogan_*.log`, `xcelium*.d`, `xrun*.log`, `xrun*.history`, and any `waves.shm`, `waves.fsdb` or `tr_db.log`, and in `QUESTA_RUNDIR` `a2c_dut`, `a2c_sc`, `a2c_opt_*`, `a2c_questa.ini`, `vopt_*.log` and `*.vstf`, whatever switch is set. Run it from the project root, which reads no toolchain variable. From `rundir/` it needs the same variables as a build |
 
-- `vcs_snapshots` and `xrun_snapshots` stop when `VL_DUT=` is given.
-- Objects compile once per flow. Each further VCS topology is a link, each further Xcelium topology an elaboration.
+- `vcs_snapshots`, `xrun_snapshots` and `questa_snapshots` stop when `VL_DUT=` is given.
+- Objects compile once per flow. Each further VCS topology is a link, each further Xcelium topology an elaboration, each further Questa topology a `vopt`.
 - Run a snapshot with the same `--vlInst`, `--vlType` and `--vlTandem` it was built with, or through `dutRun.py`:
 
 ```text
 ./build/run_top_verif top --vlInst top --vlType verif
 ./build_xrun/run_top_verif top --vlInst top --vlType verif
+./build_questa/run_top_verif top --vlInst top --vlType verif
 ../builder/dutRun.py build/run top --vlInst top.u_child --vlType verif --vlTandem
 ```
 
@@ -331,22 +392,36 @@ Run every command from the project's `rundir/`.
 3. The build writes `build_xrun/run_<topology>`, a shell script that exports the captured `LM_LICENSE_FILE`, turns each argument into `+systemc_args+<arg>`, and runs `cd <XRUN_RUNDIR> && exec xrun -R -xmlibdirname xcelium_<topology>.d $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS)`.
 4. No `-top` is passed. xmelab takes `sc_main` and elaborates every uninstantiated HDL unit as an idle top-level, the unused wrapper tops included.
 
-### 5.4 Where outputs land
+### 5.4 What the Questa flow runs
 
-| Item | VCS | Xcelium |
-| :--- | :--- | :--- |
-| C++ objects | `build/<project>.build/` | `build_xrun/<project>.build/` |
-| Runnable entry | `build/run_<topology>` (`simv`) | `build_xrun/run_<topology>` (script) |
-| Snapshot data | VCS's `build/run_<topology>.daidir`, plus `AN.DB/`, `csrc/` in `VCS_RUNDIR` | `xcelium_<topology>.d/` in `XRUN_RUNDIR` |
-| Logs | `vlogan_rtl.log`, `vlogan_<top>.log`, `vcs.log` in `VCS_RUNDIR` | `xrun_xcelium_<topology>.log` in `XRUN_RUNDIR` |
-| Change stamps | `build/<project>.build/vcs/` | `build_xrun/<project>.build/xrun/xcelium_<topology>.d/` |
-| Boundary files | `.gen/vl/<top>.portmap` | `.gen/vl/<top>_xcelium.h` |
+1. Clang compiles the C++ with `-DQUESTA -DMTI_SYSTEMC -DDONT_USE_MTI_EXIT -D_GLIBCXX_USE_CXX11_ABI=1 -fPIC` (and `-DQUESTA_DUT` under `VL_DUT`) into `build_questa/<project>.build/`.
+2. Under `VL_DUT`, in `QUESTA_RUNDIR`: `vlib a2c_dut`, then `vlog $(QUESTA_VLOG_OPTS) -work a2c_dut -F a2c.f <HDL hooks> $(EXTRA_QUESTA_VLOG_OPTS) -F rtl.f <RTL modules> +incdir+<wrapper dirs> <wrapper tops>`. `vlog` compiles in command-line order, as one compilation unit (`-mfcu`).
+3. `vlib a2c_sc`, `sccom $(QUESTA_SCCOM_OPTS) -work a2c_sc common/systemc/questa/questa_sc_main.cpp`, then `sccom $(QUESTA_SCCOM_OPTS) -work a2c_sc -link <objects> $(BOOST_LIBS) -ldl -lrt -lpthread <link flags>`, naming each object once as the native link does (a source both in a source directory and on `EXTRA_CPP_SRC` is one object). `sccom -link` needs at least one object `sccom` compiled itself (`sccom-6207` otherwise), and `vopt` looks for `sc_main` as a design unit of that library. The stub calls a2c's `sc_main`, compiled as `a2c_sc_main`, and passes its result to `vsim` with `mti_QuitWithErrorCode` on every return path.
+4. Per topology: `vlib a2c_opt_<topology>`, then `vopt -ini a2c_questa.ini -work a2c_opt_<topology> $(QUESTA_VOPT_OPTS) $(EXTRA_QUESTA_VOPT_OPTS) -L a2c_dut -L a2c_sc a2c_sc.sc_main -sc_arg <each DUT_ELAB_ARGS word> -o opt_<topology>`, log `vopt_<topology>.log`. `vopt` runs `sc_main`, which returns at its first `sc_start` (`mti_IsVoptMode()`).
+5. The build writes `build_questa/run_<topology>`, a shell script that exports the captured `SALT_LICENSE_SERVER`, turns each argument into `-sc_arg <arg>`, and runs `cd <QUESTA_RUNDIR>`, then `vsim -ini a2c_questa.ini $(QUESTA_VSIM_OPTS) $(EXTRA_QUESTA_VSIM_OPTS) -lib a2c_opt_<topology> -L a2c_dut -L a2c_sc opt_<topology> <args> -do "$(QUESTA_VSIM_DO)"` with its output passed through a check (`QUESTA_LOG_CHECK`). The script exits with `vsim`'s code when that is non-zero, and with 1 when `vsim` exits 0 but printed a `# ** Error`, `# ** Error (suppressible)`, `# ** Fatal` or `# ** Failure` line. `vsim` exits 0 after an HDL `$error` or a failed assertion (section 5.6), so without the check such a run would pass.
+
+- `a2c_questa.ini` holds `others = $MODEL_TECH/../questa.ini` and `PathSeparator = .`, and is rewritten only when its content changes.
+- Each `vopt` writes its own library. Parallel `vopt` runs into one library are serialised by its lock (`vopt-6`, a wait for the library lock; measured with 8 concurrent runs on `examples/hierVlDemo`), so a shared library would gain nothing.
+- Only the named `sc_main` is a top, so no unused HDL wrapper is elaborated.
+
+### 5.5 Where outputs land
+
+| Item | VCS | Xcelium | Questa |
+| :--- | :--- | :--- | :--- |
+| C++ objects | `build/<project>.build/` | `build_xrun/<project>.build/` | `build_questa/<project>.build/` |
+| Runnable entry | `build/run_<topology>` (`simv`) | `build_xrun/run_<topology>` (script) | `build_questa/run_<topology>` (script) |
+| Snapshot data | VCS's `build/run_<topology>.daidir`, plus `AN.DB/`, `csrc/` in `VCS_RUNDIR` | `xcelium_<topology>.d/` in `XRUN_RUNDIR` | `a2c_dut/`, `a2c_sc/` and `a2c_opt_<topology>/` in `QUESTA_RUNDIR` |
+| Logs | `vlogan_rtl.log`, `vlogan_<top>.log`, `vcs.log` in `VCS_RUNDIR` | `xrun_xcelium_<topology>.log` in `XRUN_RUNDIR` | `vopt_<topology>.log` in `QUESTA_RUNDIR`; `vlog`, `sccom` and `vsim` write to standard output |
+| Change stamps | `build/<project>.build/vcs/` | `build_xrun/<project>.build/xrun/xcelium_<topology>.d/` | `build_questa/<project>.build/questa/` (`vlog_opts`, `sclink_opts`) and `.../questa/a2c_opt_<topology>/` (`opts`, `r_opts`) |
+| Boundary files | `.gen/vl/<top>.portmap` | `.gen/vl/<top>_xcelium.h` | `.gen/vl/<top>_questa.h` |
 
 - The stamps record each tool command's full option set (hooks, source lists, link libraries, elaboration arguments, and for the run script `XRUN_R_OPTS`, `EXTRA_XRUN_R_OPTS` and `LM_LICENSE_FILE`). A changed option reruns the affected step even when no file changed.
 - The C++ objects do not record their compile flags. A build flavour stamp recompiles them when the flow or `VL_DUT` changes. A changed `A2C_CLANG`, `EXTRA_CXX_FLAGS`, `VCS_HOME` or `XCELIUM_TOOLS` does not. No stamp records `XRUN`, `XRUN_RUNDIR` or `VCS_RUNDIR`, so changing one rebuilds no snapshot and rewrites no run script, although the run scripts embed `XRUN` and `XRUN_RUNDIR`. Run `make clean` after changing any of these.
-- VCS and Xcelium outputs coexist. VCS shares `build/` with the plain and Verilator flows, and Xcelium has its own `build_xrun/`.
+- The Questa stamps record the `vlog`, `sccom -link`, `vopt` and run-script arguments the same way, the last with `SALT_LICENSE_SERVER` and `QUESTA_VSIM_DO`. No stamp records `QUESTA_HOME` or `QUESTA_RUNDIR`.
+- VCS, Xcelium and Questa outputs coexist. VCS shares `build/` with the plain and Verilator flows; Xcelium has its own `build_xrun/` and Questa its own `build_questa/`.
+- One Questa build serves one flavour: a `VL_DUT=` build in the same `QUESTA_RUNDIR` relinks `a2c_sc` without `QUESTA_DUT`, and make rebuilds the other topologies' designs before they run again.
 
-### 5.5 Regressions
+### 5.6 Regressions
 
 The builder provides the snapshot targets and the dispatcher. It has no simulator regression target. A project writes one regression file per simulator and runs it with `regrLauncher.py --build <file>`, optionally through its own `rundir/Makefile` target.
 
@@ -368,7 +443,7 @@ The builder provides the snapshot targets and the dispatcher. It has no simulato
 
 - The launcher joins a `command+` list with spaces onto `build.command`. Command-line `DUT_TOPOLOGIES+=` entries replace the builder default.
 - A command-line `DUT_TOPOLOGIES`, such as the regression build command's, replaces any value the rundir Makefile sets.
-- Xcelium uses `make -j8 USE_XCELIUM=1 xrun_snapshots` and `../builder/dutRun.py build_xrun/run <testbench>`.
+- Xcelium uses `make -j8 USE_XCELIUM=1 xrun_snapshots` and `../builder/dutRun.py build_xrun/run <testbench>`; Questa uses `make -j8 USE_QUESTA=1 questa_snapshots` and `../builder/dutRun.py build_questa/run <testbench>`.
 - Take the configurations from each block's tests: `verif` for `--vlType verif`, `verif:tandem` for `--vlType verif --vlTandem`, `model:tandem` for `--vlType model --vlTandem`. Tests that run on `run_model` need no entry.
 - Set `session.jobs` to the runtime licence count and do not pass `-j` to the launcher, which overrides it. A `rundir/Makefile` target modelled on the examples' `regr` passes `-j$(REGR_JOBS)`. Drop it, or set `REGR_JOBS` to the licence count. A VCS run beyond the seat count waits in `Queuing for License` until its timeout.
 - Allow for snapshot build time in `build.timeout`.
@@ -397,6 +472,21 @@ Sample rules files, kept in `rundir/` beside `default.json`. The regrLauncher ma
 }
 ```
 
+```json
+{
+  "name": "questa",
+  "filters": {
+    "questa_error": { "re": "^# \\*\\* Error(?: \\(suppressible\\))?: (?P<msg>.*)$", "msg": "\\g<msg>", "file": null, "sev": "error" },
+    "questa_fatal": { "re": "^# \\*\\* Fatal: (?P<msg>.*)$", "msg": "\\g<msg>", "file": null, "sev": "fatal" },
+    "questa_failure": { "re": "^# \\*\\* Failure: (?P<msg>.*)$", "msg": "\\g<msg>", "file": null, "sev": "error" },
+    "questa_ui_error": { "re": "^# \\*\\* UI-Msg \\(Error\\)(?: \\(suppressible\\))?: (?P<msg>.*)$", "msg": "\\g<msg>", "file": null, "sev": "error" }
+  },
+  "modifiers": {}
+}
+```
+
+- `vsim -batch` writes every message with a `# ` prefix. A failed SystemVerilog assertion or an HDL `$error` prints `# ** Error:` and the run goes on; `vsim` then exits 0, the `onerror` handler of `QUESTA_VSIM_DO` included (tested with 2026.3). The run script therefore fails such a run itself (section 5.4), and the rules file reports the message. `$fatal`, a failed elaboration and a Fatal SystemC error print `# ** Fatal:`; a Fatal SystemC error ends the run with a non-zero code only through the `onerror` handler (without it, `vsim -batch` exits 0 there too). The summary line `Errors: N, Warnings: M` matches none of the filters.
+
 ## 6. User hooks
 
 The project appends to the `EXTRA_*` hooks with `+=` in `include/make/shared.mk`. `make help-hooks` prints each one with its value, and `manage-build` holds the full table. The simulator hooks `EXTRA_VLOGAN_OPTS`, `EXTRA_VCS_LIB_SV_FILES`, `EXTRA_VCS_OPTS`, `EXTRA_XRUN_OPTS` and `EXTRA_XRUN_LIB_OPTS` are described there. These also matter for the simulator flows:
@@ -404,13 +494,16 @@ The project appends to the `EXTRA_*` hooks with `+=` in `include/make/shared.mk`
 | Hook | Feeds |
 | :--- | :--- |
 | `EXTRA_XRUN_R_OPTS` | `xrun -R` in each run script, for simulation plusargs. No single quotes (`USE_XCELIUM`) |
-| `EXTRA_HDL_FILES`, `EXTRA_HDL_F_FILES`, `EXTRA_HDL_INCDIRS`, `EXTRA_HDL_DEFINES` | Verilator, the `vlogan` RTL analysis and the `xrun` DUT library, after `a2c.f` and before `rtl.f`. Give absolute paths. Under VCS, name every file a `.f` list needs, because `vlogan` ignores `-y` |
-| `EXTRA_LD_FLAGS` | the native link, the `vcs` link, and the `xrun` link as `-Wld,<word>` per word |
+| `EXTRA_QUESTA_VLOG_OPTS` | `vlog` of the DUT library, after the HDL hooks and before `rtl.f` (`USE_QUESTA`) |
+| `EXTRA_QUESTA_VOPT_OPTS` | each `vopt`, before the libraries and `sc_main`; for example `+acc` for the objects a Tcl `QUESTA_VSIM_DO` script reads (`USE_QUESTA`) |
+| `EXTRA_QUESTA_VSIM_OPTS` | `vsim` in each run script, for simulation plusargs. No single quotes (`USE_QUESTA`) |
+| `EXTRA_HDL_FILES`, `EXTRA_HDL_F_FILES`, `EXTRA_HDL_INCDIRS`, `EXTRA_HDL_DEFINES` | Verilator, the `vlogan` RTL analysis, the `xrun` DUT library and the `vlog` DUT library, after `a2c.f` and before `rtl.f`. Give absolute paths. Under VCS, name every file a `.f` list needs, because `vlogan` ignores `-y` |
+| `EXTRA_LD_FLAGS` | the native link, the `vcs` link, the `xrun` link as `-Wld,<word>` per word, and `sccom -link` as given |
 | `EXTRA_CXX_FLAGS` | the C++ compile, after every builder flag |
 
 VCS has no run hook, because `simv` takes the test's own arguments.
 
-A builder layer adds its own arguments through `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER_CPP_INCLUDES`, `A2C_LAYER_LD_FLAGS` (which also reach the `xrun` link as `-Wld,`), `A2C_LAYER_HDL_F_FILES`, `A2C_LAYER_VCS_LIB_SV_FILES` and `A2C_LAYER_UVM_F_FILES` (the `-F` lists of its UVM agent packages). Their position relative to the builder and project arguments is in `manage-build`.
+A builder layer adds its own arguments through `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER_CPP_INCLUDES`, `A2C_LAYER_LD_FLAGS` (which also reach the `xrun` link as `-Wld,` and `sccom -link` as given), `A2C_LAYER_HDL_F_FILES`, `A2C_LAYER_VCS_LIB_SV_FILES` and `A2C_LAYER_UVM_F_FILES` (the `-F` lists of its UVM agent packages). Their position relative to the builder and project arguments is in `manage-build`.
 
 ## 7. Bring-up checklist and troubleshooting
 
@@ -425,17 +518,17 @@ A builder layer adds its own arguments through `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER
 
 2. Install a shared or PIC Boost, or confirm the OS one, and its headers.
 3. Write the site script from section 4 and source it.
-4. In a scratch copy of an example, run `make db`, then dry-run the flow with `make -n USE_VCS=1 all` or `make -n USE_XCELIUM=1 all`. Check that the compile lines carry your Clang, `EXTRA_CXX_FLAGS` and the simulator macros, and that the link line carries `BOOST_LIBS`. With a current database the dry run prints the tool commands without running them. Make still writes its parse-time stamps, and GNU Make remakes an out-of-date database even under `-n`.
+4. In a scratch copy of an example, run `make db`, then dry-run the flow with `make -n USE_VCS=1 all`, `make -n USE_XCELIUM=1 all` or `make -n USE_QUESTA=1 all`. Check that the compile lines carry your Clang, `EXTRA_CXX_FLAGS` and the simulator macros, and that the link line carries `BOOST_LIBS`. With a current database the dry run prints the tool commands without running them. Make still writes its parse-time stamps, and GNU Make remakes an out-of-date database even under `-n`.
 5. Build and run one topology (section 8.2).
-6. Build the snapshot set and run a regression (section 5.5).
+6. Build the snapshot set and run a regression (section 5.6).
 
 ### 7.2 Failure modes
 
 | Symptom | Cause | Fix |
 | :--- | :--- | :--- |
-| `VCS_HOME is not set`, `XCELIUM_TOOLS is not set` or `XRUN_GCC_VERS is not set`, also under `make -n` or `make clean` | the checks run while make parses | source the site script, or give placeholder values for a dry run. Run `make clean` from the project root |
-| `LD_BOOST is not set` | `BOOST_LIBS` unset or empty, Xcelium included | set a non-empty `BOOST_LIBS` or `LD_BOOST` |
-| `vcs_snapshots links the DUT snapshots; VL_DUT= selects ...` or `xrun_snapshots builds the DUT snapshots; VL_DUT= selects the model-only snapshot` | `VL_DUT=` with a snapshot-set target | drop `VL_DUT=` |
+| `VCS_HOME is not set`, `XCELIUM_TOOLS is not set`, `XRUN_GCC_VERS is not set` or `QUESTA_HOME is not set`, also under `make -n` or `make clean` | the checks run while make parses | source the site script, or give placeholder values for a dry run. Run `make clean` from the project root |
+| `LD_BOOST is not set` | `BOOST_LIBS` unset or empty, Xcelium and Questa included | set a non-empty `BOOST_LIBS` or `LD_BOOST` |
+| `vcs_snapshots links the DUT snapshots; VL_DUT= selects ...` or `xrun_snapshots builds the DUT snapshots; VL_DUT= selects the model-only snapshot` (`questa_snapshots` likewise) | `VL_DUT=` with a snapshot-set target | drop `VL_DUT=` |
 | `'X' has different definitions in different modules` (Clang) | Clang 16 | use Clang 18 or newer |
 | `recursive lazy load`, `Bad file data` or an internal compiler error on a `.cppm` | GCC on the module units | use Clang |
 | `'format' file not found` | libstdc++ older than GCC 13 | point Clang at GCC 13 (section 2.2) |
@@ -460,22 +553,38 @@ A builder layer adds its own arguments through `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER
 | Xcelium run `*F,VSPLIC` outside make | no licence in the run environment | set `LM_LICENSE_FILE` before the build so the script captures it |
 | `xrun` returns at once with no snapshot | `xrun` on `PATH` is a batch-submission wrapper | set `XRUN=$XCELIUM_TOOLS/bin/xrun` |
 | Xcelium compile error on `sc_bind` in project code | Cadence's SystemC defines `sc_bind` as a macro | bind with a lambda |
+| Questa `sccom-6207` on `-link`: no object files for the SystemC version | only Clang objects in the library | the flow compiles `questa_sc_main.cpp` first; check that step's output |
+| Questa `vopt-10563`: an error during SystemC elaboration | `sc_main` failed while `vopt` ran it, for example an unregistered block or `--vlTandem` without a tandem builder layer | read the a2c message above it in the build output (`-enablescstdout`) |
+| Questa, Clang 17: `'sc_core::...' has different definitions in different modules` naming a header under `include/systemc/sysc/` | a `sysc/<dir>` copy of a Questa header that the builder's `-fmacro-prefix-map` list misses (it covers one and two directory levels) | add the map through `EXTRA_CXX_FLAGS`, or use Clang 18 (with Clang 18 or later the builder passes no maps unless `QUESTA_MACRO_PREFIX_MAP=1`) |
+| Questa `declaration of 'm_default_init_size' in module ... follows declaration in the global module` | a module unit instantiates `ptrarray<T*>` for a SystemC type the builder's list lacks | add the type to `common/systemc/questa/a2c_questa_ptrarray.def` |
+| Questa `declaration of 'm_default_init_size' in module <a> follows declaration in module <b>` | a port type from a C++20 module, its `ptrarray` class instantiated in one module unit and the member's definition in another (section 2.3) | build with `QUESTA_PTRARRAY_COPY=1` (section 2.3) |
+| Questa `'mti_QuitWithErrorCode' is not a member of 'std'` | `exit` defined as a macro by Questa's `systemc` header | build through the makefiles, which define `DONT_USE_MTI_EXIT` |
+| Questa `constexpr variable '_last' must be initialized by a constant expression` | generated code that still uses `sc_dt::SC_DIGIT_SIZE`, written by an older generator | `make gen` |
+| Questa `[Q_ASSERT] Could not find instance name sc_main/<inst>` | `PathSeparator` is `/` | run with the flow's `a2c_questa.ini` (`-ini`), as the run script does |
+| Questa `vsim-3693`: the Verilog time resolution is finer than the SystemC one | no `-t` | keep `-t 1ps` in `QUESTA_VSIM_OPTS` |
+| Questa `vsim-17428`: `async_request_update()` is disabled, then `Fatal SystemC error` | `-scasyncupdate` missing from `QUESTA_VSIM_OPTS`, in a design whose firmware thread or socket uses `asyncEvent` | keep `-scasyncupdate` in `QUESTA_VSIM_OPTS` |
+| Questa `vsim-3275`: the HDL unit SystemC instantiates is not found | `vsim` without `-L a2c_dut` | run through the generated script |
+| Questa `vsim-3171`: no machine code for `<lib>.<top>(fast)` | run arguments instantiate an HDL top the optimized design lacks | run through `dutRun.py`, or add the configuration to `DUT_TOPOLOGIES` |
+| Questa `vsim` exits with code 4, no licence checked out | the licence list is in `LM_LICENSE_FILE` or `MGLS_LICENSE_FILE` only | set `SALT_LICENSE_SERVER` before the build |
+| Questa run exits 1 and ends with `a2c: vsim reported N error line(s)` | the run printed a `# ** Error`, `# ** Fatal` or `# ** Failure` line, for example a failed SystemVerilog assertion or an HDL `$error`; `vsim` itself exits 0 there, so the run script fails the run (section 5.4) | fix the reported error. The Questa rules file (section 5.6) names it in the regression report |
 | `dutRun: no snapshot ...` | topology missing from the snapshot set | add the configuration to the block's `DUT_TOPOLOGIES+=` entry |
 | Builds use stale settings after a tree move, a compiler or simulator path change, or an edit under `include/make/` | object flags, dependency files, run scripts and snapshots hold absolute paths and untracked flags | `make clean` from the project root, then rebuild |
 
-Harmless warnings: Xcelium `*W,SCK910` on `sc_start(0)`, `SPDUSD` and `LIBNOU` for unused include and library directories from `a2c.f`.
+Harmless warnings: Xcelium `*W,SCK910` on `sc_start(0)`, `SPDUSD` and `LIBNOU` for unused include and library directories from `a2c.f`. Questa `vsim-6667` (the declared name of `sc_main`'s testbench differs from its constructor argument) and `vsim-4025` (a port of an undebuggable type), both about debug views of the Clang-compiled objects, which carry no `sccom` debug database.
 
 ### 7.3 Behaviour to know
 
 - Under Xcelium, `sc_main` runs twice: once under xmelab during the snapshot build, up to the first `sc_start`, and again under xmsim for each run. Code before `sc_start` runs in both, so side effects such as file writes happen at build time too.
+- Under Questa, `sc_main` also runs under `vopt` during the build, up to the first `sc_start`, and again under `vsim` for each run. `vsim` runs `sc_main` as a thread process, so `q_assert` treats it as outside any process (no `wait()`). After a time-limited `sc_start` (`--scTimeLimit`) the simulation is paused, not stopped, and `vsim` crashed (`SIGSEGV`, exit code 211) when it quit in that state; the stub therefore stops the kernel before it quits, and the run exits with a2c's exit code (tested with 2026.3).
 - The HDL wrappers fail a run on an X or Z at a port whose interface type has a UVM agent (section 9.4). That applies to every VCS and Xcelium run with an RTL DUT, not only to UVM runs.
-- `--vlTrace` has no effect under VCS or Xcelium. Build with `WAVES=1` for waveforms instead (section 9.14). Under VCS this needs Verdi's FSDB support in the VCS install. Other Xcelium access options go on `EXTRA_XRUN_OPTS`, and other probe commands on `EXTRA_XRUN_R_OPTS`, since the snapshot build simulates nothing.
+- The generated SystemC HDL wrapper (`<block>_hdl_sc_wrapper.h`) starts its input clocks low and its resets asserted under `VCS_DUT`, `XCELIUM_DUT` and `QUESTA_DUT` (`A2C_HDL_CLOCK_START` and `A2C_HDL_RESET_BORN` false), so no 4-state flop is clocked at time 0 while its reset is X. Under Verilator they start high and released, so its 2-state flops see a clock edge and a reset negedge at time 0. The UVM SystemC wrapper (`<block>_uvm_sc_wrapper.h`, VCS and Xcelium only) also starts its clocks low, and its resets are born asserted.
+- `--vlTrace` has no effect under VCS, Xcelium or Questa. Under VCS and Xcelium, build with `WAVES=1` for waveforms instead (section 9.14). Under VCS this needs Verdi's FSDB support in the VCS install. Other Xcelium access options go on `EXTRA_XRUN_OPTS`, and other probe commands on `EXTRA_XRUN_R_OPTS`, since the snapshot build simulates nothing. The Questa flow has no built-in waveform switch; pass the site's options through `EXTRA_QUESTA_VOPT_OPTS` and `QUESTA_VSIM_DO`.
 
 ## 8. Verification
 
 ### 8.1 Without a simulator
 
-The unit tests `test_xcelium_boost_libs.py`, `test_make_user_hooks.py`, `test_vl_boundary_pin_widths.py`, `test_vl_boundary_widths_build.py` (which needs Verilator and Clang) and `test_transit_surface_classification.py` cover the Boost link rules, the hook placement and stamps in the `vlogan`, `vcs` and `xrun` commands, and the boundary widths and pins, with placeholder tool paths. Run each from `builder/base/unittest` with `python3 <test>.py`. The fixture at `unittest/fixtures/vl-boundary-widths/top/rundir` is intended as a simulator check through `make USE_VCS=1 vcs_snapshots` and `make USE_XCELIUM=1 xrun_snapshots`, but it is untested under either simulator.
+The unit tests `test_xcelium_boost_libs.py`, `test_questa_flow.py`, `test_make_user_hooks.py`, `test_vl_boundary_pin_widths.py`, `test_vl_boundary_widths_build.py` (which needs Verilator and Clang) and `test_transit_surface_classification.py` cover the Boost link rules, the Questa flow's commands, the hook placement and stamps in the `vlogan`, `vcs`, `xrun`, `vlog`, `sccom`, `vopt` and `vsim` commands, and the boundary widths and pins, with placeholder tool paths. Run each from `builder/base/unittest` with `python3 <test>.py`. The fixture at `unittest/fixtures/vl-boundary-widths/top/rundir` is intended as a simulator check through `make USE_VCS=1 vcs_snapshots` and `make USE_XCELIUM=1 xrun_snapshots`, but it is untested under either simulator.
 
 ### 8.2 With the simulator installed
 
@@ -490,6 +599,17 @@ make -j8 USE_XCELIUM=1 all
 ./build_xrun/run_hierVlDemo_verif hierVlDemo --vlInst hierVlDemo
 ```
 
+Questa:
+
+```text
+source site-questa.sh
+cd examples/hierVlDemo && make clean && cd rundir
+make -j8 USE_QUESTA=1 all
+./build_questa/run_hierVlDemo_verif hierVlDemo --vlInst hierVlDemo
+make -j8 USE_QUESTA=1 VL_DUT= all
+./build_questa/run_model hierVlDemo
+```
+
 VCS:
 
 ```text
@@ -502,8 +622,8 @@ make -j8 USE_VCS=1 VL_DUT= all
 ```
 
 - Each run ends with `No error` and exits 0. A VCS run also prints the VCS simulation report.
-- Tested with: this example under Xcelium 26.03, `No error`. The VCS flow and both snapshot sets were tested on a larger multi-block design (a 44-test regression passing under each simulator), not on this example.
-- If a run fails to start, check `ldd build/run_<topology>` (VCS) for unresolved libraries, and the log files of section 5.4.
+- Tested with: this example under Xcelium 26.03, `No error`; under Questa 2026.3 with Clang 17.0.6, `No error`, exit code 0, the same four frames as the Verilator flow. The VCS flow and both snapshot sets were tested on a larger multi-block design (a 44-test regression passing under each simulator), not on this example.
+- If a run fails to start, check `ldd build/run_<topology>` (VCS) for unresolved libraries, and the log files of section 5.5.
 
 ## 9. UVM testbenches
 
@@ -1781,7 +1901,7 @@ This is the one list of the places where the flow departs from IEEE 1800.2 or fr
 
 ### 9.14 Debugging a run
 
-A failing regression entry leaves its log at `regr/<session>/runs/<group path>/<test>/run_<n>/<test>.log` (section 5.5). Work through it in this order:
+A failing regression entry leaves its log at `regr/<session>/runs/<group path>/<test>/run_<n>/<test>.log` (section 5.6). Work through it in this order:
 
 1. Find the first `UVM_ERROR` or `UVM_FATAL` and look its ID up in section 9.17. The reports after it are often its consequences, and the end-of-test reports that follow a run timeout or a joint stall say so (section 9.6).
 2. Repeat the run with the `A2C_RERUN` command printed beside that error.
@@ -2192,7 +2312,7 @@ These limits are known and are not planned to change, because what they would ad
 ### 10.4 Build, tool and example items
 
 - Under Xcelium every uninstantiated HDL wrapper top is elaborated as an idle top-level. That is harmless at the tested size, but its memory cost on a large SoC is unmeasured.
-- SystemC 3.0.1 is untested in both flows (VCS `-sysc=301` with a GCC 13 build, Xcelium `-sc_301`). The default `VCS_ELAB_OPTS` selects 2.3.4.
+- SystemC 3.0.1 is untested in the three flows (VCS `-sysc=301` with a GCC 13 build, Xcelium `-sc_301`; Questa 2026.3's `sccom -scversion` reports 2.3.4). The default `VCS_ELAB_OPTS` selects 2.3.4.
 - The comment and `$(error)` text at `a2c-xrun.mk:8-13` say `XRUN_GCC_VERS` must match the compiler's libstdc++. For 26.03 that is inaccurate (section 2.2).
 - Whether a later Xcelium bundling GCC 13 should be linked with it is untested.
 - The Xcelium documentation reviewed during testing states that a snapshot records `LD_LIBRARY_PATH` and rejects a different value at simulation time. The builder does not record it. Keep `LD_LIBRARY_PATH` the same for the build and every run.
@@ -2204,3 +2324,5 @@ These limits are known and are not planned to change, because what they would ad
 - The JUnit report of `regrLauncher.py` records only the first failure (`regrLauncher/report.py`), so the order of the rule files decides which failure it shows.
 - An rtl-only (`hasMdl: false`) `hasVl` block's `<block>_hdl_sc_wrapper.h` imports `<ctx>_<block>.base`, which such a block never gets, so its C++ fails to compile in a `VL_DUT`, VCS or Xcelium build. The unit tests generate the files but never compile them.
 - Example builds: Pro's lmmiDemo RTL does not elaborate on Xcelium, which rejects `$bits` of a hierarchical name in a typedef. The mixed example does not build on Xcelium (`URRNG` in blockB's `memory_dp.sv`), and its blockA RTL fails VCS elaboration (`ICPD`).
+- Under Questa a single optimized design that names every HDL wrapper top as an extra `vopt` top could serve every topology, because `vsim` rebuilds the SystemC side per run. The builder builds one design per topology, as the other flows do; `EXTRA_QUESTA_VOPT_OPTS` can add the extra tops.
+- Questa 2026.3's `ptrarray.h` defines `m_default_init_size` out of class (Siemens case #02437403). For port types from C++20 modules the build needs `QUESTA_PTRARRAY_COPY=1` (section 2.3), which is off by default. A header with the member defined in the class would make both the switch and the `extern template` list unnecessary.

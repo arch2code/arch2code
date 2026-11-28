@@ -1,5 +1,10 @@
 // copyright QiStor 2022
 
+#ifdef QUESTA
+// Questa calls an sc_main compiled by sccom (common/systemc/questa/
+// questa_sc_main.cpp), which calls this one.
+#define sc_main a2c_sc_main
+#endif
 #include "systemc.h"
 #include <boost/program_options.hpp>
 #include <string>
@@ -28,6 +33,9 @@ import a2c.endOfTest;
 #include "verilated_cov.h"
 #endif
 #endif
+
+// Generated sc_pack and sc_unpack copy sc_bv data as 32-bit sc_digit words.
+static_assert(sizeof(sc_dt::sc_digit) == 4, "generated sc_pack and sc_unpack assume 32-bit sc_digit words");
 
 #ifdef VCS
 extern "C" void VcsSetExitFunc(int (*)(int));
@@ -92,8 +100,8 @@ int sc_main(int argc, char* argv[])
 #ifdef VCS
     VcsSetExitFunc(exit_handler);
 #endif
-#if defined(VCS) || defined(XCELIUM)
-    // VCS and Xcelium root every SystemC instance under sc_main.
+#if defined(VCS) || defined(XCELIUM) || defined(QUESTA)
+    // VCS, Xcelium and Questa root every SystemC instance under sc_main.
     synchLockFactoryRegistery::getInstance().setHierarchyPrefix("sc_main");
 #endif
 
@@ -388,6 +396,13 @@ int sc_main(int argc, char* argv[])
     if (try_sc_start(false, SC_ZERO_TIME) != 0) {
         goto exit_goto;
     }
+#ifdef QUESTA
+    // vopt runs sc_main to elaborate the topology and its sc_start returns at
+    // once; the elaboration ends here, as xmelab's does with its exception.
+    if (mti_IsVoptMode()) {
+        return 0;
+    }
+#endif
     simController::setTimingMode();
     if (instVerbosity != VERBOSITY_UNKNOWN) {
         instanceFactory::setLogging(instVerbosity);

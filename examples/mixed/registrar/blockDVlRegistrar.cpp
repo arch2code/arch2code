@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=blockD --parent=blockB/mixed.yaml
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "blockD_hdl_sc_wrapper.h"
@@ -10,6 +10,8 @@
 #include "VblockD_hdl_sv_wrapper.h"
 #elif defined(VCS_DUT)
 #include "blockD_hdl_sv_wrapper.h"
+#elif defined(QUESTA_DUT)
+#include "blockD_hdl_sv_wrapper_questa.h"
 #else
 #include "blockD_hdl_sv_wrapper_xcelium.h"
 #endif
@@ -18,6 +20,8 @@ namespace {
 #if defined(VERILATOR)
 using blockD_hdl_sv_wrapper_dut_t = VblockD_hdl_sv_wrapper;
 #elif defined(VCS_DUT)
+using blockD_hdl_sv_wrapper_dut_t = blockD_hdl_sv_wrapper;
+#elif defined(QUESTA_DUT)
 using blockD_hdl_sv_wrapper_dut_t = blockD_hdl_sv_wrapper;
 #else
 using blockD_hdl_sv_wrapper_dut_t = blockD_hdl_sv_wrapper;
@@ -34,5 +38,5 @@ struct _blockD_vl_registrar {
 };
 static _blockD_vl_registrar _blockD_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT || QUESTA_DUT
 // GENERATED_CODE_END

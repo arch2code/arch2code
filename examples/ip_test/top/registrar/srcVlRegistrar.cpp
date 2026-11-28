@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=src --parent=ip_top
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "src_hdl_sc_wrapper.h"
@@ -10,6 +10,8 @@
 #include "Vsrc_variantSrc0_hdl_sv_wrapper.h"
 #elif defined(VCS_DUT)
 #include "src_variantSrc0_hdl_sv_wrapper.h"
+#elif defined(QUESTA_DUT)
+#include "src_variantSrc0_hdl_sv_wrapper_questa.h"
 #else
 #include "src_variantSrc0_hdl_sv_wrapper_xcelium.h"
 #endif
@@ -19,6 +21,8 @@ namespace {
 #if defined(VERILATOR)
 using src_variantSrc0_hdl_sv_wrapper_dut_t = Vsrc_variantSrc0_hdl_sv_wrapper;
 #elif defined(VCS_DUT)
+using src_variantSrc0_hdl_sv_wrapper_dut_t = src_variantSrc0_hdl_sv_wrapper;
+#elif defined(QUESTA_DUT)
 using src_variantSrc0_hdl_sv_wrapper_dut_t = src_variantSrc0_hdl_sv_wrapper;
 #else
 using src_variantSrc0_hdl_sv_wrapper_dut_t = src_variantSrc0_hdl_sv_wrapper;
@@ -41,5 +45,5 @@ struct _src_vl_registrar {
 };
 static _src_vl_registrar _src_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT || QUESTA_DUT
 // GENERATED_CODE_END

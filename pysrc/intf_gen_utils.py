@@ -1391,6 +1391,7 @@ def sc_concrete_dut(sv_wrapper, standalone_variants):
             'dutHeader': sv_wrapper['variantDutHeaders'][v],
             'vcsDutHeader': sv_wrapper['variantVcsDutHeaders'][v],
             'xceliumDutHeader': sv_wrapper['variantXceliumDutHeaders'][v],
+            'questaDutHeader': sv_wrapper['variantQuestaDutHeaders'][v],
         }
     return {
         'svModule':  sv_wrapper['bodyModule'],
@@ -1398,6 +1399,7 @@ def sc_concrete_dut(sv_wrapper, standalone_variants):
         'dutHeader': sv_wrapper['dutHeader'],
         'vcsDutHeader': sv_wrapper['vcsDutHeader'],
         'xceliumDutHeader': sv_wrapper['xceliumDutHeader'],
+        'questaDutHeader': sv_wrapper['questaDutHeader'],
     }
 
 def get_intf_defs(intf_type, block_data):

@@ -99,7 +99,7 @@ from _tmp_helpers import remove_tree
 from test_build_manifest import parse_manifest
 from test_vl_boundary_widths_build import (
     FIXTURE, PORTMAP_TYPES, V0, V1, Design, compare, generate, make, pin_type, read_portmap,
-    read_xcelium)
+    read_shell)
 
 
 WORK_PREFIX = 'uvm_boundary_pins_'
@@ -286,7 +286,7 @@ def check_top(vl, top, expected):
     problems += compare(top, 'Xcelium shell',
                         [(pin, direction, pin_type(vector, width))
                          for pin, direction, width, vector in expected],
-                        read_xcelium(os.path.join(vl, f'{top}_xcelium.h')))
+                        read_shell(os.path.join(vl, f'{top}_xcelium.h')))
     return problems
 
 
@@ -551,8 +551,9 @@ def check_sc_files(work, design):
         problems += match(wrapperFile, 'shell pin type checks', asserts, expectedAsserts)
 
         for clock, reset in domains:
+            # Clocks start low, as the HDL wrapper's do on VCS and Xcelium.
             expected = [f'void clock_gen_{clock}() {{ clock_gen({clock}, {clock}_half_); }}',
-                        f'SC_THREAD(clock_gen_{clock});']
+                        f'SC_THREAD(clock_gen_{clock});', f'{clock}.write(false);']
             period = (design.blocks[block].get('clocks') or {}).get(clock, {}).get('period')
             if period is not None:
                 expected.append(f'{clock}_half_(sc_time({period}, SC_NS) / 2),')

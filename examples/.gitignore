@@ -44,6 +44,13 @@
 **/csrc/
 **/vc_hdrs.h
 **/ucli.key
+# --- Questa flow (USE_QUESTA): build tree, libraries, ini, crash reports ---
+**/build_questa/
+**/a2c_dut/
+**/a2c_sc/
+**/a2c_opt_*/
+**/a2c_questa.ini
+**/*.vstf
 
 # --- Caches ---
 **/.cache/

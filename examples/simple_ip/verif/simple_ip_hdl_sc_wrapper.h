@@ -16,6 +16,8 @@ import simple_ip.base;
 #include "simple_ip_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "simple_ip_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "simple_ip_hdl_sv_wrapper_questa.h"
 #else
 #include "Vsimple_ip_hdl_sv_wrapper.h"
 #endif
@@ -36,11 +38,22 @@ using namespace ip_ns;
 #include "push_ack_bfm.h"
 
 #include "socketSync.h"
+// Time-0 levels of the generated clocks and resets. The 4-state simulators
+// start the clocks low with the resets asserted, so no flop sees a clock edge
+// at time 0 while its reset is X; Verilator keeps a rising clock edge and a
+// reset negedge at time 0, which its 2-state flops need to be reset then.
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
+#define A2C_HDL_CLOCK_START false
+#define A2C_HDL_RESET_BORN false
+#else
+#define A2C_HDL_CLOCK_START true
+#define A2C_HDL_RESET_BORN true
+#endif
 class simple_ip_hdl_sc_wrapper: public sc_module, public blockBase, public simple_ipBase {
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     simple_ip_hdl_sv_wrapper *dut_hdl;
 #else
     Vsimple_ip_hdl_sv_wrapper *dut_hdl;
@@ -58,10 +71,10 @@ public:
         simple_ipBase(name(), variant),
         clk("clk"),
         cpu_main_bfm_inst("cpu_main_bfm_inst"),
-        rst_n("rst_n", true),
+        rst_n("rst_n", A2C_HDL_RESET_BORN),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new simple_ip_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new Vsimple_ip_hdl_sv_wrapper("dut_hdl");
@@ -83,7 +96,7 @@ public:
         cpu_main_bfm_inst.clk(clk);
         cpu_main_bfm_inst.rst_n(rst_n);
 
-        clk.write(true);
+        clk.write(A2C_HDL_CLOCK_START);
         SC_THREAD(clock_gen_clk);
         SC_THREAD(reset_driver_rst_n);
 

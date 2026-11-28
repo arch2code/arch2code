@@ -14,8 +14,12 @@ module memory_dp #(
     input clk
 );
 
-    typedef logic [$bits(mem_portA.addr)-1:0] _addrA_t;
-    typedef logic [$bits(mem_portB.addr)-1:0] _addrB_t;
+    // The widths go through localparams: Questa 2026.3 rejects $bits of an
+    // interface port member directly in these typedefs (vsim-12078).
+    localparam int ADDR_A_W = $bits(mem_portA.addr);
+    localparam int ADDR_B_W = $bits(mem_portB.addr);
+    typedef logic [ADDR_A_W-1:0] _addrA_t;
+    typedef logic [ADDR_B_W-1:0] _addrB_t;
     typedef logic [$bits(data_t)-1:0] _data_t;
 
     /* verilator lint_off WIDTHTRUNC */

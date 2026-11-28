@@ -23,8 +23,8 @@ appends one distinct value to every tool hook. Checks:
   the C++ compile and the link;
 - the HDL hooks (A2C_LAYER_HDL_F_FILES, then the EXTRA_HDL_* hooks, each list
   behind -F) after a2c.f and before the project's rtl.f on lint, every per-top
-  verilate, the vlogan RTL analysis and the xrun DUT library, never on the
-  Verilator runtime build or a vlogan -sc_model;
+  verilate, the vlogan RTL analysis, the xrun DUT library and the vlog DUT
+  library, never on the Verilator runtime build or a vlogan -sc_model;
 - under USE_VCS=1: EXTRA_VLOGAN_OPTS on both vlogan stages,
   EXTRA_VCS_LIB_SV_FILES after the layer's library files, EXTRA_VCS_OPTS and
   the layer's then the project's link flags on the vcs link;
@@ -32,11 +32,15 @@ appends one distinct value to every tool hook. Checks:
   inside the DUT library after the HDL hooks, the layer's then the project's
   link flags on the link, EXTRA_XRUN_R_OPTS in the run script, and -elaborate
   on the snapshot build only, so the build never simulates;
+- under USE_QUESTA=1: EXTRA_QUESTA_VLOG_OPTS in the vlog DUT library after the
+  HDL hooks, the layer's then the project's link flags on sccom -link,
+  EXTRA_QUESTA_VOPT_OPTS on vopt, EXTRA_QUESTA_VSIM_OPTS in the run script;
 - each hook's value in the parse-time stamp that records its command, and the
-  HDL files and lists as prerequisites of the verilate, the vlogan analysis and
-  the xrun snapshot, and the layer's VCS library files, which xrun reaches
-  through the layer's -y directories, as prerequisites of the xrun snapshot;
-- as prerequisites of the same three steps, the .svh files in an
+  HDL files and lists as prerequisites of the verilate, the vlogan analysis,
+  the xrun snapshot and the vlog DUT library, and the layer's VCS library
+  files, which xrun and vlog reach through the layer's -y directories, as
+  prerequisites of the xrun snapshot and the vlog DUT library;
+- as prerequisites of the same four steps, the .svh files in an
   EXTRA_HDL_INCDIRS directory, in the +incdir+ directory of the layer's list
   and of an EXTRA_HDL_F_FILES list, each relative to its list, and in a2c.f's
   and the project rtl.f's; and a file an EXTRA_HDL_F_FILES list names outside
@@ -44,8 +48,8 @@ appends one distinct value to every tool hook. Checks:
 - make help-hooks prints every value and lists every EXTRA_* variable the
   builder makefiles read.
 
-The simulator dry runs pass placeholder VCS_HOME, XCELIUM_TOOLS and
-XRUN_GCC_VERS, so they need neither tool. USE_GCC is dropped from the
+The simulator dry runs pass placeholder VCS_HOME, XCELIUM_TOOLS,
+XRUN_GCC_VERS and QUESTA_HOME, so they need no simulator. USE_GCC is dropped from the
 environment, so the compile commands are clang++ whatever the caller's shell
 selects.
 """
@@ -73,6 +77,9 @@ HOOK_VALUES = {
     'EXTRA_XRUN_OPTS': '-DHOOK_XRUN',
     'EXTRA_XRUN_LIB_OPTS': '-DHOOK_XLIB',
     'EXTRA_XRUN_R_OPTS': '+hook_r',
+    'EXTRA_QUESTA_VLOG_OPTS': '-DHOOK_QVLOG',
+    'EXTRA_QUESTA_VOPT_OPTS': '-DHOOK_QVOPT',
+    'EXTRA_QUESTA_VSIM_OPTS': '-DHOOK_QVSIM',
 }
 # Hooks naming files, which the build lists as prerequisites; created in the
 # copy under hookSrc/.
@@ -102,6 +109,7 @@ INCDIR_FILES = {'EXTRA_HDL_INCDIRS': ('inc', 'hook.svh'),
 # Placeholder tool settings: a dry run needs the variables, not the tools.
 VCS_ARGS = ['USE_VCS=1', 'VCS_HOME=/hook/vcs']
 XRUN_ARGS = ['USE_XCELIUM=1', 'XCELIUM_TOOLS=/hook/xcelium', 'XRUN_GCC_VERS=hook']
+QUESTA_ARGS = ['USE_QUESTA=1', 'QUESTA_HOME=/hook/questa']
 CXX_HOOK = '-DHOOK_CXX'
 # Command-line overrides of hooks the project also sets.
 CMDLINE = ['VERILATOR_USER_OPTS=-DHOOK_CMDLINE', 'EXTRA_CXX_FLAGS=-DHOOK_CXX_CMDLINE']
@@ -115,6 +123,7 @@ LAYER_LD_FLAG = '-lhook_layer_ld'
 VERILATOR_HOOKS = {'-DHOOK_USER', '-DHOOK_VERILATOR', '-DHOOK_LINT', '-DHOOK_VL'}
 VCS_HOOKS = {'-DHOOK_VLOGAN', '-DHOOK_VCS'}
 XRUN_HOOKS = {'-DHOOK_XRUN', '-DHOOK_XLIB', '+hook_r'}
+QUESTA_HOOKS = {'-DHOOK_QVLOG', '-DHOOK_QVOPT', '-DHOOK_QVSIM'}
 
 
 def dryRun(directory, *args):
@@ -311,7 +320,8 @@ def main():
             lacking = [' '.join(c) for c in calls if '--debug' not in c]
             if not calls or lacking:
                 failures.append(f"{target}: arch2code.py lacks EXTRA_GEN_OPTS: {lacking or 'no call'}")
-        for flow, args in (('USE_VCS=1', VCS_ARGS), ('USE_XCELIUM=1', XRUN_ARGS)):
+        for flow, args in (('USE_VCS=1', VCS_ARGS), ('USE_XCELIUM=1', XRUN_ARGS),
+                           ('USE_QUESTA=1', QUESTA_ARGS)):
             boundary = [c for c in genCalls(dryRun(work, 'gen', *args)) if '--vlBoundary' in c]
             lacking = [' '.join(c) for c in boundary if '--debug' not in c]
             if not boundary or lacking:
@@ -408,7 +418,7 @@ def main():
                                ['-timescale=1ns/1ps', '-DHOOK_VLOGAN', *hdlOrder, layerLib, lib])
         failures += checkFileLists('vlogan RTL analysis', analysis, lists)
         failures += checkTokens('vlogan RTL analysis', analysis, [],
-                                VERILATOR_HOOKS | XRUN_HOOKS | {'-DHOOK_VCS'})
+                                VERILATOR_HOOKS | XRUN_HOOKS | QUESTA_HOOKS | {'-DHOOK_VCS'})
         failures += checkOrder('vlogan -sc_model', shells, ['-timescale=1ns/1ps', '-DHOOK_VLOGAN'])
         failures += checkTokens('vlogan -sc_model', shells, [],
                                 set(hdl) | XRUN_HOOKS | {'-DHOOK_VCS'})
@@ -435,7 +445,7 @@ def main():
                                 rtlF, '-endlib', f'-Wld,{LAYER_LD_FLAG}', f'-Wld,{LD_FLAG}'])
         failures += checkFileLists('xrun snapshot', snapshots, lists)
         failures += checkTokens('xrun snapshot', snapshots, ['-elaborate'],
-                                VERILATOR_HOOKS | VCS_HOOKS | {'+hook_r'})
+                                VERILATOR_HOOKS | VCS_HOOKS | QUESTA_HOOKS | {'+hook_r'})
         # The run script carries the xrun -R command inside one quoted argument.
         simulations = [shlex.split(c) for c in re.findall(r"exec (\S*xrun -R [^']*)'", xcelium)]
         failures += checkOrder('xrun -R', simulations, ['-nolog', '+hook_r'])
@@ -450,6 +460,35 @@ def main():
         snapshot = os.path.join(xrunStampDir, 'snapshot')
         xrunDatabase = run(['make', '-C', rundir, '-pq', *XRUN_ARGS, snapshot]).stdout
         failures += checkPrereqs('xrun', xrunDatabase, snapshot, [layerF, vipSv, vipF, *included, layerLib])
+
+        questa = dryRun(rundir, 'all', *QUESTA_ARGS)
+        vlogs = segments(questa, 'vlog')
+        failures += checkOrder('vlog DUT library', vlogs, ['-work', a2cF, *hdl, '-DHOOK_QVLOG', rtlF])
+        failures += checkFileLists('vlog DUT library', vlogs, lists)
+        failures += checkTokens('vlog DUT library', vlogs, [],
+                                VERILATOR_HOOKS | VCS_HOOKS | XRUN_HOOKS | {'-DHOOK_QVOPT', '-DHOOK_QVSIM'})
+        scLinks = [t for t in segments(questa, 'sccom') if '-link' in t]
+        failures += checkOrder('sccom -link', scLinks, ['-link', LAYER_LD_FLAG, LD_FLAG])
+        failures += checkTokens('sccom -link', scLinks, [], set(hdl) | QUESTA_HOOKS)
+        vopts = segments(questa, 'vopt')
+        failures += checkOrder('vopt', vopts, ['-DHOOK_QVOPT', 'a2c_sc.sc_main'])
+        failures += checkTokens('vopt', vopts, [], set(hdl) | {'-DHOOK_QVLOG', '-DHOOK_QVSIM'})
+        # The run script carries the vsim command inside one quoted argument.
+        vsims = [shlex.split(c) for c in re.findall(r"\{ (\S*vsim [^']*?) 2>&1;", questa)]
+        failures += checkOrder('vsim', vsims, ['-batch', '-DHOOK_QVSIM', '-lib'])
+        failures += checkTokens('vsim', vsims, [], set(hdl) | {'-DHOOK_QVLOG', '-DHOOK_QVOPT'})
+        questaStampDir = os.path.join(single('questa', os.path.join(
+            rundir, 'build_questa', '*.build', 'questa', 'vlog_opts')).rsplit(os.sep, 1)[0])
+        failures += checkStamp('vlog DUT library', os.path.join(questaStampDir, 'vlog_opts'),
+                               ['-DHOOK_QVLOG', *hdl])
+        failures += checkStamp('sccom -link', os.path.join(questaStampDir, 'sclink_opts'),
+                               [LAYER_LD_FLAG, LD_FLAG])
+        optDir = os.path.join(questaStampDir, 'a2c_opt_simple_ip_verif')
+        failures += checkStamp('vopt', os.path.join(optDir, 'opts'), ['-DHOOK_QVOPT'])
+        failures += checkStamp('vsim', os.path.join(optDir, 'r_opts'), ['-DHOOK_QVSIM'])
+        vlogStamp = os.path.join(questaStampDir, 'vlog')
+        questaDatabase = run(['make', '-C', rundir, '-pq', *QUESTA_ARGS, vlogStamp]).stdout
+        failures += checkPrereqs('vlog', questaDatabase, vlogStamp, [layerF, vipSv, vipF, *included, layerLib])
 
         hooks = run(['make', '-C', rundir, '--no-print-directory', 'help-hooks']).stdout
         shownValues = {**HOOK_VALUES, **{name: hookFiles[name] for name in HOOK_FILES},
@@ -475,7 +514,8 @@ def main():
             return 1
         print(f"PASS: {len(shownValues)} hooks set in shared.mk reach only their own "
               f"commands ({len(verilates)} verilates, 1 lint, {len(vlogans)} vlogan, "
-              f"{len(vcsLinks)} vcs, {len(snapshots)} xrun, {len(simulations)} xrun -R); "
+              f"{len(vcsLinks)} vcs, {len(snapshots)} xrun, {len(simulations)} xrun -R, "
+              f"{len(vlogs)} vlog, {len(scLinks)} sccom -link, {len(vopts)} vopt, {len(vsims)} vsim); "
               f"help-hooks lists all {len(read)} EXTRA_* variables include/make reads")
         print("ALL TESTS PASSED")
         return 0

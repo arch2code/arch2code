@@ -1,8 +1,9 @@
 # Per-block HDL-wrapper registrar template: the `_verif` factory registrations of
 # a reused child's `<child>_hdl_sc_wrapper`, one TU per child aggregating every
-# parent-child factory domain. Empty unless an HDL DUT build (VERILATOR, VCS_DUT
-# or XCELIUM_DUT) is selected; the DUT class per top is `V<top>` (Verilator), the
-# vlogan shell `<top>` (VCS) or the foreign-module shell `<top>` (Xcelium), hidden
+# parent-child factory domain. Empty unless an HDL DUT build (VERILATOR, VCS_DUT,
+# XCELIUM_DUT or QUESTA_DUT) is selected; the DUT class per top is `V<top>`
+# (Verilator), the vlogan shell `<top>` (VCS) or the foreign-module shell `<top>`
+# (Xcelium, Questa), hidden
 # behind a `<top>_dut_t` alias so the registrations are spelled once. The config
 # module import must be the one the container imports, or the container's
 # `dynamic_pointer_cast<<child>Base<Config>>` sees mismatched RTTI.
@@ -30,7 +31,7 @@ def render(args, prj, data):
     # inheritContainerParam these are the CONTAINER's variants.
     verifRegistrations = registrarConfig['verifRegistrations']
 
-    out.append('#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)')
+    out.append('#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)')
     out.append('#include "instanceFactory.h"')
     out.append('#include "blockBase.h"')
     out.append(f'#include "{sv["scWrapperInclude"]}"')
@@ -44,6 +45,9 @@ def render(args, prj, data):
     out.append('#elif defined(VCS_DUT)')
     for top in tops:
         out.append(f'#include "{byTop[top]["vcsDutHeader"]}"')
+    out.append('#elif defined(QUESTA_DUT)')
+    for top in tops:
+        out.append(f'#include "{byTop[top]["questaDutHeader"]}"')
     out.append('#else')
     for top in tops:
         out.append(f'#include "{byTop[top]["xceliumDutHeader"]}"')
@@ -62,6 +66,9 @@ def render(args, prj, data):
     out.append('#elif defined(VCS_DUT)')
     for top in tops:
         out.append(f'using {top}_dut_t = {byTop[top]["vcsDutClass"]};')
+    out.append('#elif defined(QUESTA_DUT)')
+    for top in tops:
+        out.append(f'using {top}_dut_t = {byTop[top]["questaDutClass"]};')
     out.append('#else')
     for top in tops:
         out.append(f'using {top}_dut_t = {byTop[top]["xceliumDutClass"]};')
@@ -88,7 +95,7 @@ def render(args, prj, data):
     out.append('};')
     out.append(f'static _{blockName}_vl_registrar _{blockName}_vl_registrar_instance;')
     out.append(f'}} // namespace')
-    out.append('#endif // VERILATOR || VCS_DUT || XCELIUM_DUT')
+    out.append('#endif // VERILATOR || VCS_DUT || XCELIUM_DUT || QUESTA_DUT')
     return '\n'.join(out)
 
 

@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=uvmReuseLeaf --parent=uvmReuseChain/../../yaml/uvmReuse.yaml
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "uvmReuseLeaf_hdl_sc_wrapper.h"
@@ -12,6 +12,9 @@
 #elif defined(VCS_DUT)
 #include "p13_uvmReuseChain_c12_uvmReuseLeaf_v8_hdl_sv_wrapper.h"
 #include "uvmReuseLeaf_w8_hdl_sv_wrapper.h"
+#elif defined(QUESTA_DUT)
+#include "p13_uvmReuseChain_c12_uvmReuseLeaf_v8_hdl_sv_wrapper_questa.h"
+#include "uvmReuseLeaf_w8_hdl_sv_wrapper_questa.h"
 #else
 #include "p13_uvmReuseChain_c12_uvmReuseLeaf_v8_hdl_sv_wrapper_xcelium.h"
 #include "uvmReuseLeaf_w8_hdl_sv_wrapper_xcelium.h"
@@ -25,6 +28,9 @@ namespace {
 using p13_uvmReuseChain_c12_uvmReuseLeaf_v8_hdl_sv_wrapper_dut_t = Vp13_uvmReuseChain_c12_uvmReuseLeaf_v8_hdl_sv_wrapper;
 using uvmReuseLeaf_w8_hdl_sv_wrapper_dut_t = VuvmReuseLeaf_w8_hdl_sv_wrapper;
 #elif defined(VCS_DUT)
+using p13_uvmReuseChain_c12_uvmReuseLeaf_v8_hdl_sv_wrapper_dut_t = p13_uvmReuseChain_c12_uvmReuseLeaf_v8_hdl_sv_wrapper;
+using uvmReuseLeaf_w8_hdl_sv_wrapper_dut_t = uvmReuseLeaf_w8_hdl_sv_wrapper;
+#elif defined(QUESTA_DUT)
 using p13_uvmReuseChain_c12_uvmReuseLeaf_v8_hdl_sv_wrapper_dut_t = p13_uvmReuseChain_c12_uvmReuseLeaf_v8_hdl_sv_wrapper;
 using uvmReuseLeaf_w8_hdl_sv_wrapper_dut_t = uvmReuseLeaf_w8_hdl_sv_wrapper;
 #else
@@ -55,5 +61,5 @@ struct _uvmReuseLeaf_vl_registrar {
 };
 static _uvmReuseLeaf_vl_registrar _uvmReuseLeaf_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT || QUESTA_DUT
 // GENERATED_CODE_END

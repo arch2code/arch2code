@@ -13,6 +13,8 @@ import xpRtInh_xpRtInhTop.base;
 #include "xpRtInhTop_hdl_sv_wrapper.h"
 #elif defined(XCELIUM_DUT)
 #include "xpRtInhTop_hdl_sv_wrapper_xcelium.h"
+#elif defined(QUESTA_DUT)
+#include "xpRtInhTop_hdl_sv_wrapper_questa.h"
 #else
 #include "VxpRtInhTop_hdl_sv_wrapper.h"
 #endif
@@ -30,11 +32,22 @@ using namespace xpRtInh_ns;
 #include "apb_bfm.h"
 
 #include "socketSync.h"
+// Time-0 levels of the generated clocks and resets. The 4-state simulators
+// start the clocks low with the resets asserted, so no flop sees a clock edge
+// at time 0 while its reset is X; Verilator keeps a rising clock edge and a
+// reset negedge at time 0, which its 2-state flops need to be reset then.
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
+#define A2C_HDL_CLOCK_START false
+#define A2C_HDL_RESET_BORN false
+#else
+#define A2C_HDL_CLOCK_START true
+#define A2C_HDL_RESET_BORN true
+#endif
 class xpRtInhTop_hdl_sc_wrapper: public sc_module, public blockBase, public xpRtInhTopBase {
 
 public:
 
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
     xpRtInhTop_hdl_sv_wrapper *dut_hdl;
 #else
     VxpRtInhTop_hdl_sv_wrapper *dut_hdl;
@@ -52,10 +65,10 @@ public:
         xpRtInhTopBase(name(), variant),
         clk("clk"),
         cpu_main_bfm_inst("cpu_main_bfm_inst"),
-        rst_n("rst_n", true),
+        rst_n("rst_n", A2C_HDL_RESET_BORN),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if defined(VCS_DUT) || defined(XCELIUM_DUT)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT) || defined(QUESTA_DUT)
         dut_hdl = new xpRtInhTop_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VxpRtInhTop_hdl_sv_wrapper("dut_hdl");
@@ -77,7 +90,7 @@ public:
         cpu_main_bfm_inst.clk(clk);
         cpu_main_bfm_inst.rst_n(rst_n);
 
-        clk.write(true);
+        clk.write(A2C_HDL_CLOCK_START);
         SC_THREAD(clock_gen_clk);
         SC_THREAD(reset_driver_rst_n);
 

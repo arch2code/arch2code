@@ -23,7 +23,7 @@ description: Guide for building, simulating, creating implementation file scaffo
 *   `make db` builds the project database from the YAML. It validates the YAML without generating code.
 *   `make gen` regenerates every `GENERATED_CODE_BEGIN`/`GENERATED_CODE_END` region and keeps everything outside them.
 *   `make newmodule` creates the missing files that the `fileGeneration.fileMap` entries name, such as the block files in `model/` and `rtl/` and the testbench files in `tb/`. It never rewrites an existing file and never creates YAML.
-*   `make clean` removes the database, `.gen/`, `rundir/build/` and `rundir/build_xrun/`, the VCS and Xcelium analysis, snapshot and log files, and any `waves.shm` or `tr_db.log` in the rundir, the transaction recording a UVM run writes. It leaves source files alone, generated regions included.
+*   `make clean` removes the database, `.gen/`, `rundir/build/`, `rundir/build_xrun/` and `rundir/build_questa/`, the VCS, Xcelium and Questa analysis, library, snapshot and log files, and any `waves.shm` or `tr_db.log` in the rundir, the transaction recording a UVM run writes. It leaves source files alone, generated regions included.
 *   Run `make clean` and `make gen` as two commands. In one `make -j clean gen` the two goals are not ordered, so `clean` can delete the database while `gen` reads it.
 *   `make` in `rundir/` regenerates and builds the model binary, `rundir/build/run`.
 *   `make VL_DUT=1` in `rundir/` regenerates, verilates the RTL into `rundir/build/vl`, and builds the binary with it linked in.
@@ -87,7 +87,7 @@ The synthesis project adds the rest itself:
     *   `A2C_LAYER_CPP_INCLUDES` follows the Boost and SystemC include paths but precedes the builder's Verilator, simulator and source-directory paths, so a layer header directory is searched ahead of those.
 *   `A2C_LAYER_UVM_F_FILES` goes in later than the project's hooks. It names `-F` lists of UVM agent packages. Under `USE_UVM=1` they compile after the builder's `a2c_uvm.f`, which follows the project's `EXTRA_HDL_*` hooks, and before the generated UVM packages. Each list holds file paths relative to its own directory, and make tracks the lists and the files they name.
 *   `EXTRA_CXX_FLAGS` and `EXTRA_LD_FLAGS` come after every builder flag, so a project flag can override a builder flag, for example `EXTRA_CXX_FLAGS += -Wsign-compare` under `VL_DUT=1`. `EXTRA_CPP_INCLUDES` follows `A2C_LAYER_CPP_INCLUDES` directly, ahead of the same builder paths.
-*   The HDL hooks (`A2C_LAYER_HDL_F_FILES`, then the `EXTRA_HDL_*` hooks) go after the builder's `a2c.f` and before the project's `rtl.f`. `EXTRA_XRUN_LIB_OPTS` follows them inside the xrun DUT library.
+*   The HDL hooks (`A2C_LAYER_HDL_F_FILES`, then the `EXTRA_HDL_*` hooks) go after the builder's `a2c.f` and before the project's `rtl.f`. `EXTRA_XRUN_LIB_OPTS` follows them inside the xrun DUT library, and `EXTRA_QUESTA_VLOG_OPTS` inside the vlog DUT library.
 *   These commands take no hook: the `migrateYaml.py` calls of `make migrate` and `make migrate-hierarchical`, the C++ module scanner (`gen_cpp_module_map.py`), `gen_compile_commands.py` (it reads the compile commands, hooks included, from a `make -n` run), and `ar -s` on the Verilator library.
 *   `make help-hooks` lists each hook, the command it feeds, and its current value.
 *   Set `EXTRA_SC_GEN_FILES`, `EXTRA_SV_GEN_FILES` and `EXTRA_A2C_RULES_DIRS` above the `include ... a2c-common.mk` line, because a2c-common.mk reads them as it parses. The other hooks can go anywhere in `shared.mk`.
@@ -96,7 +96,7 @@ The synthesis project adds the rest itself:
 
 | Hook | Tool command it feeds |
 | :--- | :--- |
-| `EXTRA_GEN_OPTS` | `arch2code.py`, every call in the make flow: the db build, `gen` (every per-file `--systemc`, `--systemc --python` and `--systemVerilog` call, and the VCS/Xcelium `--vlBoundary` call) and `newmodule` |
+| `EXTRA_GEN_OPTS` | `arch2code.py`, every call in the make flow: the db build, `gen` (every per-file `--systemc`, `--systemc --python` and `--systemVerilog` call, and the VCS/Xcelium/Questa `--vlBoundary` call) and `newmodule` |
 | `EXTRA_SC_GEN_FILES` | Extra files for `arch2code.py --systemc --file` (`gen`) |
 | `EXTRA_SV_GEN_FILES` | Extra files for `arch2code.py --systemVerilog --file` (`gen`). An edit to one re-verilates every verilated top |
 | `EXTRA_VERILATOR_OPTS` | `verilator`, every call: `make lint` and the model wrapping of `make VL_DUT=1` |
@@ -112,35 +112,39 @@ The synthesis project adds the rest itself:
 | `EXTRA_CPP_MODULE_SRC` | C++20 module interface units outside the project source dirs |
 | `EXTRA_PRJ_SRC_DIRS` | Extra project source directories (every `.cpp` and `.cppm` in each is compiled) |
 | `EXTRA_A2C_SRC_DIRS` | Extra builder-side source directories, such as the firmware BSP `$(A2C_ROOT)/common/fw/bsp` |
-| `EXTRA_LD_FLAGS` | Link flags for the simulation binary, after the builder's libraries, the Verilator library included. Under `USE_XCELIUM` each word goes to the xrun link as `-Wld,<word>` |
-| `EXTRA_HDL_FILES` | SystemVerilog/Verilog sources for `verilator` (lint and each per-top verilate), the `vlogan` RTL analysis and the `xrun` DUT library |
-| `EXTRA_HDL_F_FILES` | `-F` file lists, to the same three commands. Name every file in the list: `vlogan` ignores `-y` library dirs, which only Verilator and Xcelium resolve |
-| `EXTRA_HDL_INCDIRS` | `+incdir+` directories, to the same three commands |
-| `EXTRA_HDL_DEFINES` | `+define+` macros, `NAME` or `NAME=VAL`, to the same three commands |
+| `EXTRA_LD_FLAGS` | Link flags for the simulation binary, after the builder's libraries, the Verilator library included. Under `USE_XCELIUM` each word goes to the xrun link as `-Wld,<word>`; under `USE_QUESTA` to `sccom -link` as given |
+| `EXTRA_HDL_FILES` | SystemVerilog/Verilog sources for `verilator` (lint and each per-top verilate), the `vlogan` RTL analysis, the `xrun` DUT library and the `vlog` DUT library |
+| `EXTRA_HDL_F_FILES` | `-F` file lists, to the same four commands. Name every file in the list: `vlogan` ignores `-y` library dirs, which only Verilator, Xcelium and Questa resolve |
+| `EXTRA_HDL_INCDIRS` | `+incdir+` directories, to the same four commands |
+| `EXTRA_HDL_DEFINES` | `+define+` macros, `NAME` or `NAME=VAL`, to the same four commands |
 | `EXTRA_VLOGAN_OPTS` | `vlogan`, both the RTL analysis and each `-sc_model` shell (`USE_VCS`) |
 | `EXTRA_VCS_LIB_SV_FILES` | Design units `vlogan` analyses explicitly because it does not search `-y` dirs (`USE_VCS`) |
 | `EXTRA_VCS_OPTS` | `vcs` elaboration and link (`USE_VCS`) |
 | `EXTRA_XRUN_OPTS` | `xrun` snapshot build, outside the DUT library (`USE_XCELIUM`) |
 | `EXTRA_XRUN_LIB_OPTS` | `xrun` snapshot build, inside the DUT library after `a2c.f`, so its `-y` dirs use `a2c.f`'s `+libext+.sv` (`USE_XCELIUM`) |
 | `EXTRA_XRUN_R_OPTS` | `xrun -R`, each simulation, written into the `build_xrun/run_<topology>` script (`USE_XCELIUM`). Do not put single quotes in it |
+| `EXTRA_QUESTA_VLOG_OPTS` | `vlog` of the DUT library, after the HDL hooks and before `rtl.f` (`USE_QUESTA`) |
+| `EXTRA_QUESTA_VOPT_OPTS` | each `vopt`, before the libraries and `sc_main` (`USE_QUESTA`) |
+| `EXTRA_QUESTA_VSIM_OPTS` | `vsim`, each simulation, written into the `build_questa/run_<topology>` script (`USE_QUESTA`). Do not put single quotes in it |
 
-*   Give `EXTRA_HDL_*` paths as absolute paths, for example `$(REPO_ROOT)/vip/my_if.sv`. Lint, the Verilator sub-make, `vlogan` and `xrun` each run in a different directory.
-*   The files named in `EXTRA_HDL_FILES` and `EXTRA_HDL_F_FILES` are prerequisites of the verilate, `vlogan` and `xrun` steps, so editing one rebuilds. So are the `.sv`, `.svh`, `.v` and `.vh` files that `a2c.f`, an `EXTRA_HDL_F_FILES` list or the project's `rtl.f` names, and every `.sv` and `.svh` in an `EXTRA_HDL_INCDIRS` directory or a list's `+incdir+` directory, whether or not the design includes it. The build reads each list for these, taking a relative entry from the list's own directory. It does not follow a nested `-f` or `-F` list, expand a `$VAR`, or read a directory whose name holds a `+`. Verilator also tracks what it reads through its `-MMD` record, so for Verilator these gaps do not matter. Under VCS and Xcelium, run `make clean` after editing a file one of them hides.
-*   HDL from outside arch2code, such as VIP, goes on the `EXTRA_HDL_*` hooks, and lint, Verilator, VCS and Xcelium all pick it up. Its C/C++ models go on `EXTRA_CPP_SRC`, `EXTRA_PRJ_SRC_DIRS`, `EXTRA_CPP_INCLUDES` and `EXTRA_LD_FLAGS`. Options only one tool understands, and precompiled libraries (`-reflib`, `synopsys_sim.setup` and the like), go on that tool's hooks. Simulation plusargs go on `EXTRA_XRUN_R_OPTS`. The VCS flow has no run hook, because `simv` takes the test's own arguments.
+*   Give `EXTRA_HDL_*` paths as absolute paths, for example `$(REPO_ROOT)/vip/my_if.sv`. Lint, the Verilator sub-make, `vlogan`, `xrun` and `vlog` each run in a different directory.
+*   The files named in `EXTRA_HDL_FILES` and `EXTRA_HDL_F_FILES` are prerequisites of the verilate, `vlogan`, `xrun` and `vlog` steps, so editing one rebuilds. So are the `.sv`, `.svh`, `.v` and `.vh` files that `a2c.f`, an `EXTRA_HDL_F_FILES` list or the project's `rtl.f` names, and every `.sv` and `.svh` in an `EXTRA_HDL_INCDIRS` directory or a list's `+incdir+` directory, whether or not the design includes it. The build reads each list for these, taking a relative entry from the list's own directory. It does not follow a nested `-f` or `-F` list, expand a `$VAR`, or read a directory whose name holds a `+`. Verilator also tracks what it reads through its `-MMD` record, so for Verilator these gaps do not matter. Under VCS, Xcelium and Questa, run `make clean` after editing a file one of them hides.
+*   HDL from outside arch2code, such as VIP, goes on the `EXTRA_HDL_*` hooks, and lint, Verilator, VCS, Xcelium and Questa all pick it up. Its C/C++ models go on `EXTRA_CPP_SRC`, `EXTRA_PRJ_SRC_DIRS`, `EXTRA_CPP_INCLUDES` and `EXTRA_LD_FLAGS`. Options only one tool understands, and precompiled libraries (`-reflib`, `synopsys_sim.setup` and the like), go on that tool's hooks. Simulation plusargs go on `EXTRA_XRUN_R_OPTS` or `EXTRA_QUESTA_VSIM_OPTS`. The VCS flow has no run hook, because `simv` takes the test's own arguments.
 *   Under Xcelium, every unit in `EXTRA_HDL_FILES`, or in a `.f` on `EXTRA_HDL_F_FILES`, must elaborate on its own. `xmelab` also elaborates the units nothing instantiates, so one parameter without a default fails the whole snapshot with `*E,NODEFP`. Give every parameter a default, or leave unused units off the list. VCS builds the same files without error.
 *   `EXTRA_VL_LIB_OBJS` paths are relative to `rundir/build/vl`, or absolute under `$(A2C_VL_BUILD_DIR)`. Each verilated top builds in its own `obj_dir/<top>`. The archive waits for every verilate before reading the objects, so `-j` builds are safe. Adding a path to an existing tree does not relink the archive by itself. Delete `rundir/build/vl/lib<project>vl_s_wrap.a` once, or run `make clean`.
 
-## Simulator flows (VCS, Xcelium)
+## Simulator flows (VCS, Xcelium, Questa)
 *   Set the flow's environment before `make`. The builder checks these:
     *   Every flow: `BOOST_INCLUDE`, and `LD_BOOST` when `BOOST_LIBS` is empty.
     *   The Verilator and `USE_VCS` builds: `SYSTEMC_INCLUDE` and `SYSTEMC_LIBDIR`.
     *   `USE_VCS`: `VCS_HOME`. `SYSTEMC_LIBDIR` must name the SystemC that VCS ships or was built against, because the `vcs` link takes `-lsystemc` from it alongside `-sysc=234`.
     *   `USE_XCELIUM`: `XCELIUM_TOOLS` and `XRUN_GCC_VERS`. The SystemC headers come from `XCELIUM_TOOLS`, so the build does not read `SYSTEMC_*`. The run script exports `LM_LICENSE_FILE` when it is set at build time.
-*   A builder layer can require more. `make help USE_VCS=1` and `make help USE_XCELIUM=1` list the flow variables. The simulator hooks are in the hook table above.
-*   Both simulators fix the SystemC/HDL topology when they elaborate the snapshot, so each DUT topology is its own binary, named `run_<inst>_<type>[_tandem]`, or `run_model` when no RTL instance is elaborated. `make USE_VCS=1 -j8 all` links `build/run_<topology>` for the topology that `VL_INST`, `VL_TYPE` and `VL_TANDEM` give (defaults `HDL_TOP_MODULE`, `verif`, `0`). `make USE_XCELIUM=1 -j8 all` builds the equivalent `build_xrun/run_<topology>` script. Pass `VL_DUT=` for the model-only snapshot.
+    *   `USE_QUESTA`: `QUESTA_HOME`, a release that bundles GCC 13 (2026.1 or later). The SystemC headers come from `QUESTA_HOME`, so the build does not read `SYSTEMC_*`. The run script exports `SALT_LICENSE_SERVER` when it is set at build time. `QUESTA_PTRARRAY_COPY=1` builds against a copy of Questa's SystemC headers with a fixed `ptrarray.h`, for designs whose port types come from C++20 modules (`SIMULATOR_INTEGRATION.md` section 2.3).
+*   A builder layer can require more. `make help USE_VCS=1`, `make help USE_XCELIUM=1` and `make help USE_QUESTA=1` list the flow variables. The simulator hooks are in the hook table above.
+*   The simulators fix the topology when they elaborate the snapshot (Questa only its HDL side), so each DUT topology is its own binary, named `run_<inst>_<type>[_tandem]`, or `run_model` when no RTL instance is elaborated. `make USE_VCS=1 -j8 all` links `build/run_<topology>` for the topology that `VL_INST`, `VL_TYPE` and `VL_TANDEM` give (defaults `HDL_TOP_MODULE`, `verif`, `0`). `make USE_XCELIUM=1 -j8 all` builds the equivalent `build_xrun/run_<topology>` script, and `make USE_QUESTA=1 -j8 all` the `build_questa/run_<topology>` one. Pass `VL_DUT=` for the model-only snapshot.
 *   Run a snapshot with the same `--vlInst`, `--vlType` and `--vlTandem` it was built with. The dispatcher `dutRun.py <base binary> <args>` picks the matching snapshot from the arguments, so a regression keeps one run command.
-*   `make USE_VCS=1 vcs_snapshots` and `make USE_XCELIUM=1 xrun_snapshots` build `run_model` plus one snapshot per topology in `DUT_TOPOLOGIES` (`<inst>:<cfg>[,<cfg>]...`, where cfg is `verif|model[:tandem]`). Regression files pass that list on the build command line, one `DUT_TOPOLOGIES+=` entry per block. Do not define it in the project `rundir/Makefile`. See `run-regression-tests` for the regression files and `run-tandem` for tandem runs on a snapshot.
-*   `builder/base/specs/SIMULATOR_INTEGRATION.md` is the full reference for both flows: the tested toolchain, environment variables, sample site scripts, snapshots and `dutRun.py`, the generated boundary files, and failure modes.
+*   `make USE_VCS=1 vcs_snapshots`, `make USE_XCELIUM=1 xrun_snapshots` and `make USE_QUESTA=1 questa_snapshots` build `run_model` plus one snapshot per topology in `DUT_TOPOLOGIES` (`<inst>:<cfg>[,<cfg>]...`, where cfg is `verif|model[:tandem]`). Regression files pass that list on the build command line, one `DUT_TOPOLOGIES+=` entry per block. Do not define it in the project `rundir/Makefile`. See `run-regression-tests` for the regression files and `run-tandem` for tandem runs on a snapshot.
+*   `builder/base/specs/SIMULATOR_INTEGRATION.md` is the full reference for the three flows: the tested toolchain, environment variables, sample site scripts, snapshots and `dutRun.py`, the generated boundary files, and failure modes.
 
 ## Project verification targets
 Check the project's `rundir/Makefile` for its own targets, such as `regr` or `run-vl`.
